@@ -1,8 +1,9 @@
+import Foundation
 import Synchronization
 
-/// Routes Claude Code's events to the turn that is running. After an interrupt the old turn keeps
-/// flushing until its `result`, so everything is dropped until then.
-final class ClaudeCodeTurns: Sendable {
+/// Routes a local agent's events to the turn that is running. After an interrupt the old turn keeps
+/// flushing until its end, so everything is dropped until then.
+final class AgentTurns: Sendable {
     private struct State {
         var reply: AsyncThrowingStream<AgentReply, Error>.Continuation?
         var running = false
@@ -23,7 +24,10 @@ final class ClaudeCodeTurns: Sendable {
     func receive(_ event: AgentEvent) {
         state.withLock { state in
             if state.draining {
-                if case .finished = event { state.draining = false }
+                switch event {
+                case .finished, .failed: state.draining = false
+                default: break
+                }
                 return
             }
             switch event {
@@ -31,6 +35,10 @@ final class ClaudeCodeTurns: Sendable {
             case .approval(let request): state.reply?.yield(.approval(request))
             case .finished:
                 state.reply?.finish()
+                state.reply = nil
+                state.running = false
+            case .failed(let message):
+                state.reply?.finish(throwing: AgentFailure(message: message))
                 state.reply = nil
                 state.running = false
             }
@@ -56,4 +64,10 @@ final class ClaudeCodeTurns: Sendable {
             state = State()
         }
     }
+}
+
+/// An agent reported that its turn failed.
+public struct AgentFailure: LocalizedError {
+    public let message: String
+    public var errorDescription: String? { message }
 }

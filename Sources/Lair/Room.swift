@@ -124,6 +124,8 @@ import os
         case .claudeCode:
             return try ClaudeCodeSession(model: agent.model, directory: agent.directoryURL, environment: environment,
                                          permissionMode: agent.permissionMode)
+        case .omp:
+            return try OmpSession(model: agent.model, directory: agent.directoryURL, environment: environment)
         case .hermes:
             guard let url = agent.url.flatMap(URL.init(string:)) else { throw SetupError.missingURL(agent.name) }
             let secret = { Keychain.password(service: agent.keychainService, account: $0) }

@@ -4,6 +4,7 @@ public enum AgentEvent: Equatable, Sendable {
     case textDelta(String)
     case approval(ApprovalRequest)
     case finished(String)
+    case failed(String)
 }
 
 /// Reads and writes the lines of `claude -p --input-format stream-json --output-format stream-json

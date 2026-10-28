@@ -31,6 +31,7 @@ public struct LairConfig: Codable, Equatable, Sendable {
 public struct AgentConfig: Codable, Equatable, Identifiable, Sendable {
     public enum Kind: String, Codable, Sendable {
         case claudeCode = "claude-code"
+        case omp
         case hermes
     }
 

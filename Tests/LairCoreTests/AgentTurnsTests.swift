@@ -1,7 +1,7 @@
 @testable import LairCore
 import Testing
 
-struct ClaudeCodeTurnsTests {
+struct AgentTurnsTests {
     private func collect(_ reply: AsyncThrowingStream<AgentReply, Error>) async throws -> [AgentReply] {
         var replies: [AgentReply] = []
         for try await reply in reply { replies.append(reply) }
@@ -9,7 +9,7 @@ struct ClaudeCodeTurnsTests {
     }
 
     @Test func routesATurnUntilItsResult() async throws {
-        let turns = ClaudeCodeTurns()
+        let turns = AgentTurns()
         let reply = turns.begin()
         turns.receive(.textDelta("Hi"))
         turns.receive(.finished("Hi"))
@@ -18,7 +18,7 @@ struct ClaudeCodeTurnsTests {
     }
 
     @Test func dropsTheOldTurnAfterAnInterrupt() async throws {
-        let turns = ClaudeCodeTurns()
+        let turns = AgentTurns()
         let first = turns.begin()
         turns.receive(.textDelta("1 2 3"))
         #expect(turns.interrupt())
@@ -33,7 +33,7 @@ struct ClaudeCodeTurnsTests {
     }
 
     @Test func doesNotDrainWhenNothingIsRunning() async throws {
-        let turns = ClaudeCodeTurns()
+        let turns = AgentTurns()
         let first = turns.begin()
         turns.receive(.finished(""))
         #expect(turns.interrupt() == false)
@@ -45,9 +45,28 @@ struct ClaudeCodeTurnsTests {
     }
 
     @Test func closingEndsTheTurn() async throws {
-        let turns = ClaudeCodeTurns()
+        let turns = AgentTurns()
         let reply = turns.begin()
         turns.close()
         #expect(try await collect(reply).isEmpty)
+    }
+
+    @Test func aFailedTurnThrowsItsMessage() async {
+        let turns = AgentTurns()
+        let reply = turns.begin()
+        turns.receive(.failed("No API key"))
+        await #expect(throws: AgentFailure.self) { _ = try await collect(reply) }
+    }
+
+    @Test func aFailureAlsoEndsDraining() async throws {
+        let turns = AgentTurns()
+        _ = turns.begin()
+        turns.receive(.textDelta("x"))
+        #expect(turns.interrupt())
+        turns.receive(.failed("aborted"))
+        let next = turns.begin()
+        turns.receive(.textDelta("fresh"))
+        turns.receive(.finished(""))
+        #expect(try await collect(next) == [.text("fresh")])
     }
 }

@@ -4,7 +4,7 @@ import Foundation
 public final class ClaudeCodeSession: AgentSession {
     private let process = Process()
     private let input = Pipe()
-    private let turns = ClaudeCodeTurns()
+    private let turns = AgentTurns()
 
     /// `permissionMode` nil keeps your Claude Code settings; whatever they would ask you about comes to Lair.
     public init(model: String? = nil, directory: URL? = nil, environment: [String: String]? = nil,
