@@ -52,8 +52,8 @@ public final class ClaudeCodeSession: AgentSession {
         return reply
     }
 
-    public func answer(_ request: ApprovalRequest, allow: Bool) throws {
-        try input.fileHandleForWriting.write(contentsOf: ClaudeCodeStream.approvalResponse(request, allow: allow))
+    public func answer(_ request: ApprovalRequest, decision: ApprovalDecision) throws {
+        try input.fileHandleForWriting.write(contentsOf: ClaudeCodeStream.approvalResponse(request, decision: decision))
     }
 
     public func stop() {

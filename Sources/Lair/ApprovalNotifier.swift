@@ -1,23 +1,27 @@
 import LairCore
 import UserNotifications
 
-/// Shows an agent's approval request as a notification with Allow and Deny buttons.
+/// Shows an agent's approval request as a notification with Allow, Always Allow and Deny buttons.
 @MainActor final class ApprovalNotifier: NSObject, UNUserNotificationCenterDelegate {
     private static let category = "approval"
+    private static let alwaysCategory = "approval-always"
     private static let allow = "allow"
+    private static let always = "always"
     private static let deny = "deny"
 
-    /// Called with the request id and the answer.
-    var onAnswer: ((String, Bool) -> Void)?
+    /// Called with the request id and the decision.
+    var onAnswer: ((String, ApprovalDecision) -> Void)?
 
     func setUp() async {
         let center = UNUserNotificationCenter.current()
         center.delegate = self
-        center.setNotificationCategories([UNNotificationCategory(
-            identifier: Self.category,
-            actions: [UNNotificationAction(identifier: Self.allow, title: "Allow"),
-                      UNNotificationAction(identifier: Self.deny, title: "Deny", options: [.destructive])],
-            intentIdentifiers: [])])
+        let allow = UNNotificationAction(identifier: Self.allow, title: "Allow")
+        let always = UNNotificationAction(identifier: Self.always, title: "Always Allow")
+        let deny = UNNotificationAction(identifier: Self.deny, title: "Deny", options: [.destructive])
+        center.setNotificationCategories([
+            UNNotificationCategory(identifier: Self.category, actions: [allow, deny], intentIdentifiers: []),
+            UNNotificationCategory(identifier: Self.alwaysCategory, actions: [allow, always, deny], intentIdentifiers: []),
+        ])
         _ = try? await center.requestAuthorization(options: [.alert, .sound])
     }
 
@@ -26,7 +30,7 @@ import UserNotifications
         content.title = "\(agent) needs your OK"
         content.body = request.summary
         content.subtitle = request.tool
-        content.categoryIdentifier = Self.category
+        content.categoryIdentifier = request.canAlwaysAllow ? Self.alwaysCategory : Self.category
         content.sound = .default
         content.interruptionLevel = .timeSensitive
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: request.id, content: content, trigger: nil))
@@ -42,13 +46,14 @@ import UserNotifications
                                             didReceive response: UNNotificationResponse) async {
         let id = response.notification.request.identifier
         // Tapping the notification itself is not an answer.
-        let allow: Bool? = switch response.actionIdentifier {
-        case Self.allow: true
-        case Self.deny: false
+        let decision: ApprovalDecision? = switch response.actionIdentifier {
+        case Self.allow: .allowOnce
+        case Self.always: .allowAlways
+        case Self.deny: .deny
         default: nil
         }
-        guard let allow else { return }
-        await MainActor.run { onAnswer?(id, allow) }
+        guard let decision else { return }
+        await MainActor.run { onAnswer?(id, decision) }
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,

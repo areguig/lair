@@ -19,7 +19,7 @@ struct RoomView: View {
                 Transcript(lines: call.lines).padding(.top, 18)
                 if let request = call.pendingApproval {
                     ApprovalCard(agent: call.agent.name, request: request, tint: tint,
-                                 answer: { room.answer(call, allow: $0) })
+                                 answer: { room.answer(call, decision: $0) })
                         .padding(.top, 12)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
@@ -201,7 +201,7 @@ private struct ApprovalCard: View {
     let agent: String
     let request: ApprovalRequest
     let tint: Color
-    let answer: (Bool) -> Void
+    let answer: (ApprovalDecision) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -218,11 +218,18 @@ private struct ApprovalCard: View {
                 .foregroundStyle(.white.opacity(0.85))
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 8) {
-                Button { answer(false) } label: {
+                Button { answer(.deny) } label: {
                     Text("Deny").frame(maxWidth: .infinity).padding(.vertical, 7)
                         .background(.white.opacity(0.1), in: Capsule())
                 }
-                Button { answer(true) } label: {
+                if request.canAlwaysAllow {
+                    Button { answer(.allowAlways) } label: {
+                        Text("Always").fontWeight(.semibold).foregroundStyle(tint)
+                            .frame(maxWidth: .infinity).padding(.vertical, 7)
+                            .background(tint.opacity(0.22), in: Capsule())
+                    }
+                }
+                Button { answer(.allowOnce) } label: {
                     Text("Allow").fontWeight(.semibold).foregroundStyle(.black)
                         .frame(maxWidth: .infinity).padding(.vertical, 7)
                         .background(.white, in: Capsule())

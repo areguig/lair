@@ -5,18 +5,22 @@ public protocol AgentSession: Sendable {
     /// Sends one user turn; the stream yields the reply as it comes and ends with the turn.
     func ask(_ text: String) throws -> AsyncThrowingStream<AgentReply, Error>
     /// Answers an approval the current turn is waiting on.
-    func answer(_ request: ApprovalRequest, allow: Bool) throws
+    func answer(_ request: ApprovalRequest, decision: ApprovalDecision) throws
     func stop()
 }
 
 extension AgentSession {
-    public func answer(_ request: ApprovalRequest, allow: Bool) throws {}
+    public func answer(_ request: ApprovalRequest, decision: ApprovalDecision) throws {}
 }
 
 public enum AgentReply: Equatable, Sendable {
     case text(String)
     /// The agent is paused until `answer` is called.
     case approval(ApprovalRequest)
+}
+
+public enum ApprovalDecision: Equatable, Sendable {
+    case allowOnce, allowAlways, deny
 }
 
 /// Something the agent wants to do that needs a yes or no from you.
@@ -27,11 +31,19 @@ public struct ApprovalRequest: Equatable, Identifiable, Sendable {
     public let summary: String
     /// The tool's input as the agent sent it, returned unchanged when allowed.
     let input: Data
+    /// The agent's `permission_suggestions` JSON array, sent back to make an allow permanent.
+    let suggestions: Data?
 
-    public init(id: String, tool: String, summary: String, input: Data = Data("{}".utf8)) {
+    public var canAlwaysAllow: Bool {
+        guard let suggestions, let list = try? JSONSerialization.jsonObject(with: suggestions) as? [Any] else { return false }
+        return !list.isEmpty
+    }
+
+    public init(id: String, tool: String, summary: String, input: Data = Data("{}".utf8), suggestions: Data? = nil) {
         self.id = id
         self.tool = tool
         self.summary = summary
         self.input = input
+        self.suggestions = suggestions
     }
 }

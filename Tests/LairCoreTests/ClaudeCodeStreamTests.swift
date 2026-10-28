@@ -54,7 +54,7 @@ struct ClaudeCodeApprovalTests {
 
     @Test func allowSendsTheInputBackUnchanged() throws {
         guard case .approval(let approval) = ClaudeCodeStream.parse(line: request) else { return }
-        let line = try ClaudeCodeStream.approvalResponse(approval, allow: true)
+        let line = try ClaudeCodeStream.approvalResponse(approval, decision: .allowOnce)
         let object = try JSONSerialization.jsonObject(with: line) as? [String: Any]
         let response = object?["response"] as? [String: Any]
         let decision = response?["response"] as? [String: Any]
@@ -62,11 +62,46 @@ struct ClaudeCodeApprovalTests {
         #expect(response?["request_id"] as? String == "r1")
         #expect(decision?["behavior"] as? String == "allow")
         #expect((decision?["updatedInput"] as? [String: String])?["command"] == "touch a.txt")
+        #expect(decision?["updatedPermissions"] == nil)
+    }
+
+    private let suggested = #"{"type":"control_request","request_id":"r3","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"mkdir -p out"},"permission_suggestions":[{"type":"addRules","rules":[{"toolName":"Bash","ruleContent":"mkdir -p out"}],"behavior":"allow","destination":"localSettings"}]}}"#
+
+    @Test func readsPermissionSuggestions() {
+        guard case .approval(let approval) = ClaudeCodeStream.parse(line: suggested) else { return }
+        #expect(approval.canAlwaysAllow)
+        #expect(!(ApprovalRequest(id: "a", tool: "Bash", summary: "x").canAlwaysAllow))
+        #expect(!(ApprovalRequest(id: "a", tool: "Bash", summary: "x", suggestions: Data("[]".utf8)).canAlwaysAllow))
+        if case .approval(let plain) = ClaudeCodeStream.parse(line: request) { #expect(!plain.canAlwaysAllow) }
+    }
+
+    @Test func emptySuggestionsCannotBeAlwaysAllowed() {
+        let line = #"{"type":"control_request","request_id":"r4","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{},"permission_suggestions":[]}}"#
+        guard case .approval(let approval) = ClaudeCodeStream.parse(line: line) else { return }
+        #expect(!approval.canAlwaysAllow)
+    }
+
+    @Test func alwaysAllowSendsTheSuggestionsBack() throws {
+        guard case .approval(let approval) = ClaudeCodeStream.parse(line: suggested) else { return }
+        let object = try JSONSerialization.jsonObject(with: ClaudeCodeStream.approvalResponse(approval, decision: .allowAlways))
+        let decision = ((object as? [String: Any])?["response"] as? [String: Any])?["response"] as? [String: Any]
+        #expect(decision?["behavior"] as? String == "allow")
+        let sent = decision?["updatedPermissions"] as? [[String: Any]]
+        let want = try JSONSerialization.jsonObject(with: #"[{"type":"addRules","rules":[{"toolName":"Bash","ruleContent":"mkdir -p out"}],"behavior":"allow","destination":"localSettings"}]"#.data(using: .utf8)!) as? [[String: Any]]
+        #expect((sent as NSArray?)?.isEqual(to: want ?? []) == true)
+    }
+
+    @Test func alwaysAllowWithoutSuggestionsActsLikeAllowOnce() throws {
+        guard case .approval(let approval) = ClaudeCodeStream.parse(line: request) else { return }
+        let object = try JSONSerialization.jsonObject(with: ClaudeCodeStream.approvalResponse(approval, decision: .allowAlways))
+        let decision = ((object as? [String: Any])?["response"] as? [String: Any])?["response"] as? [String: Any]
+        #expect(decision?["behavior"] as? String == "allow")
+        #expect(decision?["updatedPermissions"] == nil)
     }
 
     @Test func denySaysTheUserSaidNo() throws {
         guard case .approval(let approval) = ClaudeCodeStream.parse(line: request) else { return }
-        let object = try JSONSerialization.jsonObject(with: ClaudeCodeStream.approvalResponse(approval, allow: false))
+        let object = try JSONSerialization.jsonObject(with: ClaudeCodeStream.approvalResponse(approval, decision: .deny))
         let decision = ((object as? [String: Any])?["response"] as? [String: Any])?["response"] as? [String: Any]
         #expect(decision?["behavior"] as? String == "deny")
         #expect(decision?["message"] as? String == "The user said no.")

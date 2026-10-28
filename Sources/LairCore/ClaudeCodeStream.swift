@@ -31,12 +31,19 @@ public enum ClaudeCodeStream {
     }
 
     /// The answer to a `can_use_tool` control request; a deny reaches the model as this message.
-    public static func approvalResponse(_ request: ApprovalRequest, allow: Bool) throws -> Data {
-        let decision: [String: Any] = allow
-            ? ["behavior": "allow", "updatedInput": try JSONSerialization.jsonObject(with: request.input)]
-            : ["behavior": "deny", "message": "The user said no."]
+    public static func approvalResponse(_ request: ApprovalRequest, decision: ApprovalDecision) throws -> Data {
+        var body: [String: Any]
+        switch decision {
+        case .deny:
+            body = ["behavior": "deny", "message": "The user said no."]
+        case .allowOnce, .allowAlways:
+            body = ["behavior": "allow", "updatedInput": try JSONSerialization.jsonObject(with: request.input)]
+            if decision == .allowAlways, request.canAlwaysAllow, let suggestions = request.suggestions {
+                body["updatedPermissions"] = try JSONSerialization.jsonObject(with: suggestions)
+            }
+        }
         return try line(["type": "control_response",
-                         "response": ["subtype": "success", "request_id": request.id, "response": decision]])
+                         "response": ["subtype": "success", "request_id": request.id, "response": body]])
     }
 
     private static func line(_ object: [String: Any]) throws -> Data {
@@ -55,7 +62,9 @@ public enum ClaudeCodeStream {
         let summary = [request["description"], input["description"], input["command"], input["file_path"]]
             .lazy.compactMap { $0 as? String }.first { !$0.isEmpty } ?? "use \(tool)"
         let inputData = (try? JSONSerialization.data(withJSONObject: input)) ?? Data("{}".utf8)
-        return ApprovalRequest(id: id, tool: tool, summary: summary, input: inputData)
+        let suggestions = (request["permission_suggestions"] as? [Any])
+            .flatMap { try? JSONSerialization.data(withJSONObject: $0) }
+        return ApprovalRequest(id: id, tool: tool, summary: summary, input: inputData, suggestions: suggestions)
     }
 
     private struct Message: Decodable {

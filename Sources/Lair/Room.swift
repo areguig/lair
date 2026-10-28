@@ -61,9 +61,9 @@ import os
     var focused: Call? { calls.first { $0.id == focusedID } }
 
     func start() async {
-        notifier.onAnswer = { [weak self] id, allow in
+        notifier.onAnswer = { [weak self] id, decision in
             guard let call = self?.calls.first(where: { $0.pendingApproval?.id == id }) else { return }
-            self?.answer(call, allow: allow)
+            self?.answer(call, decision: decision)
         }
         await notifier.setUp()
         environment = await LoginShell.environment()
@@ -126,7 +126,7 @@ import os
     }
 
     func hangUp(_ call: Call) {
-        if call.pendingApproval != nil { answer(call, allow: false) }
+        if call.pendingApproval != nil { answer(call, decision: .deny) }
         call.turn?.cancel()
         call.session?.stop()
         call.session = nil
@@ -160,13 +160,19 @@ import os
     }
 
     /// The first answer wins, whether it comes by voice, the panel or the notification.
-    func answer(_ call: Call, allow: Bool) {
+    func answer(_ call: Call, decision: ApprovalDecision) {
         guard let request = call.pendingApproval else { return }
         call.pendingApproval = nil
         notifier.remove(request.id)
-        call.lines.append(.init(role: .notice, text: "\(allow ? "Allowed" : "Denied"): \(request.summary)"))
+        let decision = decision == .allowAlways && !request.canAlwaysAllow ? .allowOnce : decision
+        let verdict = switch decision {
+        case .allowOnce: "Allowed once"
+        case .allowAlways: "Always allowed"
+        case .deny: "Denied"
+        }
+        call.lines.append(.init(role: .notice, text: "\(verdict): \(request.summary)"))
         do {
-            try call.session?.answer(request, allow: allow)
+            try call.session?.answer(request, decision: decision)
             if call.state == .waiting { call.state = .thinking }
         } catch {
             call.lines.append(.init(role: .notice, text: error.localizedDescription))
@@ -176,10 +182,10 @@ import os
     private func hearAnswer(in call: Call, from samples: [Float]) async {
         let heard = (try? await voice.transcribe(samples)) ?? ""
         guard call.pendingApproval != nil else { return }
-        if let allow = SpokenAnswer.parse(heard) {
-            answer(call, allow: allow)
+        if let decision = SpokenAnswer.parse(heard) {
+            answer(call, decision: decision)
         } else {
-            _ = try? await say("Sorry, say yes or no.", in: call)
+            _ = try? await say("Sorry, say" + (call.pendingApproval?.canAlwaysAllow == true ? " yes, always, or no." : " yes or no."), in: call)
             call.state = .waiting
         }
     }
@@ -244,7 +250,7 @@ import os
     private func ask(_ call: Call, to request: ApprovalRequest) async throws {
         call.pendingApproval = request
         notifier.post(request, from: call.agent.name)
-        _ = try await say("\(call.agent.name) needs your OK to \(request.summary.lowercasedFirst). Allow it?", in: call)
+        _ = try await say("\(call.agent.name) needs your OK to \(request.summary.lowercasedFirst). Allow it?" + (request.canAlwaysAllow ? " Say yes, always, or no." : " Say yes or no."), in: call)
         if call.pendingApproval?.id == request.id { call.state = .waiting }
     }
 
