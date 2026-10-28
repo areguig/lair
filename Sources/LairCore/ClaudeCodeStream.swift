@@ -7,6 +7,7 @@ public enum AgentEvent: Equatable, Sendable {
     case failed(String)
     /// Which model and thinking level the agent runs.
     case details(String)
+    case activity(Activity)
 }
 
 /// Reads and writes the lines of `claude -p --input-format stream-json --output-format stream-json
@@ -33,6 +34,78 @@ public enum ClaudeCodeStream {
         default:
             return nil
         }
+    }
+
+    /// Every event in a line: one line can carry several tool calls, or the usage and the end of the turn.
+    public static func parseAll(line: String) -> [AgentEvent] {
+        guard let data = line.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let type = object["type"] as? String
+        else { return [] }
+        let content = ((object["message"] as? [String: Any])?["content"] as? [[String: Any]]) ?? []
+        switch type {
+        case "stream_event":
+            let delta = (object["event"] as? [String: Any])?["delta"] as? [String: Any]
+            if delta?["type"] as? String == "thinking_delta" {
+                guard let text = delta?["thinking"] as? String, !text.isEmpty else { return [] }
+                return [.activity(.thinking(text))]
+            }
+        case "assistant":
+            // Text arrives as deltas already; only the tool calls are new here.
+            return content.filter { $0["type"] as? String == "tool_use" }.flatMap(toolCall)
+        case "user":
+            return content.filter { $0["type"] as? String == "tool_result" }.compactMap(toolResult)
+        case "result":
+            return [usage(object)].compactMap { $0 } + [parse(line: line)].compactMap { $0 }
+        default:
+            break
+        }
+        return [parse(line: line)].compactMap { $0 }
+    }
+
+    private static func toolCall(_ block: [String: Any]) -> [AgentEvent] {
+        guard let id = block["id"] as? String, let name = block["name"] as? String else { return [] }
+        let input = block["input"] as? [String: Any] ?? [:]
+        let started = AgentEvent.activity(.toolStarted(id: id, name: name, input: readable(input, tool: name)))
+        guard name == "Task" || name == "Agent" else { return [started] }
+        return [started, .activity(.helper("Started a helper: \(input["description"] as? String ?? name)"))]
+    }
+
+    /// The one argument that says what a tool call does, instead of its whole JSON.
+    static func readable(_ input: [String: Any], tool: String) -> String {
+        let string = { (key: String) in input[key] as? String }
+        let pick: String? = switch tool {
+        case "Bash": string("command")
+        case "Read", "Write", "Edit", "MultiEdit": string("file_path")
+        case "NotebookEdit": string("notebook_path")
+        case "Grep", "Glob": string("pattern").map { pattern in string("path").map { "\(pattern) in \($0)" } ?? pattern }
+        case "WebFetch": string("url")
+        case "WebSearch": string("query")
+        case "Task", "Agent": string("description")
+        default: nil
+        }
+        if let pick { return pick }
+        let json = (try? JSONSerialization.data(withJSONObject: input, options: [.sortedKeys]))
+            .map { String(decoding: $0, as: UTF8.self) } ?? ""
+        return json.count > 200 ? String(json.prefix(200)) + "…" : json
+    }
+
+    private static func toolResult(_ block: [String: Any]) -> AgentEvent? {
+        guard let id = block["tool_use_id"] as? String else { return nil }
+        let text: String = switch block["content"] {
+        case let string as String: string
+        case let parts as [[String: Any]]: parts.compactMap { $0["text"] as? String }.joined(separator: "\n")
+        default: ""
+        }
+        return .activity(.toolFinished(id: id, output: Activity.trimmed(text), failed: block["is_error"] as? Bool ?? false))
+    }
+
+    private static func usage(_ result: [String: Any]) -> AgentEvent? {
+        guard let usage = result["usage"] as? [String: Any] else { return nil }
+        let count = { (key: String) in usage[key] as? Int ?? 0 }
+        return .activity(.usage(
+            inputTokens: count("input_tokens") + count("cache_read_input_tokens") + count("cache_creation_input_tokens"),
+            outputTokens: count("output_tokens"), cost: result["total_cost_usd"] as? Double))
     }
 
     /// One line of `--input-format stream-json`.

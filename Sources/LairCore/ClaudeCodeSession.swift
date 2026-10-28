@@ -38,10 +38,8 @@ public final class ClaudeCodeSession: AgentSession {
         // A read error means the process is gone: closing the turns is the signal.
         do {
             for try await line in output.bytes.lines {
-                switch ClaudeCodeStream.parse(line: line) {
-                case .details(let text): detailsContinuation.yield(text)
-                case let event?: turns.receive(event)
-                case nil: break
+                for event in ClaudeCodeStream.parseAll(line: line) {
+                    if case .details(let text) = event { detailsContinuation.yield(text) } else { turns.receive(event) }
                 }
             }
         } catch {}

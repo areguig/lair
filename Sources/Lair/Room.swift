@@ -39,6 +39,8 @@ import os
     @ObservationIgnored var thinkingNextCall: String?
     /// What the agent said while another agent had the floor, heard when you switch to it.
     @ObservationIgnored var unheard: [String] = []
+    /// The whole exchange for Mission Control; kept across calls with this agent until Lair quits.
+    var entries: [LogEntry] = []
     @ObservationIgnored var session: (any AgentSession)?
     @ObservationIgnored var turn: Task<Void, Never>?
     /// Identifies the running turn, so an interrupted one can't reset the state of the next.
@@ -224,6 +226,7 @@ import os
     /// A problem line, with its sound so it's noticed with the panel closed.
     private func report(in call: Call, _ line: Call.Line) {
         call.lines.append(line)
+        call.log(.problem(line.text))
         speaker?.play(.problem)
     }
 
@@ -313,6 +316,7 @@ import os
         case .deny: "Denied"
         }
         call.lines.append(.init(role: .info, text: "\(verdict): \(request.summary)"))
+        call.log(.note("\(verdict): \(request.summary)"))
         do {
             try call.session?.answer(request, decision: decision)
             if call.state == .waiting { call.state = .thinking }
@@ -466,6 +470,9 @@ import os
         var firstToken, firstAudio: Duration?
         defer {
             func ms(_ d: Duration?) -> Int { d.map { Int($0 / .milliseconds(1)) } ?? -1 }
+            func optionalMS(_ d: Duration?) -> Int? { d.map { Int($0 / .milliseconds(1)) } }
+            call.log(.timing(heard: speech > 0 ? optionalMS(heard) : nil, firstWord: optionalMS(firstToken),
+                             firstSound: optionalMS(firstAudio), total: ms(clock.now - start)))
             Self.log.info("""
                 \(call.id, privacy: .public): \(speech / 16) ms of speech; heard \(ms(heard)) ms, \
                 first token \(ms(firstToken)) ms, first audio \(ms(firstAudio)) ms after release
@@ -474,6 +481,7 @@ import os
         do {
             guard let session = call.session, let speaker else { return }
             call.lines.append(shown ?? .init(role: .you, text: prompt))
+            call.log(shown.map { .note($0.text) } ?? .you(prompt))
 
             // Text after an approval starts a new line, so the transcript reads in order.
             var answer: Int?
@@ -484,8 +492,11 @@ import os
             for try await reply in try session.ask(prompt) {
                 guard !Task.isCancelled else { return }
                 switch reply {
+                case .activity(let activity):
+                    call.log(activity)
                 case .text(let delta):
                     if firstToken == nil { firstToken = clock.now - start }
+                    call.logText(delta)
                     if answer == nil {
                         call.lines.append(.init(role: .agent, text: ""))
                         answer = call.lines.count - 1
@@ -544,6 +555,7 @@ import os
     /// Puts the request in front of you three ways at once; the turn stays paused until `answer`.
     private func ask(_ call: Call, to request: ApprovalRequest) async throws {
         call.pendingApproval = request
+        call.log(.approval("\(request.tool): \(request.summary)"))
         notifier.post(request, from: call.agent.name)
         speaker?.play(.needsYou)
         if call.id != focusedID {

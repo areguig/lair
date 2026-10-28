@@ -76,8 +76,9 @@ public final class HermesSession: AgentSession {
                 reading: for try await line in bytes.lines {
                     switch stream.feed(line) {
                     case .text(let text): continuation.yield(.text(text))
-                    case .toolStarted("delegate_task"): delegations.withLock { $0.pending += 1 }
-                    case .toolStarted: break
+                    case .toolStarted(let tool):
+                        if tool == "delegate_task" { delegations.withLock { $0.pending += 1 } }
+                        continuation.yield(.activity(.toolStarted(id: UUID().uuidString, name: tool, input: "")))
                     case .done: break reading
                     case .failed(let reason): throw Failure.reply(reason)
                     case nil: break

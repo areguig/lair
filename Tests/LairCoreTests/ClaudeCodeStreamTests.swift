@@ -1,5 +1,5 @@
 import Foundation
-import LairCore
+@testable import LairCore
 import Testing
 
 struct ClaudeCodeStreamTests {
@@ -109,5 +109,47 @@ struct ClaudeCodeApprovalTests {
 
     @Test func ignoresOtherControlRequests() {
         #expect(ClaudeCodeStream.parse(line: #"{"type":"control_request","request_id":"x","request":{"subtype":"interrupt"}}"#) == nil)
+    }
+}
+
+struct ClaudeCodeActivityTests {
+    @Test func readsThinkingDeltas() {
+        let line = #"{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"Let me check."}}}"#
+        #expect(ClaudeCodeStream.parseAll(line: line) == [.activity(.thinking("Let me check."))])
+    }
+
+    @Test func readsEveryToolCallOfAMessageAndIgnoresItsText() {
+        let line = #"{"type":"assistant","message":{"content":[{"type":"text","text":"On it."},{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"swift test","description":"Run tests"}},{"type":"tool_use","id":"t2","name":"Task","input":{"description":"Review the diff","prompt":"…"}}]}}"#
+        #expect(ClaudeCodeStream.parseAll(line: line) == [
+            .activity(.toolStarted(id: "t1", name: "Bash", input: "swift test")),
+            .activity(.toolStarted(id: "t2", name: "Task", input: "Review the diff")),
+            .activity(.helper("Started a helper: Review the diff")),
+        ])
+    }
+
+    @Test func summarizesToolInputsReadably() {
+        #expect(ClaudeCodeStream.readable(["file_path": "/a/b.swift"], tool: "Edit") == "/a/b.swift")
+        #expect(ClaudeCodeStream.readable(["pattern": "TODO", "path": "Sources"], tool: "Grep") == "TODO in Sources")
+        #expect(ClaudeCodeStream.readable(["x": 1], tool: "mcp__thing") == #"{"x":1}"#)
+    }
+
+    @Test func readsToolResultsAsTextOrBlocks() {
+        let text = #"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok","is_error":false}]}}"#
+        let blocks = #"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t2","content":[{"type":"text","text":"line 1"},{"type":"text","text":"line 2"}],"is_error":true}]}}"#
+        #expect(ClaudeCodeStream.parseAll(line: text) == [.activity(.toolFinished(id: "t1", output: "ok", failed: false))])
+        #expect(ClaudeCodeStream.parseAll(line: blocks) == [.activity(.toolFinished(id: "t2", output: "line 1\nline 2", failed: true))])
+    }
+
+    @Test func reportsUsageBeforeTheTurnEnds() {
+        let line = #"{"type":"result","subtype":"success","result":"Done.","usage":{"input_tokens":10,"cache_read_input_tokens":900,"cache_creation_input_tokens":90,"output_tokens":42},"total_cost_usd":0.0123}"#
+        #expect(ClaudeCodeStream.parseAll(line: line) == [
+            .activity(.usage(inputTokens: 1000, outputTokens: 42, cost: 0.0123)),
+            .finished("Done."),
+        ])
+    }
+
+    @Test func keepsTheSingleEventsAsBefore() {
+        let line = #"{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Hi"}}}"#
+        #expect(ClaudeCodeStream.parseAll(line: line) == [.textDelta("Hi")])
     }
 }

@@ -49,6 +49,30 @@ public enum AgentReply: Equatable, Sendable {
     case text(String)
     /// The agent is paused until `answer` is called.
     case approval(ApprovalRequest)
+    /// What the agent does besides talking: thinking, tools, usage. Shown in Mission Control, never spoken.
+    case activity(Activity)
+}
+
+/// Everything in an agent's stream that isn't spoken text.
+public enum Activity: Equatable, Sendable {
+    /// A piece of the agent's visible reasoning.
+    case thinking(String)
+    /// A tool call starting; `input` is a short readable form of its arguments (a command, a path…).
+    case toolStarted(id: String, name: String, input: String)
+    /// A tool call's result, trimmed to a readable length.
+    case toolFinished(id: String, output: String, failed: Bool)
+    /// A background helper (subagent, delegation) starting or reporting back.
+    case helper(String)
+    /// Tokens and cost of the turn, when the agent reports them.
+    case usage(inputTokens: Int, outputTokens: Int, cost: Double?)
+}
+
+extension Activity {
+    /// Results can be huge; Mission Control shows the start and says how much was left out.
+    public static func trimmed(_ text: String, limit: Int = 4_000) -> String {
+        guard text.count > limit else { return text }
+        return String(text.prefix(limit)) + "\n… \(text.count - limit) more characters"
+    }
 }
 
 public enum ApprovalDecision: Equatable, Sendable {
