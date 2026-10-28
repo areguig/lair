@@ -5,6 +5,8 @@ public enum AgentEvent: Equatable, Sendable {
     case approval(ApprovalRequest)
     case finished(String)
     case failed(String)
+    /// Which model and thinking level the agent runs.
+    case details(String)
 }
 
 /// Reads and writes the lines of `claude -p --input-format stream-json --output-format stream-json
@@ -17,6 +19,8 @@ public enum ClaudeCodeStream {
         switch message.type {
         case "stream_event" where message.event?.delta?.type == "text_delta":
             return message.event?.delta?.text.map(AgentEvent.textDelta)
+        case "system" where message.subtype == "init":
+            return agentDetails(model: message.model, thinking: nil).map(AgentEvent.details)
         case "control_request":
             return approval(from: data).map(AgentEvent.approval)
         case "result":
@@ -74,6 +78,8 @@ public enum ClaudeCodeStream {
 
     private struct Message: Decodable {
         let type: String
+        let subtype: String?
+        let model: String?
         let event: Event?
         let result: String?
     }

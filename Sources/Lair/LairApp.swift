@@ -95,6 +95,7 @@ struct MenuBarIcon: View {
         room.calls[1].unread = true
         let call = room.calls[0]
         call.state = .waiting
+        call.details = "claude-haiku-5-5"
         call.pendingApproval = ApprovalRequest(id: "demo", tool: "Bash",
                                                summary: "Bump the build number in Info.plist and commit it",
                                                suggestions: Data(#"[{"type":"addRules","rules":[{"toolName":"Bash"}],"behavior":"allow","destination":"localSettings"}]"#.utf8))

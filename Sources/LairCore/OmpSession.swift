@@ -5,9 +5,12 @@ public final class OmpSession: AgentSession {
     private let process = Process()
     private let input = Pipe()
     private let turns = AgentTurns()
+    public let details: AsyncStream<String>
+    private let detailsContinuation: AsyncStream<String>.Continuation
 
     public init(model: String? = nil, directory: URL? = nil, environment: [String: String]? = nil,
                 errorLog: URL? = nil, systemPrompt: String = VoicePrompt.text) throws {
+        (details, detailsContinuation) = AsyncStream<String>.makeStream()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.currentDirectoryURL = directory
         if let environment { process.environment = environment }
@@ -19,6 +22,7 @@ public final class OmpSession: AgentSession {
         process.standardError = AgentLog.handle(for: errorLog)
         try process.run()
         try send(OmpStream.deltaUpdates())
+        try send(OmpStream.getState())
         Task { await routeReplies(from: output.fileHandleForReading) }
     }
 
@@ -27,13 +31,16 @@ public final class OmpSession: AgentSession {
         do {
             for try await line in output.bytes.lines {
                 switch OmpStream.parse(line: line) {
+                case .event(.details(let text)): detailsContinuation.yield(text)
                 case .event(let event): turns.receive(event)
+                case .stateChanged: try? send(OmpStream.getState())
                 case .unsupportedDialog(let id): try? send(OmpStream.cancelDialog(id: id))
                 case nil: break
                 }
             }
         } catch {}
         turns.close()
+        detailsContinuation.finish()
     }
 
     public func ask(_ text: String) throws -> AsyncThrowingStream<AgentReply, Error> {

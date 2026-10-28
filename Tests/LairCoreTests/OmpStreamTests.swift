@@ -55,3 +55,22 @@ struct OmpStreamTests {
         #expect(try object(OmpStream.cancelDialog(id: "d2"))["cancelled"] as? Bool == true)
     }
 }
+
+struct AgentDetailsTests {
+    @Test func readsOmpModelAndThinkingFromItsState() {
+        let line = #"{"type":"response","command":"get_state","success":true,"data":{"model":{"id":"gpt-6-luna","provider":"github-copilot"},"thinkingLevel":"low"}}"#
+        #expect(OmpStream.parse(line: line) == .event(.details("gpt-6-luna · low thinking")))
+        #expect(OmpStream.parse(line: #"{"type":"model_changed"}"#) == .stateChanged)
+    }
+
+    @Test func readsClaudeCodesModelFromInit() {
+        let line = #"{"type":"system","subtype":"init","model":"claude-haiku-5-5","permissionMode":"default"}"#
+        #expect(ClaudeCodeStream.parse(line: line) == .details("claude-haiku-5-5"))
+    }
+
+    @Test func leavesOutThinkingWhenOffOrUnknown() {
+        #expect(agentDetails(model: "m", thinking: "off") == "m")
+        #expect(agentDetails(model: nil, thinking: "high") == "high thinking")
+        #expect(agentDetails(model: nil, thinking: nil) == nil)
+    }
+}

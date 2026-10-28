@@ -6,6 +6,8 @@ public enum OmpStream {
         case event(AgentEvent)
         /// A dialog Lair can't show by voice; it must be cancelled or omp waits forever.
         case unsupportedDialog(id: String)
+        /// The model or thinking level changed: ask for the state again.
+        case stateChanged
     }
 
     /// Dialogs that block omp until answered; the rest (notify, widgets, titles) need no answer.
@@ -26,6 +28,12 @@ public enum OmpStream {
             guard object["status"] as? String == "error" else { return .event(.finished("")) }
             let error = object["error"] as? [String: Any]
             return .event(.failed(error?["message"] as? String ?? "omp couldn't run the prompt."))
+        case "response" where object["command"] as? String == "get_state":
+            let data = object["data"] as? [String: Any]
+            let model = (data?["model"] as? [String: Any])?["id"] as? String
+            return agentDetails(model: model, thinking: data?["thinkingLevel"] as? String).map { .event(.details($0)) }
+        case "model_changed", "thinking_level_changed":
+            return .stateChanged
         case "extension_ui_request":
             guard let id = object["id"] as? String, let method = object["method"] as? String else { return nil }
             if method == "confirm" {
@@ -42,6 +50,10 @@ public enum OmpStream {
     /// Asks for text deltas instead of whole message snapshots on every update.
     public static func deltaUpdates() throws -> Data {
         try line(["type": "set_event_filter", "events": NSNull(), "messageUpdates": "delta"])
+    }
+
+    public static func getState() throws -> Data {
+        try line(["type": "get_state"])
     }
 
     public static func prompt(_ text: String, id: String) throws -> Data {

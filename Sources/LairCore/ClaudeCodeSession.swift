@@ -5,10 +5,13 @@ public final class ClaudeCodeSession: AgentSession {
     private let process = Process()
     private let input = Pipe()
     private let turns = AgentTurns()
+    public let details: AsyncStream<String>
+    private let detailsContinuation: AsyncStream<String>.Continuation
 
     /// `permissionMode` nil keeps your Claude Code settings; whatever they would ask you about comes to Lair.
     public init(model: String? = nil, directory: URL? = nil, environment: [String: String]? = nil,
                 permissionMode: String? = nil, errorLog: URL? = nil, systemPrompt: String = VoicePrompt.text) throws {
+        (details, detailsContinuation) = AsyncStream<String>.makeStream()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.currentDirectoryURL = directory
         if let environment { process.environment = environment }
@@ -29,10 +32,15 @@ public final class ClaudeCodeSession: AgentSession {
         // A read error means the process is gone: closing the turns is the signal.
         do {
             for try await line in output.bytes.lines {
-                if let event = ClaudeCodeStream.parse(line: line) { turns.receive(event) }
+                switch ClaudeCodeStream.parse(line: line) {
+                case .details(let text): detailsContinuation.yield(text)
+                case let event?: turns.receive(event)
+                case nil: break
+                }
             }
         } catch {}
         turns.close()
+        detailsContinuation.finish()
     }
 
     public func ask(_ text: String) throws -> AsyncThrowingStream<AgentReply, Error> {

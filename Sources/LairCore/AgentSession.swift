@@ -9,10 +9,19 @@ public protocol AgentSession: Sendable {
     /// Stops the reply in progress; the current `ask` stream ends.
     func interrupt()
     func stop()
+    /// What runs the agent, e.g. "gpt-6-luna · low thinking", as soon as the agent tells.
+    var details: AsyncStream<String> { get }
 }
 
 extension AgentSession {
     public func answer(_ request: ApprovalRequest, decision: ApprovalDecision) throws {}
+    public var details: AsyncStream<String> { AsyncStream { $0.finish() } }
+}
+
+/// "gpt-6-luna" and "low" → "gpt-6-luna · low thinking".
+public func agentDetails(model: String?, thinking: String?) -> String? {
+    let parts = [model, thinking.flatMap { $0 == "off" || $0.isEmpty ? nil : "\($0) thinking" }].compactMap { $0 }
+    return parts.isEmpty ? nil : parts.joined(separator: " · ")
 }
 
 public enum AgentReply: Equatable, Sendable {

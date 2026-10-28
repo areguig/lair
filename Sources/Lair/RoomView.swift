@@ -84,6 +84,12 @@ struct RoomView: View {
             VStack(spacing: 4) {
                 Text(call.agent.name)
                     .font(.system(.title3, design: .rounded, weight: .semibold))
+                if let details = call.details {
+                    Text(details)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.4))
+                        .transition(.opacity)
+                }
                 Text(caption(for: call))
                     .font(.system(.subheadline, design: .rounded))
                     .foregroundStyle(.white.opacity(0.55))

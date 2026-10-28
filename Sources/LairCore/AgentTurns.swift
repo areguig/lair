@@ -37,6 +37,7 @@ final class AgentTurns: Sendable {
                 state.reply?.finish()
                 state.reply = nil
                 state.running = false
+            case .details: break
             case .failed(let message):
                 state.reply?.finish(throwing: AgentFailure(message: message))
                 state.reply = nil

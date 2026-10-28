@@ -25,6 +25,8 @@ import os
     var pendingApproval: ApprovalRequest?
     /// Finished or needs you while you were talking to someone else.
     var unread = false
+    /// Model and thinking level, once the agent says.
+    var details: String?
     @ObservationIgnored var session: (any AgentSession)?
     @ObservationIgnored var turn: Task<Void, Never>?
     /// Identifies the running turn, so an interrupted one can't reset the state of the next.
@@ -111,7 +113,10 @@ import os
         guard readiness == .ready, !call.inCall else { return }
         do {
             try microphone.open()
-            call.session = try session(for: call.agent)
+            let session = try session(for: call.agent)
+            call.session = session
+            call.details = nil
+            Task { for await details in session.details { call.details = details } }
             call.lines = []
             call.state = .ready
         } catch {
