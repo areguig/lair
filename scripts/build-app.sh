@@ -40,7 +40,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>CFBundleVersion</key><string>$(git -C "$repo" rev-list --count HEAD 2>/dev/null || echo 0)</string>
   <key>LSMinimumSystemVersion</key><string>15.0</string>
   <key>LSUIElement</key><true/>
-  <key>NSMicrophoneUsageDescription</key><string>$name listens while you hold the talk key, to hear what you say to your agents.</string>
+  <key>NSMicrophoneUsageDescription</key><string>$name listens while you hold the talk key or after you click the orb, to hear what you say to your agents.</string>
 </dict></plist>
 PLIST
 # A stable identity keeps macOS permissions (microphone) across rebuilds; LAIR_SIGN_IDENTITY overrides the pick.
