@@ -12,6 +12,8 @@ struct LairApp: App {
     private let room: Room
 
     init() {
+        // An agent process that exits must not take Lair down with it: writing to it then just throws.
+        signal(SIGPIPE, SIG_IGN)
         if let i = CommandLine.arguments.firstIndex(of: "--snapshot"), i + 1 < CommandLine.arguments.count {
             Snapshot.write(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]))
             exit(0)

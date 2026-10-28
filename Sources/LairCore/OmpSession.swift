@@ -7,7 +7,7 @@ public final class OmpSession: AgentSession {
     private let turns = AgentTurns()
 
     public init(model: String? = nil, directory: URL? = nil, environment: [String: String]? = nil,
-                systemPrompt: String = VoicePrompt.text) throws {
+                errorLog: URL? = nil, systemPrompt: String = VoicePrompt.text) throws {
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.currentDirectoryURL = directory
         if let environment { process.environment = environment }
@@ -16,7 +16,7 @@ public final class OmpSession: AgentSession {
         let output = Pipe()
         process.standardInput = input
         process.standardOutput = output
-        process.standardError = FileHandle.nullDevice
+        process.standardError = AgentLog.handle(for: errorLog)
         try process.run()
         try send(OmpStream.deltaUpdates())
         Task { await routeReplies(from: output.fileHandleForReading) }

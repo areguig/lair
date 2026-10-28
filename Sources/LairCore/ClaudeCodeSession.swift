@@ -8,7 +8,7 @@ public final class ClaudeCodeSession: AgentSession {
 
     /// `permissionMode` nil keeps your Claude Code settings; whatever they would ask you about comes to Lair.
     public init(model: String? = nil, directory: URL? = nil, environment: [String: String]? = nil,
-                permissionMode: String? = nil, systemPrompt: String = VoicePrompt.text) throws {
+                permissionMode: String? = nil, errorLog: URL? = nil, systemPrompt: String = VoicePrompt.text) throws {
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.currentDirectoryURL = directory
         if let environment { process.environment = environment }
@@ -20,7 +20,7 @@ public final class ClaudeCodeSession: AgentSession {
         let output = Pipe()
         process.standardInput = input
         process.standardOutput = output
-        process.standardError = FileHandle.nullDevice
+        process.standardError = AgentLog.handle(for: errorLog)
         try process.run()
         Task { await routeReplies(from: output.fileHandleForReading) }
     }

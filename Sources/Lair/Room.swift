@@ -123,9 +123,10 @@ import os
         switch agent.kind {
         case .claudeCode:
             return try ClaudeCodeSession(model: agent.model, directory: agent.directoryURL, environment: environment,
-                                         permissionMode: agent.permissionMode)
+                                         permissionMode: agent.permissionMode, errorLog: AgentLog.url(for: agent.id))
         case .omp:
-            return try OmpSession(model: agent.model, directory: agent.directoryURL, environment: environment)
+            return try OmpSession(model: agent.model, directory: agent.directoryURL, environment: environment,
+                                  errorLog: AgentLog.url(for: agent.id))
         case .hermes:
             guard let url = agent.url.flatMap(URL.init(string:)) else { throw SetupError.missingURL(agent.name) }
             let secret = { Keychain.password(service: agent.keychainService, account: $0) }
@@ -317,7 +318,14 @@ import os
                 announce("\(call.agent.name) is done.", for: call)
             }
         } catch {
-            if !Task.isCancelled { call.lines.append(.init(role: .notice, text: error.localizedDescription)) }
+            guard !Task.isCancelled else { return }
+            if (error as NSError).domain == NSPOSIXErrorDomain, (error as NSError).code == Int(EPIPE) {
+                call.lines.append(.init(role: .notice, text: "\(call.agent.name) stopped running. "
+                    + "Its log is in Library/Logs/Lair/\(call.id).log."))
+                hangUp(call)
+            } else {
+                call.lines.append(.init(role: .notice, text: error.localizedDescription))
+            }
         }
     }
 
