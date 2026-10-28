@@ -66,6 +66,7 @@ struct Orb: View {
         case .listening: 60
         case .thinking: 160
         case .speaking: 45
+        case .waiting: 12
         }
     }
 
@@ -75,6 +76,8 @@ struct Orb: View {
         case .ready: 1 + sin(time * 1.6) * 0.025
         case .listening, .speaking: 0.96 + level * 0.28
         case .thinking: 0.94 + sin(time * 5) * 0.03
+        // A slow, deliberate pulse: it's your turn.
+        case .waiting: 0.97 + (sin(time * 2.4) + 1) * 0.04
         }
     }
 

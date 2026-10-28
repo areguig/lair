@@ -56,8 +56,8 @@ struct HermesSessionTests {
         defer { URLProtocol.unregisterClass(StubServer.self) }
 
         var text = ""
-        for try await delta in try HermesSession(baseURL: base, credentials: .init(apiKey: "k")).ask("Weather?") {
-            text += delta
+        for try await reply in try HermesSession(baseURL: base, credentials: .init(apiKey: "k")).ask("Weather?") {
+            if case .text(let delta) = reply { text += delta }
         }
         #expect(text == "It is sunny.")
     }

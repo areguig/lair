@@ -72,6 +72,7 @@ struct MenuBarIcon: View {
         case .ready: "circle.circle.fill"
         case .listening, .speaking: "waveform.circle.fill"
         case .thinking: "ellipsis.circle.fill"
+        case .waiting: "hand.raised.circle.fill"
         }
     }
 }
@@ -85,7 +86,9 @@ struct MenuBarIcon: View {
         ]))
         room.readiness = .ready
         let call = room.calls[0]
-        call.state = .speaking
+        call.state = .waiting
+        call.pendingApproval = ApprovalRequest(id: "demo", tool: "Bash",
+                                               summary: "Bump the build number in Info.plist and commit it")
         call.lines = [
             .init(role: .you, text: "What's left on the release checklist?"),
             .init(role: .agent, text: "Two things: the changelog still needs the new voice section, and the build "

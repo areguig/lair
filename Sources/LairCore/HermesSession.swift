@@ -43,9 +43,9 @@ public final class HermesSession: AgentSession {
         self.systemPrompt = systemPrompt
     }
 
-    public func ask(_ text: String) throws -> AsyncThrowingStream<String, Error> {
+    public func ask(_ text: String) throws -> AsyncThrowingStream<AgentReply, Error> {
         let request = try request(for: text)
-        let (reply, continuation) = AsyncThrowingStream<String, Error>.makeStream()
+        let (reply, continuation) = AsyncThrowingStream<AgentReply, Error>.makeStream()
         let turn = Task {
             do {
                 let (bytes, response) = try await URLSession.shared.bytes(for: request)
@@ -54,7 +54,7 @@ public final class HermesSession: AgentSession {
                 var stream = ChatCompletionStream()
                 reading: for try await line in bytes.lines {
                     switch stream.feed(line) {
-                    case .text(let text): continuation.yield(text)
+                    case .text(let text): continuation.yield(.text(text))
                     case .done: break reading
                     case .failed(let reason): throw Failure.reply(reason)
                     case nil: break

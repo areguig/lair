@@ -17,12 +17,19 @@ struct RoomView: View {
                 stage(call, tint: tint)
                 if room.calls.count > 1 { roster.padding(.top, 14) }
                 Transcript(lines: call.lines).padding(.top, 18)
+                if let request = call.pendingApproval {
+                    ApprovalCard(agent: call.agent.name, request: request, tint: tint,
+                                 answer: { room.answer(call, allow: $0) })
+                        .padding(.top, 12)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
                 controls(call, tint: tint).padding(.top, 14)
             }
             footer.padding(.top, 14)
         }
         .padding(18)
         .frame(width: 340)
+        .animation(.smooth(duration: 0.3), value: call?.pendingApproval)
         .background(Backdrop(tint: tint, live: call?.inCall == true))
         .environment(\.colorScheme, .dark)
     }
@@ -143,6 +150,7 @@ struct RoomView: View {
         case .listening: return "Listening…"
         case .thinking: return "Thinking…"
         case .speaking: return "Speaking"
+        case .waiting: return "Waiting for your OK — say yes or no"
         }
     }
 }
@@ -185,6 +193,47 @@ private struct Transcript: View {
                 .font(.caption)
                 .foregroundStyle(.orange.opacity(0.9))
         }
+    }
+}
+
+/// What the agent wants to do, with the same Allow and Deny as the notification and your voice.
+private struct ApprovalCard: View {
+    let agent: String
+    let request: ApprovalRequest
+    let tint: Color
+    let answer: (Bool) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "hand.raised.fill").foregroundStyle(tint)
+                Text("\(agent) needs your OK").font(.system(.subheadline, design: .rounded, weight: .semibold))
+                Spacer()
+                Text(request.tool)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.5))
+            }
+            Text(request.summary)
+                .font(.system(.callout, design: .rounded))
+                .foregroundStyle(.white.opacity(0.85))
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Button { answer(false) } label: {
+                    Text("Deny").frame(maxWidth: .infinity).padding(.vertical, 7)
+                        .background(.white.opacity(0.1), in: Capsule())
+                }
+                Button { answer(true) } label: {
+                    Text("Allow").fontWeight(.semibold).foregroundStyle(.black)
+                        .frame(maxWidth: .infinity).padding(.vertical, 7)
+                        .background(.white, in: Capsule())
+                }
+            }
+            .buttonStyle(.plain)
+            .font(.system(.callout, design: .rounded))
+        }
+        .padding(14)
+        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(tint.opacity(0.5), lineWidth: 1))
     }
 }
 
