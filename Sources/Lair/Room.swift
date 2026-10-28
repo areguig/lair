@@ -283,6 +283,11 @@ import os
         call.state = .listening
     }
 
+    /// A click instead of a held key: the first starts listening, the next sends.
+    func toggleTalk() {
+        if focused?.state == .listening { releaseTalk() } else { pressTalk() }
+    }
+
     func releaseTalk() {
         guard let call = focused, call.state == .listening else { return }
         let samples = (try? microphone.stopCapture()) ?? []
@@ -297,6 +302,15 @@ import os
             Task { await hearAnswer(in: call, from: samples) }
         } else {
             call.turn = Task { await reply(in: call, to: samples) }
+        }
+    }
+
+    /// What the orb follows: your voice while it listens, its own while it speaks.
+    func meter(for call: Call) -> LevelMeter? {
+        switch call.state {
+        case .listening: meterOverride ?? microphone.meter
+        case .speaking: meterOverride ?? speaker?.meter
+        default: nil
         }
     }
 

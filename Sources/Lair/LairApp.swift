@@ -11,6 +11,7 @@ extension KeyboardShortcuts.Name {
 struct LairApp: App {
     private let room: Room
     private let store: ConfigStore
+    private let orb: FloatingOrb
 
     init() {
         // An agent process that exits must not take Lair down with it: writing to it then just throws.
@@ -53,6 +54,7 @@ struct LairApp: App {
         store.watch()
         self.store = store
         self.room = room
+        orb = FloatingOrb(room: room)
         KeyboardShortcuts.onKeyDown(for: .pushToTalk) { room.pressTalk() }
         KeyboardShortcuts.onKeyUp(for: .pushToTalk) { room.releaseTalk() }
         KeyboardShortcuts.onKeyDown(for: .missionControl) { MissionControl.toggle(room: room) }

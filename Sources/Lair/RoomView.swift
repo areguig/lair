@@ -70,7 +70,7 @@ struct RoomView: View {
 
     private func stage(_ call: Call, tint: Color) -> some View {
         VStack(spacing: 14) {
-            Orb(color: tint, state: call.state, meter: meter(for: call))
+            Orb(color: tint, state: call.state, meter: room.meter(for: call))
                 .frame(width: 112, height: 112)
                 .frame(height: 150)
                 .contentShape(Circle())
@@ -235,14 +235,6 @@ struct RoomView: View {
         switch action {
         case .openSettings: openSettings()
         case .showLog(let agentID): NSWorkspace.shared.open(AgentLog.url(for: agentID))
-        }
-    }
-
-    private func meter(for call: Call) -> LevelMeter? {
-        switch call.state {
-        case .listening: room.meterOverride ?? room.microphone.meter
-        case .speaking: room.meterOverride ?? room.speaker?.meter
-        default: nil
         }
     }
 
