@@ -3,25 +3,34 @@ import LairCore
 import LairVoice
 import SwiftUI
 
-/// `Lair --demo <folder>` renders the demo video from a script: someone's Mac on an ordinary afternoon, the real
-/// Lair views, demo agents and the real on-device voices. It writes demo.mov (picture) and demo.wav (sound);
-/// scripts/demo.sh joins them.
+/// `Lair --demo <folder>` renders the demo video from a script: a team of demo agents on a Mac, the real Lair
+/// views and the real on-device voices. It writes demo.mov (picture) and demo.wav (sound); scripts/demo.sh joins them.
 @MainActor enum Demo {
     static let fps = 30
     static let canvas = CGSize(width: 1280, height: 800)
     static let scale: CGFloat = 1.5
-    static let you = "am_adam"
+    static let you = "am_michael"
     static let agents = [
-        AgentConfig(id: "claude", name: "Claude", kind: .claudeCode, voice: "af_heart", color: "#D97757", directory: "~/dev/app"),
-        AgentConfig(id: "sage", name: "Sage", kind: .hermes, voice: "bf_emma", color: "#7B5CFF"),
-        AgentConfig(id: "nova", name: "Nova", kind: .omp, voice: "af_nicole", color: "#3FB68B", directory: "~/dev/app"),
+        AgentConfig(id: "atlas", name: "Atlas", kind: .claudeCode, voice: "af_heart", color: "#D97757", directory: "~/dev/trips"),
+        AgentConfig(id: "iris", name: "Iris", kind: .claudeCode, voice: "bf_emma", color: "#C566E0", directory: "~/dev/trips"),
+        AgentConfig(id: "sage", name: "Sage", kind: .omp, voice: "af_bella", color: "#3FB68B", directory: "~/dev/trips"),
     ]
 
     // Where things are on the desktop, in points.
     static let menuIcon = CGPoint(x: canvas.width - 196, y: 14)
     static let floatingOrb = CGPoint(x: canvas.width - 92, y: canvas.height - 178)
-    static let documentCaret = CGPoint(x: 640, y: 330)
     static let missionFrame = CGRect(x: 56, y: 50, width: 1060, height: 600)
+    static let panelOrigin = CGPoint(x: menuIcon.x - 170, y: 34)
+    static let panelFocus = CGPoint(x: panelOrigin.x + 170, y: 380)
+    /// The agent chips in the open panel, in agents order.
+    static let chips = [CGPoint(x: panelOrigin.x + 104, y: 331), CGPoint(x: panelOrigin.x + 170, y: 331),
+                        CGPoint(x: panelOrigin.x + 236, y: 331)]
+    static let panelAllow = CGPoint(x: panelOrigin.x + 240, y: 603)
+    /// The middle of Mission Control's column `i`, at its `y`.
+    static func column(_ i: Int, y: CGFloat) -> CGPoint {
+        let width = (missionFrame.width - 14 * 4) / 3
+        return CGPoint(x: missionFrame.minX + 14 + (width + 14) * CGFloat(i) + width / 2, y: y)
+    }
 
     static func run(into folder: URL) async throws {
         let voice = VoiceModels()
@@ -33,143 +42,195 @@ import SwiftUI
         try writeSound(script, to: folder.appending(path: "demo.wav"))
     }
 
-    // The afternoon shown in the video. Indices are into `agents`.
+    // The video. Indices are into `agents`.
     private static func story(_ s: Script) async throws {
-        s.cursor(to: documentCaret, over: 0)
-        s.type("# Lisbon weekend\n\n## Friday\n- Land 10:40, train to Cais do Sodré\n", over: 4.5)
-        s.wait(3.2)
+        let center = CGPoint(x: canvas.width / 2, y: canvas.height / 2)
+        s.cursor(to: CGPoint(x: 620, y: 440), over: 0)
+        s.at { room in
+            room.calls[0].details = "claude-sonnet-5"
+            room.calls[1].details = "claude-haiku-5-5"
+            room.calls[2].details = "gpt-6-luna · low thinking"
+        }
+        s.caption("Your coding agents, in the menu bar")
+        s.wait(1.4)
+        s.cursor(to: menuIcon, over: 1.0)
+        s.wait(1.1)
+        s.click()
+        s.show(.panel)
+        s.camera(to: panelFocus, zoom: 1.2, over: 0.9)
+        s.wait(1.6)
 
-        s.caption("Ask without leaving what you're doing")
+        s.caption("Hold ⌥Space and ask")
+        s.keys("⌥ Space", for: 3.2)
+        try await s.you("Add rate limiting to the bookings API.", to: 0)
+        s.at { room in
+            room.calls[0].record(.thinking("Rate limiting per user. Find where bookings requests come in first."))
+            room.calls[0].record(.toolStarted(id: "a1", name: "Grep", input: "router.post(\"/bookings\""))
+        }
+        try await s.agent(0, says: "On it. A token bucket per user, with tests.", after: 0.9, then: .thinking)
+
+        s.caption("Several agents at once: click one to switch")
+        s.cursor(to: chips[1], over: 0.8)
+        s.wait(0.9)
+        s.click()
+        s.at { $0.focusedID = "iris" }
+        s.wait(0.5)
+        s.keys("⌥ Space", for: 3.4)
+        try await s.you("Build the empty state for the trips screen.", to: 1)
+        s.at { room in
+            room.calls[1].record(.toolStarted(id: "i1", name: "Read", input: "Design/Tokens.swift"))
+        }
+        try await s.agent(1, says: "Sure. I'll use the illustration from the design kit.", after: 0.9, then: .thinking)
+
+        s.caption("…or start with its name")
         s.keys("⌥ Space", for: 3.6)
-        s.at { $0.calls[0].details = "claude-haiku-5-5" }
-        try await s.you("Claude, the login test fails on main. Can you fix it?", to: 0)
-        s.at { room in
-            let claude = room.calls[0]
-            claude.record(.thinking("A failing login test. Run it alone first, then read what it checks."))
-            claude.record(.toolStarted(id: "t1", name: "Bash", input: "swift test --filter LoginTests"))
-        }
-        try await s.agent(0, says: "On it. I'll tell you when it's green.", after: 1.0)
-        s.at { room in
-            let claude = room.calls[0]
-            claude.record(.toolFinished(id: "t1", output: "✘ testSignIn: token expired (fixtures/session.json)", failed: true))
-            claude.record(.toolStarted(id: "t2", name: "Read", input: "Tests/Fixtures/session.json"))
-            claude.record(.toolFinished(id: "t2", output: #"{ "token": "…", "expires": "2026-09-30" }"#, failed: false))
-            claude.record(.thinking("The fixture's token expired last month. Make the expiry relative to now."))
-            claude.record(.toolStarted(id: "t3", name: "Edit", input: "Tests/LoginTests.swift"))
-            claude.record(.toolFinished(id: "t3", output: """
-                @@ -12,3 +12,3 @@
-                -    let session = try Fixture.load("session.json")
-                +    let session = try Fixture.load("session.json").renewed(from: .now)
-                """, failed: false))
-            claude.state = .thinking
-        }
-
-        s.caption("Keep working; the orb floats on top")
-        s.type("- Lunch at the market by the river\n\n## Saturday\n- Tram 28 early, before the crowds\n", over: 6)
-        s.wait(5.4)
+        try await s.you("Sage, review Atlas's branch once it's pushed.", to: 2)
+        try await s.agent(2, says: "Will do. I'll watch for the push.", after: 0.8, then: .thinking)
 
         s.caption("It asks before it acts")
         s.at { room in
-            room.calls[0].pendingApproval = ApprovalRequest(id: "a1", tool: "Bash", summary: "Run the whole test suite")
-            room.calls[0].log(.approval("Run the whole test suite"))
+            room.calls[2].pendingApproval = ApprovalRequest(id: "s1", tool: "bash",
+                                                            summary: "Fetch and check out atlas/rate-limit")
+            room.calls[2].log(.approval("bash: Fetch and check out atlas/rate-limit"))
         }
         s.earcon(.needsYou)
-        try await s.agent(0, says: "Claude needs your OK to run the whole test suite. Say yes, always, or no.",
-                          after: 0.3, transcript: false, then: .waiting)
-        s.keys("⌥ Space", for: 1.6)
-        try await s.you("Yes.", to: 0, transcript: false)
+        try await s.agent(2, says: "Sage needs your OK to fetch and check out the rate limit branch. Allow it? "
+            + "Say yes, always, or no.", after: 0.3, transcript: false, then: .waiting)
+        s.cursor(to: panelAllow, over: 0.8)
+        s.wait(0.9)
+        s.click()
         s.at { room in
-            let claude = room.calls[0]
-            claude.pendingApproval = nil
-            claude.lines.append(.init(role: .info, text: "Allowed once: Run the whole test suite"))
-            claude.log(.note("Allowed once: Run the whole test suite"))
-            claude.record(.toolStarted(id: "t4", name: "Bash", input: "swift test"))
-            claude.state = .thinking
+            let sage = room.calls[2]
+            sage.pendingApproval = nil
+            sage.lines.append(.init(role: .info, text: "Allowed once: Fetch and check out atlas/rate-limit"))
+            sage.log(.note("Allowed once: Fetch and check out atlas/rate-limit"))
+            sage.record(.toolStarted(id: "s2", name: "bash", input: "git fetch && git checkout atlas/rate-limit"))
+            sage.state = .thinking
         }
-        s.type("- Sunset from the viewpoint in Graça\n", over: 2.4)
-        s.wait(2.8)
-
-        s.caption("Click the orb to talk to another agent")
-        s.cursor(to: floatingOrb, over: 1.1)
         s.wait(1.2)
-        s.click()
-        s.at { $0.focusedID = "sage" }
-        try await s.you("Sage, did last night's backups finish?", to: 1)
-        s.click()
-        s.at { room in
-            let sage = room.calls[1]
-            sage.record(.helper("delegate_task: check last night's backups"))
-        }
-        try await s.agent(1, says: "Yes. All three finished, and the newest one is from three this morning.", after: 1.8)
-        s.at { room in
-            let claude = room.calls[0]
-            claude.record(.toolFinished(id: "t4", output: "Executed 214 tests, with 0 failures", failed: false))
-            claude.logText("Fixed: the session fixture had expired. It now renews from today, and all 214 tests pass.")
-            claude.record(.usage(inputTokens: 24_800, outputTokens: 640, cost: 0.027))
-            claude.log(.timing(heard: 130, firstWord: 1_650, firstSound: 2_140, total: 41_300))
-            claude.lines.append(.init(role: .agent, text: "Fixed: the session fixture had expired. All 214 tests pass."))
-            claude.state = .ready
-            claude.unread = true
-        }
-        s.earcon(.done)
-        s.wait(0.8)
 
-        s.caption("The whole room, one click away")
-        s.cursor(to: menuIcon, over: 1.2)
-        s.wait(1.3)
-        s.click()
-        s.show(.panel)
-        s.at { room in
-            room.focusedID = "claude"
-            room.calls[0].unread = false
-        }
-        s.wait(4.2)
-        s.cursor(to: documentCaret, over: 1.0)
-        s.wait(0.6)
+        s.caption("Close it; they keep working, the orb stays on top")
+        s.cursor(to: CGPoint(x: 560, y: 420), over: 0.9)
+        s.wait(0.9)
         s.click()
         s.hide(.panel)
-        s.wait(0.6)
+        s.camera(to: center, zoom: 1, over: 0.9)
+        s.wait(2.6)
 
-        s.caption("Several agents at once")
-        s.keys("⌥ Space", for: 3.4)
-        s.at { $0.focusedID = "nova"; $0.calls[2].details = "gpt-6-luna · low thinking" }
-        try await s.you("Nova, clear out the old build caches.", to: 2)
-        s.at { room in
-            let nova = room.calls[2]
-            nova.record(.toolStarted(id: "n1", name: "bash", input: "du -sh ~/Library/Caches/app-build/*"))
-            nova.record(.toolFinished(id: "n1", output: "3.1G  derived\n1.1G  modules\n 40M  logs", failed: false))
-            nova.logText("There are 4.2 GB of old build caches.")
-            nova.pendingApproval = ApprovalRequest(id: "n2", tool: "bash", summary: "Delete 4.2 GB of old build caches")
-            nova.log(.approval("Delete 4.2 GB of old build caches"))
-        }
-        s.earcon(.needsYou)
-        try await s.agent(2, says: "There are four gigabytes of old caches. Nova needs your OK to delete them.",
-                          after: 1.6, transcript: false, then: .waiting)
-
-        s.caption("⌥⌘L: every agent's whole stream")
+        s.caption("⌥⌘L: Mission Control")
         s.keys("⌥ ⌘ L", for: 1.4)
         s.wait(0.5)
         s.show(.missionControl)
-        s.wait(3.4)
+        s.camera(to: CGPoint(x: missionFrame.midX, y: missionFrame.midY + 6), zoom: 1.13, over: 0.8)
+        work(s)
+        s.wait(3.5)
+        s.caption("Every tool call, diff and test run, live")
+        s.wait(5.5)
+
+        s.caption("One finishes and calls out")
+        s.at { room in
+            let atlas = room.calls[0]
+            atlas.record(.toolFinished(id: "a5", output: "Executed 86 tests, with 0 failures", failed: false))
+            atlas.logText("Rate limiting is in: 20 requests a minute per user, with a test for the 429. All 86 tests pass.")
+            atlas.record(.usage(inputTokens: 31_200, outputTokens: 1_480, cost: 0.041))
+            atlas.log(.timing(heard: 120, firstWord: 1_580, firstSound: 2_060, total: 48_900))
+            atlas.state = .ready
+            atlas.unread = true
+        }
+        s.earcon(.done)
+        s.wait(0.3)
+        try await s.announce(0, "Atlas is done.")
+        s.wait(0.8)
+
+        s.at { room in
+            let iris = room.calls[1]
+            iris.pendingApproval = ApprovalRequest(id: "i9", tool: "Bash", summary: "Record new snapshot images")
+            iris.log(.approval("Bash: Record new snapshot images"))
+            iris.state = .waiting
+            iris.unread = true
+        }
+        s.earcon(.needsYou)
+        s.wait(0.3)
+        try await s.announce(1, "Iris needs your OK.")
         s.caption("Approve with a click")
-        s.cursor(to: CGPoint(x: missionFrame.maxX - 100, y: missionFrame.maxY - 108), over: 1.3)
-        s.wait(1.5)
+        s.cursor(to: column(1, y: missionFrame.maxY - 108).applying(.init(translationX: 80, y: 0)), over: 1.0)
+        s.wait(1.1)
         s.click()
         s.at { room in
-            let nova = room.calls[2]
-            nova.pendingApproval = nil
-            nova.log(.note("Allowed once: Delete 4.2 GB of old build caches"))
-            nova.record(.toolStarted(id: "n3", name: "bash", input: "rm -rf ~/Library/Caches/app-build/*"))
-            nova.record(.toolFinished(id: "n3", output: "", failed: false))
-            nova.lines.append(.init(role: .info, text: "Allowed once: Delete 4.2 GB of old build caches"))
-            nova.state = .thinking
+            let iris = room.calls[1]
+            iris.pendingApproval = nil
+            iris.log(.note("Allowed once: Record new snapshot images"))
+            iris.record(.toolStarted(id: "i6", name: "Bash", input: "swift test --filter TripsSnapshots -- record"))
+            iris.state = .thinking
         }
-        try await s.agent(2, says: "Done. You have four more gigabytes free.", after: 1.2)
-        s.wait(1.8)
+        s.wait(1.4)
+
+        s.caption("Click an agent to hear what it did")
+        s.cursor(to: column(0, y: missionFrame.minY + 92), over: 1.0)
+        s.wait(1.1)
+        s.click()
+        s.at { room in
+            room.focusedID = "atlas"
+            room.calls[0].unread = false
+        }
+        try await s.agent(0, says: "Rate limiting is in: twenty requests a minute per user, with a test for the "
+            + "four twenty nine. All eighty six tests pass.", after: 0, transcript: false)
+        s.wait(1.2)
 
         s.caption(nil)
         s.show(.endCard)
         s.wait(4.5)
+    }
+
+    /// Everyone's work streaming into Mission Control at once, spread over the next few seconds.
+    private static func work(_ s: Script) {
+        s.after(0.4) { $0.calls[0].record(.toolFinished(id: "a1", output: "Sources/API/BookingsRouter.swift:41", failed: false)) }
+        s.after(0.9) { $0.calls[1].record(.toolFinished(id: "i1", output: "spacing.l = 24, radius.card = 16, ink.muted", failed: false)) }
+        s.after(1.3) { $0.calls[2].record(.toolFinished(id: "s2", output: "Switched to branch 'atlas/rate-limit'", failed: false)) }
+        s.after(1.6) { room in
+            room.calls[0].record(.toolStarted(id: "a2", name: "Write", input: "Sources/API/RateLimiter.swift"))
+            room.calls[0].record(.toolFinished(id: "a2", output: """
+                +struct RateLimiter {
+                +    let perMinute = 20
+                +    func allow(_ user: User.ID, at now: Date) -> Bool
+                """, failed: false))
+        }
+        s.after(2.4) { room in
+            room.calls[1].record(.thinking("No trips yet: a calm illustration, one line of copy, one button to plan a trip."))
+            room.calls[1].record(.toolStarted(id: "i2", name: "Write", input: "Sources/Trips/TripsEmptyState.swift"))
+        }
+        s.after(3.0) { room in
+            room.calls[2].record(.toolStarted(id: "s3", name: "bash", input: "git diff main --stat"))
+            room.calls[2].record(.toolFinished(id: "s3", output: " Sources/API/BookingsRouter.swift |  6 +-\n Sources/API/RateLimiter.swift   | 38 +++", failed: false))
+        }
+        s.after(3.6) { room in
+            room.calls[1].record(.toolFinished(id: "i2", output: """
+                +struct TripsEmptyState: View {
+                +    var body: some View { … }
+                """, failed: false))
+            room.calls[0].record(.toolStarted(id: "a3", name: "Edit", input: "Sources/API/BookingsRouter.swift"))
+        }
+        s.after(4.4) { room in
+            room.calls[0].record(.toolFinished(id: "a3", output: """
+                @@ -41,2 +41,4 @@
+                +    guard limiter.allow(user.id, at: .now) else { throw HTTPError.tooManyRequests }
+                """, failed: false))
+            room.calls[2].record(.thinking("The bucket refills from the wall clock; a monotonic clock would survive clock changes."))
+        }
+        s.after(5.4) { room in
+            room.calls[0].record(.toolStarted(id: "a4", name: "Write", input: "Tests/API/RateLimiterTests.swift"))
+            room.calls[0].record(.toolFinished(id: "a4", output: "+func testTwentyFirstRequestGets429()", failed: false))
+            room.calls[1].record(.toolStarted(id: "i3", name: "Bash", input: "swift test --filter TripsSnapshots"))
+        }
+        s.after(6.6) { room in
+            room.calls[1].record(.toolFinished(id: "i3", output: "✘ testEmptyState: no reference image", failed: true))
+            room.calls[2].logText("One note for Atlas: use a monotonic clock for the refill. Otherwise it looks good.")
+            room.calls[0].record(.toolStarted(id: "a5", name: "Bash", input: "swift test"))
+        }
+        s.after(8.0) { room in
+            room.calls[2].record(.usage(inputTokens: 12_900, outputTokens: 410, cost: nil))
+            room.calls[2].state = .ready
+        }
     }
 
     // MARK: - Rendering
@@ -269,20 +330,21 @@ import SwiftUI
     }
 }
 
-/// What's on the desktop at one moment, besides the room: the cursor, the open windows, the typed text.
+/// What's on screen at one moment, besides the room: the camera, the cursor, the open windows, the keys held.
 struct Stage {
     enum Window { case panel, missionControl, endCard }
 
+    /// Starts on the whole 1280×800 canvas.
+    var camera = (focus: CGPoint(x: 640, y: 400), zoom: 1.0)
     var cursor = CGPoint.zero
     /// Seconds since the last click, for its ripple.
     var sinceClick: Double?
     /// Seconds each window has been open.
     var open: [Window: Double] = [:]
-    var document = ""
     var keys: String?
 }
 
-/// Builds the demo's timeline: room changes, desktop changes, captions and sounds placed on one track.
+/// Builds the demo's timeline: room changes, screen changes, captions and sounds placed on one track.
 @MainActor final class Script {
     static let sampleRate = 24_000.0
 
@@ -293,9 +355,9 @@ struct Stage {
     /// Agent lines that appear word by word while they are spoken.
     private var reveals: [(call: Int, start: Double, end: Double, text: String)] = []
     private var moves: [(start: Double, end: Double, to: CGPoint)] = []
+    private var shots: [(start: Double, end: Double, focus: CGPoint, zoom: Double)] = []
     private var clicks: [Double] = []
     private var windows: [(at: Double, window: Stage.Window, open: Bool)] = []
-    private var typing: [(start: Double, end: Double, text: String)] = []
     private var keyPresses: [(start: Double, end: Double, keys: String)] = []
     private let voice: VoiceModels
 
@@ -305,12 +367,13 @@ struct Stage {
 
     func wait(_ seconds: Double) { time += seconds }
     func at(_ apply: @escaping (Room) -> Void) { steps.append((time, apply)) }
+    /// A room change `delay` seconds from now, while the script carries on.
+    func after(_ delay: Double, _ apply: @escaping (Room) -> Void) { steps.append((time + delay, apply)) }
     func caption(_ text: String?) { captions.append((time, text)) }
     func cursor(to point: CGPoint, over seconds: Double) { moves.append((time, time + seconds, point)) }
+    func camera(to focus: CGPoint, zoom: Double, over seconds: Double) { shots.append((time, time + seconds, focus, zoom)) }
     func show(_ window: Stage.Window) { windows.append((time, window, true)) }
     func hide(_ window: Stage.Window) { windows.append((time, window, false)) }
-    /// Text typed into the document from now on; the script carries on meanwhile.
-    func type(_ text: String, over seconds: Double) { typing.append((time, time + seconds, text)) }
     /// A key chord shown on screen from now on, while the script carries on.
     func keys(_ keys: String, for seconds: Double) { keyPresses.append((time, time + seconds, keys)) }
 
@@ -360,6 +423,12 @@ struct Stage {
         at { $0.calls[call].state = end }
     }
 
+    /// One line from an agent that isn't in focus, in its own voice, as Lair says it.
+    func announce(_ call: Int, _ text: String) async throws {
+        let samples = try await voice.speech(for: text, voice: Demo.agents[call].voice)
+        time += place(samples, at: time) + 0.3
+    }
+
     /// Adds a clip to the sound track; returns its length in seconds.
     @discardableResult private func place(_ samples: [Float], at time: Double) -> Double {
         let start = Int(time * Self.sampleRate)
@@ -387,27 +456,38 @@ struct Stage {
     func stage(at time: Double) -> Stage {
         var stage = Stage()
         for move in moves where move.start <= time {
-            let progress = move.end > move.start ? min(1, (time - move.start) / (move.end - move.start)) : 1
-            let eased = progress < 0.5 ? 2 * progress * progress : 1 - pow(-2 * progress + 2, 2) / 2
+            let eased = Self.ease(move.start, move.end, time)
             let from = stage.cursor
             stage.cursor = CGPoint(x: from.x + (move.to.x - from.x) * eased, y: from.y + (move.to.y - from.y) * eased)
+        }
+        for shot in shots where shot.start <= time {
+            let eased = Self.ease(shot.start, shot.end, time)
+            let (from, zoom) = stage.camera
+            stage.camera = (CGPoint(x: from.x + (shot.focus.x - from.x) * eased, y: from.y + (shot.focus.y - from.y) * eased),
+                            zoom + (shot.zoom - zoom) * eased)
         }
         stage.sinceClick = clicks.last { $0 <= time }.map { time - $0 }
         for change in windows where change.at <= time {
             stage.open[change.window] = change.open ? time - change.at : nil
         }
-        for typed in typing where typed.start <= time {
-            let progress = min(1, (time - typed.start) / (typed.end - typed.start))
-            stage.document += typed.text.prefix(Int(Double(typed.text.count) * progress))
-        }
         stage.keys = keyPresses.last { $0.start <= time && time < $0.end }?.keys
         return stage
+    }
+
+    /// Ease-in-out progress of a move from `start` to `end`, at `time`.
+    private static func ease(_ start: Double, _ end: Double, _ time: Double) -> Double {
+        let progress = end > start ? min(1, (time - start) / (end - start)) : 1
+        return progress < 0.5 ? 2 * progress * progress : 1 - pow(-2 * progress + 2, 2) / 2
     }
 
     func room(at time: Double) -> Room {
         let room = Room(config: LairConfig(agents: Demo.agents))
         room.readiness = .ready
-        for step in steps where step.at <= time { step.apply(room) }
+        // Steps scheduled ahead with `after` land in time order, not in the order they were written.
+        for step in steps.enumerated().sorted(by: { ($0.element.at, $0.offset) < ($1.element.at, $1.offset) })
+        where step.element.at <= time {
+            step.element.apply(room)
+        }
         for reveal in reveals where reveal.start <= time && time < reveal.end {
             let call = room.calls[reveal.call]
             guard let index = call.lines.lastIndex(where: { $0.role == .agent && $0.text == reveal.text }) else { continue }
@@ -426,8 +506,8 @@ struct Stage {
     }
 }
 
-/// One frame of the video: a Mac desktop with a document being written, Lair's floating orb, its panel and
-/// Mission Control when open, the cursor and the caption.
+/// One frame of the video: the desktop with Lair's floating orb, its panel and Mission Control when open, and the
+/// cursor, seen through a camera that moves in on what matters; the caption and keys sit on top, unzoomed.
 private struct DemoFrame: View {
     let room: Room
     let stage: Stage
@@ -437,10 +517,45 @@ private struct DemoFrame: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
+            camera(desktop)
+            if let keys = stage.keys {
+                KeyCaps(keys: keys)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .offset(y: Demo.canvas.height - 190)
+            }
+            if let caption, stage.open[.endCard] == nil {
+                Text(caption)
+                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 22).padding(.vertical, 11)
+                    .background(.black.opacity(0.62), in: Capsule())
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .offset(y: Demo.canvas.height - 128)
+            }
+            if let opened = stage.open[.endCard] {
+                EndCard().appearing(opened, duration: 0.6)
+            }
+        }
+        .frame(width: Demo.canvas.width, height: Demo.canvas.height, alignment: .topLeading)
+        .clipped()
+        .environment(\.renderTime, time)
+        .environment(\.colorScheme, .dark)
+    }
+
+    /// Scales the desktop around the camera's focus, never showing past its edges.
+    private func camera(_ content: some View) -> some View {
+        let (focus, zoom) = stage.camera
+        let size = Demo.canvas
+        let x = min(0, max(size.width - size.width * zoom, size.width / 2 - focus.x * zoom))
+        let y = min(0, max(size.height - size.height * zoom, size.height / 2 - focus.y * zoom))
+        return content
+            .scaleEffect(zoom, anchor: .topLeading)
+            .offset(x: x, y: y)
+    }
+
+    private var desktop: some View {
+        ZStack(alignment: .topLeading) {
             wallpaper
-            DocumentWindow(text: stage.document, time: time)
-                .frame(width: 760, height: 520)
-                .offset(x: 150, y: 92)
             Dock()
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 .padding(.bottom, 8)
@@ -469,33 +584,13 @@ private struct DemoFrame: View {
                     .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(.white.opacity(0.12)))
                     .compositingGroup()
                     .shadow(color: .black.opacity(0.55), radius: 30, y: 12)
-                    .offset(x: Demo.menuIcon.x - 170, y: 34)
+                    .offset(x: Demo.panelOrigin.x, y: Demo.panelOrigin.y)
                     .appearing(opened)
-            }
-            if let keys = stage.keys {
-                KeyCaps(keys: keys)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .offset(y: Demo.canvas.height - 190)
-            }
-            if let caption, stage.open[.endCard] == nil {
-                Text(caption)
-                    .font(.system(size: 22, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 22).padding(.vertical, 11)
-                    .background(.black.opacity(0.55), in: Capsule())
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .offset(y: Demo.canvas.height - 138)
             }
             Cursor(sinceClick: stage.sinceClick)
                 .offset(x: stage.cursor.x, y: stage.cursor.y)
-            if let opened = stage.open[.endCard] {
-                EndCard().appearing(opened, duration: 0.6)
-            }
         }
         .frame(width: Demo.canvas.width, height: Demo.canvas.height, alignment: .topLeading)
-        .clipped()
-        .environment(\.renderTime, time)
-        .environment(\.colorScheme, .dark)
     }
 
     /// A slow dusk, drifting a little so the desktop feels alive, with a fine grain so the gradient doesn't band.
@@ -540,8 +635,8 @@ private struct DemoFrame: View {
     private var menuBar: some View {
         HStack(spacing: 18) {
             Image(systemName: "apple.logo")
-            Text("Writer").fontWeight(.semibold)
-            ForEach(["File", "Edit", "Format", "View", "Window", "Help"], id: \.self) { Text($0) }
+            Text("Finder").fontWeight(.semibold)
+            ForEach(["File", "Edit", "View", "Go", "Window", "Help"], id: \.self) { Text($0) }
             Spacer()
             MenuBarIcon(room: room)
                 .foregroundStyle(.white)
@@ -551,7 +646,7 @@ private struct DemoFrame: View {
             HStack(spacing: 18) {
                 Image(systemName: "battery.75percent")
                 Image(systemName: "wifi")
-                Text("Sat 3:42 PM")
+                Text("Tue 10:24 AM")
             }
             .frame(width: 150, alignment: .trailing)
         }
@@ -568,57 +663,6 @@ private extension View {
     func appearing(_ elapsed: Double, duration: Double = 0.22) -> some View {
         let progress = min(1, elapsed / duration)
         return opacity(progress).scaleEffect(0.97 + 0.03 * progress, anchor: .top)
-    }
-}
-
-/// A plain writing app: the user's own work, untouched by Lair.
-private struct DocumentWindow: View {
-    let text: String
-    let time: Double
-
-    var body: some View {
-        VStack(spacing: 0) {
-            ZStack {
-                Text("Lisbon weekend.md").font(.system(size: 13, weight: .semibold)).foregroundStyle(.black.opacity(0.7))
-                TrafficLights().frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 14)
-            }
-            .frame(height: 38)
-            .background(Color(white: 0.93))
-            Rectangle().fill(Color(white: 0.84)).frame(height: 1)
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                    styled(line, last: index == lines.count - 1)
-                }
-                Spacer()
-            }
-            .padding(.horizontal, 56).padding(.vertical, 34)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(Color(white: 0.985))
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.black.opacity(0.18)))
-        .compositingGroup()
-        .shadow(color: .black.opacity(0.35), radius: 30, y: 14)
-        .environment(\.colorScheme, .light)
-    }
-
-    private var lines: [String] { text.components(separatedBy: "\n") }
-
-    private func styled(_ line: String, last: Bool) -> some View {
-        let caret = last && Int(time * 2) % 2 == 0 ? "▍" : ""
-        let (body, font): (String, Font) = if line.hasPrefix("## ") {
-            (String(line.dropFirst(3)), .system(size: 20, weight: .semibold, design: .serif))
-        } else if line.hasPrefix("# ") {
-            (String(line.dropFirst(2)), .system(size: 30, weight: .bold, design: .serif))
-        } else if line.hasPrefix("- ") {
-            ("•  " + line.dropFirst(2), .system(size: 17, design: .serif))
-        } else {
-            (line, .system(size: 17, design: .serif))
-        }
-        return (Text(body) + Text(caret).foregroundStyle(Color.accentColor))
-            .font(font)
-            .foregroundStyle(.black.opacity(0.82))
-            .frame(minHeight: 8, alignment: .leading)
     }
 }
 
@@ -715,7 +759,7 @@ private struct EndCard: View {
                     .frame(width: 120, height: 120)
                     .clipShape(RoundedRectangle(cornerRadius: 27, style: .continuous))
                 Text("Lair").font(.system(size: 64, weight: .bold, design: .rounded))
-                Text("Talk to your coding agents while you get on with your day.\nAll speech stays on your Mac.")
+                Text("All your coding agents, by voice, side by side.\nSpeech stays on your Mac.")
                     .font(.system(size: 22, design: .rounded))
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.white.opacity(0.7))
