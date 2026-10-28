@@ -39,7 +39,7 @@ struct HermesSessionTests {
     }
 
     @Test func streamsTheReplyText() async throws {
-        StubServer.reply = (200, """
+        StubServer.replies = ["completions": (200, """
             : keepalive
 
             event: hermes.tool.progress
@@ -51,7 +51,7 @@ struct HermesSessionTests {
 
             data: [DONE]
 
-            """)
+            """)]
         URLProtocol.registerClass(StubServer.self)
         defer { URLProtocol.unregisterClass(StubServer.self) }
 
@@ -63,7 +63,7 @@ struct HermesSessionTests {
     }
 
     @Test func failsOnAnErrorStatus() async throws {
-        StubServer.reply = (401, "")
+        StubServer.replies = ["completions": (401, "")]
         URLProtocol.registerClass(StubServer.self)
         defer { URLProtocol.unregisterClass(StubServer.self) }
 
@@ -73,18 +73,63 @@ struct HermesSessionTests {
     }
 }
 
-/// Answers every request to `hermes.test` with a canned status and body.
+extension HermesSessionTests {
+    @Test(.timeLimit(.minutes(1))) func reportsBackgroundWorkThatFinishesAfterTheTurn() async throws {
+        StubServer.replies = [
+            "completions": (200, """
+                event: hermes.tool.progress
+                data: {"tool": "delegate_task", "status": "running"}
+
+                event: hermes.tool.progress
+                data: {"tool": "delegate_task", "status": "completed"}
+
+                data: {"choices":[{"delta":{"content":"I've started it in the background."}}]}
+
+                data: [DONE]
+
+                """),
+            "messages": (200, """
+                {"object": "list", "data": [
+                  {"id": 12, "role": "user", "content": "[ASYNC DELEGATION BATCH COMPLETE — deleg_1] Uptime: 3 days"},
+                  {"id": 11, "role": "assistant", "content": "I've started it in the background."}
+                ]}
+                """),
+        ]
+        URLProtocol.registerClass(StubServer.self)
+        defer { URLProtocol.unregisterClass(StubServer.self) }
+
+        let session = HermesSession(baseURL: base, credentials: .init(apiKey: "k"), poll: .milliseconds(20))
+        for try await _ in try session.ask("Check the uptime in the background") {}
+        var news = session.news.makeAsyncIterator()
+        let first = await news.next()
+        #expect(first?.hasPrefix("[ASYNC DELEGATION BATCH COMPLETE") == true)
+        session.stop()
+        #expect(await news.next() == nil)
+    }
+
+    @Test func readsOnlyBackgroundResultsFromTheHistory() {
+        let page = Data(#"{"data": [{"id": "a", "role": "user", "content": "hello"}, {"id": 7, "role": "user", "content": "[ASYNC DELEGATION BATCH COMPLETE — d]\nok"}, {"id": 8, "role": "tool", "content": "[ASYNC DELEGATION BATCH COMPLETE"}]}"#.utf8)
+        let results = HermesSession.delegationResults(in: page)
+        #expect(results.map(\.id) == ["7"])
+    }
+}
+
+/// Answers requests to `hermes.test` with a canned status and body, chosen by the last part of the path.
 final class StubServer: URLProtocol {
-    nonisolated(unsafe) static var reply: (status: Int, body: String) = (200, "")
+    nonisolated(unsafe) static var replies: [String: (status: Int, body: String)] = [:]
+
+    private var reply: (status: Int, body: String) {
+        Self.replies[request.url?.lastPathComponent ?? ""] ?? (404, "")
+    }
 
     override class func canInit(with request: URLRequest) -> Bool { request.url?.host == "hermes.test" }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
-        let response = HTTPURLResponse(url: request.url!, statusCode: Self.reply.status, httpVersion: "HTTP/1.1",
+        let response = HTTPURLResponse(url: request.url!, statusCode: reply.status, httpVersion: "HTTP/1.1",
                                        headerFields: ["Content-Type": "text/event-stream"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Data(Self.reply.body.utf8))
+        client?.urlProtocol(self, didLoad: Data(reply.body.utf8))
         client?.urlProtocolDidFinishLoading(self)
     }
 

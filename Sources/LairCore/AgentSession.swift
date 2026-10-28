@@ -11,11 +11,14 @@ public protocol AgentSession: Sendable {
     func stop()
     /// What runs the agent, e.g. "gpt-6-luna · low thinking", as soon as the agent tells.
     var details: AsyncStream<String> { get }
+    /// Work the agent finished in the background after the turn that started it ended.
+    var news: AsyncStream<String> { get }
 }
 
 extension AgentSession {
     public func answer(_ request: ApprovalRequest, decision: ApprovalDecision) throws {}
     public var details: AsyncStream<String> { AsyncStream { $0.finish() } }
+    public var news: AsyncStream<String> { AsyncStream { $0.finish() } }
 }
 
 /// "gpt-6-luna" and "low" → "gpt-6-luna · low thinking".

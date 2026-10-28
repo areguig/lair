@@ -1,5 +1,11 @@
 /// Sent with every call so agents know they are heard, not read.
 public enum VoicePrompt {
+    /// Sent when work an agent handed to the background has finished, so the result is heard.
+    public static let backgroundResult = """
+        Your background task just finished and its result is now in this conversation. \
+        Tell me what it found, briefly.
+        """
+
     public static let text = """
         This conversation is a live voice call through Lair: the user speaks, a speech-to-text model writes it down, \
         and everything you write is read aloud by a text-to-speech voice. Talk like a person on the phone.

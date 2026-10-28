@@ -14,8 +14,16 @@ struct ChatCompletionStreamTests {
         var stream = ChatCompletionStream()
         #expect(stream.feed(": keepalive") == nil)
         #expect(stream.feed("event: hermes.tool.progress") == nil)
-        #expect(stream.feed(#"data: {"choices":[{"delta":{"content":"🔧 terminal"}}]}"#) == nil)
+        #expect(stream.feed(#"data: {"tool": "terminal", "status": "completed"}"#) == nil)
         #expect(stream.feed(#"data: {"choices":[{"delta":{"content":"Done."}}]}"#) == .text("Done."))
+    }
+
+    @Test func reportsToolsAsTheyStart() {
+        var stream = ChatCompletionStream()
+        #expect(stream.feed("event: hermes.tool.progress") == nil)
+        #expect(stream.feed(#"data: {"tool": "delegate_task", "status": "running"}"#) == .toolStarted("delegate_task"))
+        #expect(stream.feed("event: hermes.tool.progress") == nil)
+        #expect(stream.feed(#"data: {"tool": "delegate_task", "status": "completed"}"#) == nil)
     }
 
     @Test func reportsFailedReplies() {

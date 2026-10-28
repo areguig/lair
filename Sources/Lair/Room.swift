@@ -31,6 +31,8 @@ import os
     @ObservationIgnored var turn: Task<Void, Never>?
     /// Identifies the running turn, so an interrupted one can't reset the state of the next.
     @ObservationIgnored var turnID: UUID?
+    /// Background work finished while a turn was running; heard once that turn ends.
+    @ObservationIgnored var newsWaiting = false
 
     init(agent: AgentConfig) {
         self.agent = agent
@@ -119,6 +121,7 @@ import os
             call.session = session
             call.details = nil
             Task { for await details in session.details { call.details = details } }
+            Task { for await _ in session.news { hearNews(from: call) } }
             call.lines = []
             call.state = .ready
         } catch {
@@ -270,10 +273,32 @@ import os
         await converse(in: call, prompt: prompt, speech: samples.count, start: start)
     }
 
-    private func converse(in call: Call, prompt: String, speech: Int, start: ContinuousClock.Instant) async {
+    /// The agent finished work in the background: take a turn so it says what it found.
+    private func hearNews(from call: Call) {
+        guard call.inCall, call.session != nil else { return }
+        guard call.state == .ready, call.pendingApproval == nil else {
+            call.newsWaiting = true
+            return
+        }
+        call.newsWaiting = false
+        call.state = .thinking
+        call.turn = Task {
+            await converse(in: call, prompt: VoicePrompt.backgroundResult, speech: 0, start: Self.clock.now,
+                           shown: .init(role: .notice, text: "Background task finished"))
+        }
+    }
+
+    /// `shown` replaces the prompt in the transcript when the prompt isn't something you said.
+    private func converse(in call: Call, prompt: String, speech: Int, start: ContinuousClock.Instant,
+                          shown: Call.Line? = nil) async {
         let turnID = UUID()
         call.turnID = turnID
-        defer { if call.inCall, call.turnID == turnID { call.state = .ready } }
+        defer {
+            if call.inCall, call.turnID == turnID {
+                call.state = .ready
+                if call.newsWaiting { hearNews(from: call) }
+            }
+        }
         let clock = Self.clock
         let heard: Duration? = clock.now - start
         var firstToken, firstAudio: Duration?
@@ -286,7 +311,7 @@ import os
         }
         do {
             guard let session = call.session, let speaker else { return }
-            call.lines.append(.init(role: .you, text: prompt))
+            call.lines.append(shown ?? .init(role: .you, text: prompt))
 
             // Text after an approval starts a new line, so the transcript reads in order.
             var answer: Int?
