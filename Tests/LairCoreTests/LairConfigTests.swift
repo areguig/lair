@@ -56,7 +56,7 @@ struct LairConfigSavingTests {
     @Test func savesAndReadsBackTheSameConfig() throws {
         let url = FileManager.default.temporaryDirectory.appending(path: "lair-\(UUID().uuidString)/config.json")
         var config = LairConfig.initial
-        config.agents.append(AgentConfig(id: "sage", name: "Sage", kind: .hermes, voice: "bf_emma", color: "#7B5CFF",
+        config.agents.append(AgentConfig(id: "echo", name: "Echo", kind: .hermes, voice: "bf_emma", color: "#7B5CFF",
                                          url: "http://hermes.local:8642"))
         try config.save(to: url)
         #expect(try LairConfig.load(from: url) == config)

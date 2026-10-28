@@ -378,7 +378,7 @@ import os
             call.state = .ready
             return
         }
-        // "Sage, …" while talking to Claude goes to Sage.
+        // "Echo, …" while talking to Claude goes to Echo.
         let others = calls.filter { $0.id != call.id }
         if let (name, rest) = Addressing.split(prompt, names: others.map(\.agent.name)),
            let target = others.first(where: { $0.agent.name == name }) {

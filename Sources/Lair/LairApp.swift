@@ -128,10 +128,10 @@ struct MenuBarIcon: View {
 @MainActor enum Snapshot {
     static func write(to url: URL, variant: String = "approval") {
         let agents = variant == "empty" ? [] : variant == "crowded"
-            ? (1...6).map { AgentConfig(id: "a\($0)", name: ["Claude", "Sage", "Copilot", "Research assistant", "Ops", "Docs"][$0 - 1],
+            ? (1...6).map { AgentConfig(id: "a\($0)", name: ["Claude", "Echo", "Nova", "Research assistant", "Ops", "Docs"][$0 - 1],
                                         kind: .claudeCode, voice: "af_heart", color: AgentConfig.palette[$0 - 1]) }
             : [AgentConfig(id: "claude", name: "Claude", kind: .claudeCode, voice: "af_heart", color: "#D97757", directory: "~"),
-               AgentConfig(id: "sage", name: "Sage", kind: .hermes, voice: "bf_emma", color: "#7B5CFF")]
+               AgentConfig(id: "echo", name: "Echo", kind: .hermes, voice: "bf_emma", color: "#7B5CFF")]
         let room = Room(config: LairConfig(agents: agents))
         room.readiness = variant == "micdenied" ? .microphoneDenied : .ready
         if let call = room.calls.first {
@@ -157,7 +157,7 @@ struct MenuBarIcon: View {
                     .init(role: .agent, text: "Done. The changelog is updated and the build number is bumped.",
                           shown: ["~/dev/app/CHANGELOG.md", "https://github.com/example/app/pull/42"]),
                 ]
-                room.calls[1].lines = [.init(role: .problem, text: "Sage needs an API key. Add it in Settings › Agents.",
+                room.calls[1].lines = [.init(role: .problem, text: "Echo needs an API key. Add it in Settings › Agents.",
                                              action: .openSettings)]
             case "crowded":
                 call.state = .ready
@@ -192,16 +192,16 @@ struct MenuBarIcon: View {
             + "build number. Tests are running now.")
         claude.record(.usage(inputTokens: 18_400, outputTokens: 512, cost: 0.0213))
         claude.log(.timing(heard: 140, firstWord: 1_880, firstSound: 2_410, total: 6_120))
-        let sage = room.calls[1]
-        sage.state = .thinking
-        sage.log(.you("did last night's backups finish?"))
-        sage.record(.toolStarted(id: "c1", name: "delegate_task", input: ""))
-        sage.logText("I've started the check in the background; we can keep talking.")
-        sage.log(.note("Background task finished"))
-        sage.logText("Yes. All three finished, and the newest one is from three this morning.")
-        sage.log(.approval("Delete backups older than 30 days"))
-        sage.state = .waiting
-        sage.pendingApproval = ApprovalRequest(id: "demo", tool: "terminal", summary: "Delete backups older than 30 days")
+        let echo = room.calls[1]
+        echo.state = .thinking
+        echo.log(.you("did last night's backups finish?"))
+        echo.record(.toolStarted(id: "c1", name: "delegate_task", input: ""))
+        echo.logText("I've started the check in the background; we can keep talking.")
+        echo.log(.note("Background task finished"))
+        echo.logText("Yes. All three finished, and the newest one is from three this morning.")
+        echo.log(.approval("Delete backups older than 30 days"))
+        echo.state = .waiting
+        echo.pendingApproval = ApprovalRequest(id: "demo", tool: "terminal", summary: "Delete backups older than 30 days")
         let view = NSHostingView(rootView: MissionControl(room: room))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1240, height: 780), styleMask: [.titled],
                               backing: .buffered, defer: false)
