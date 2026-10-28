@@ -219,12 +219,7 @@ private struct AgentForm: View {
                     SecretField(title: "API key", service: agent.keychainService, account: "api-key")
                 }
             } footer: {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(agent.kind == .hermes
-                         ? "Address and model apply from the agent's next call. Keys stay in your Keychain, never in the config file."
-                         : "Model and folder apply from the agent's next call.")
-                    if let note = thinkingNote { Text(note) }
-                }
+                Text(footer)
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .font(.caption)
@@ -252,11 +247,11 @@ private struct AgentForm: View {
         })
     }
 
-    private var thinkingNote: String? {
+    private var footer: String {
         switch agent.kind {
-        case .claudeCode: "Effort applies from the next call; you can say “think harder” or “switch to Opus” during a call."
-        case .omp: "You can also say “think harder”, “go fast” or “switch to …” during a call."
-        case .hermes: nil
+        case .claudeCode: "These apply from the next call. During a call, say “switch to Opus” or “go fast”."
+        case .omp: "These apply from the next call. During a call, say “think harder”, “go fast” or “switch to <model>”."
+        case .hermes: "Address and model apply from the next call. Keys stay in your Keychain, never in the config file."
         }
     }
 
