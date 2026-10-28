@@ -66,9 +66,12 @@ public struct AgentConfig: Codable, Equatable, Identifiable, Sendable {
     public var permissionMode: String?
     /// Hermes: base URL of its API server, e.g. `http://hermes.local:8642` at home or a public address away.
     public var url: String?
+    /// Hermes: extra HTTP headers sent with every request, such as a proxy's access token.
+    /// Only the names are here; the values are secrets kept in the Keychain.
+    public var headers: [String]?
 
     public init(id: String, name: String, kind: Kind, voice: String, color: String, model: String? = nil,
-                directory: String? = nil, url: String? = nil) {
+                directory: String? = nil, url: String? = nil, headers: [String]? = nil) {
         self.id = id
         self.name = name
         self.kind = kind
@@ -77,11 +80,16 @@ public struct AgentConfig: Codable, Equatable, Identifiable, Sendable {
         self.model = model
         self.directory = directory
         self.url = url
+        self.headers = headers
     }
 
-    /// Keychain service holding this agent's secrets: `api-key`, and optionally
-    /// `cf-access-client-id` and `cf-access-client-secret`.
+    /// Keychain service holding this agent's secrets: `api-key`, and one `header:<name>` per extra header.
     public var keychainService: String { "lair.\(id)" }
+
+    public static func headerAccount(_ name: String) -> String { "header:\(name)" }
+
+    /// Every Keychain account this agent may use, so they can all be removed with it.
+    public var secretAccounts: [String] { ["api-key"] + (headers ?? []).map(Self.headerAccount) }
 
     public var directoryURL: URL? {
         directory.map { URL(fileURLWithPath: NSString(string: $0).expandingTildeInPath) }

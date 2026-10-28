@@ -163,10 +163,9 @@ import os
             guard let url = agent.url.flatMap(URL.init(string:)) else { throw SetupError.missingURL(agent.name) }
             let secret = { Keychain.password(service: agent.keychainService, account: $0) }
             guard let apiKey = secret("api-key") else { throw SetupError.missingKey(agent.keychainService) }
-            return HermesSession(baseURL: url, credentials: .init(apiKey: apiKey,
-                                                                  accessClientID: secret("cf-access-client-id"),
-                                                                  accessClientSecret: secret("cf-access-client-secret")),
-                                 model: agent.model)
+            var headers: [String: String] = [:]
+            for name in agent.headers ?? [] { headers[name] = secret(AgentConfig.headerAccount(name)) }
+            return HermesSession(baseURL: url, credentials: .init(apiKey: apiKey, headers: headers), model: agent.model)
         }
     }
 

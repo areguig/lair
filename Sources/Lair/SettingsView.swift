@@ -117,7 +117,7 @@ private struct AgentsSettings: View {
         var config = store.config
         config.agents.removeAll { $0.id == agent.id }
         store.save(config)
-        for account in AgentConfig.secretAccounts { Keychain.delete(service: agent.keychainService, account: account) }
+        for account in agent.secretAccounts { Keychain.delete(service: agent.keychainService, account: account) }
         selection = config.agents.first?.id
     }
 }
@@ -168,11 +168,7 @@ private struct AgentForm: View {
                     TextField("Address", text: optional($agent.url), prompt: Text("http://hermes.local:8642"))
                     TextField("Model", text: optional($agent.model), prompt: Text("hermes-agent"))
                     SecretField(title: "API key", service: agent.keychainService, account: "api-key")
-                    DisclosureGroup("Cloudflare Access") {
-                        SecretField(title: "Client ID", service: agent.keychainService, account: "cf-access-client-id")
-                        SecretField(title: "Client secret", service: agent.keychainService,
-                                    account: "cf-access-client-secret")
-                    }
+                    ExtraHeaders(agent: $agent)
                 }
             } footer: {
                 Text("Model, folder and address apply from the agent's next call. Keys stay in your Keychain, "
@@ -221,6 +217,57 @@ private struct FolderField: View {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         path = url.path.hasPrefix(home) ? "~" + url.path.dropFirst(home.count) : url.path
     }
+}
+
+/// Headers a proxy in front of the agent may need (an access token, for example): names in the config file,
+/// values in the Keychain.
+private struct ExtraHeaders: View {
+    @Binding var agent: AgentConfig
+    @State private var newName = ""
+
+    var body: some View {
+        DisclosureGroup("Extra headers") {
+            ForEach(agent.headers ?? [], id: \.self) { name in
+                HStack {
+                    SecretField(title: name, service: agent.keychainService, account: AgentConfig.headerAccount(name))
+                    Button {
+                        Keychain.delete(service: agent.keychainService, account: AgentConfig.headerAccount(name))
+                        agent.headers = (agent.headers ?? []).filter { $0 != name }.nilIfEmpty
+                    } label: {
+                        Image(systemName: "minus.circle")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Remove this header")
+                }
+            }
+            HStack {
+                TextField("Header name", text: $newName, prompt: Text("X-Access-Token"))
+                    .onSubmit(add)
+                Button("Add", action: add).disabled(!isValid(newName))
+            }
+            Text("For a proxy in front of the agent that wants its own token. Values are kept in your Keychain.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func add() {
+        let name = newName.trimmingCharacters(in: .whitespaces)
+        guard isValid(name) else { return }
+        agent.headers = (agent.headers ?? []) + [name]
+        newName = ""
+    }
+
+    /// HTTP header names: letters, digits and hyphens, not already listed.
+    private func isValid(_ name: String) -> Bool {
+        let name = name.trimmingCharacters(in: .whitespaces)
+        return !name.isEmpty && name.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }
+            && !(agent.headers ?? []).contains { $0.caseInsensitiveCompare(name) == .orderedSame }
+    }
+}
+
+private extension Array {
+    var nilIfEmpty: Self? { isEmpty ? nil : self }
 }
 
 /// A secret kept in the Keychain: shows whether one is saved, never what it is.
@@ -323,7 +370,6 @@ extension AgentConfig.Kind: CaseIterable {
 
 extension AgentConfig {
     static let palette = ["#D97757", "#7B5CFF", "#3FB68B", "#E5B93C", "#4BA3E3", "#E35D8F"]
-    static let secretAccounts = ["api-key", "cf-access-client-id", "cf-access-client-secret"]
 }
 
 extension Color {

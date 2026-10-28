@@ -24,6 +24,16 @@ struct LairConfigTests {
         #expect(agent.directoryURL == nil)
     }
 
+    @Test func keepsHeaderNamesInTheConfigAndValuesInTheKeychain() throws {
+        let url = temporaryURL()
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(##"{"agents":[{"id":"h","name":"H","kind":"hermes","voice":"v","color":"#000000","headers":["X-Token"]}]}"##.utf8)
+            .write(to: url)
+        let agent = try #require(try LairConfig.load(from: url).agents.first)
+        #expect(agent.headers == ["X-Token"])
+        #expect(agent.secretAccounts == ["api-key", "header:X-Token"])
+    }
+
     @Test func expandsTildeInTheDirectory() {
         let agent = AgentConfig(id: "c", name: "C", kind: .claudeCode, voice: "v", color: "#000000", directory: "~/dev")
         #expect(agent.directoryURL?.path == FileManager.default.homeDirectoryForCurrentUser.appending(path: "dev").path)

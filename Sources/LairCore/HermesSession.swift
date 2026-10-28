@@ -10,14 +10,12 @@ import Synchronization
 public final class HermesSession: AgentSession {
     public struct Credentials: Sendable {
         public var apiKey: String
-        /// Cloudflare Access service token, for when Hermes sits behind Access.
-        public var accessClientID: String?
-        public var accessClientSecret: String?
+        /// Extra headers, for when Hermes sits behind a proxy that wants its own token.
+        public var headers: [String: String]
 
-        public init(apiKey: String, accessClientID: String? = nil, accessClientSecret: String? = nil) {
+        public init(apiKey: String, headers: [String: String] = [:]) {
             self.apiKey = apiKey
-            self.accessClientID = accessClientID
-            self.accessClientSecret = accessClientSecret
+            self.headers = headers
         }
     }
 
@@ -154,8 +152,7 @@ public final class HermesSession: AgentSession {
 
     private func authorize(_ request: inout URLRequest) {
         request.setValue("Bearer \(credentials.apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue(credentials.accessClientID, forHTTPHeaderField: "CF-Access-Client-Id")
-        request.setValue(credentials.accessClientSecret, forHTTPHeaderField: "CF-Access-Client-Secret")
+        for (name, value) in credentials.headers { request.setValue(value, forHTTPHeaderField: name) }
     }
 
     func request(for text: String) throws -> URLRequest {

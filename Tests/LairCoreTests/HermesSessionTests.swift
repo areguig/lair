@@ -8,14 +8,15 @@ struct HermesSessionTests {
     private let base = URL(string: "http://hermes.test:8642")!
 
     @Test func sendsTheTurnWithAuthAndSessionHeaders() throws {
-        let session = HermesSession(baseURL: base, credentials: .init(apiKey: "k", accessClientID: "id",
-                                                                      accessClientSecret: "secret"))
+        let session = HermesSession(baseURL: base, credentials: .init(apiKey: "k", headers: [
+            "CF-Access-Client-Id": "id", "X-Proxy-Token": "secret",
+        ]))
         let first = try session.request(for: "Hello")
         let second = try session.request(for: "Again")
         #expect(first.url?.absoluteString == "http://hermes.test:8642/v1/chat/completions")
         #expect(first.value(forHTTPHeaderField: "Authorization") == "Bearer k")
         #expect(first.value(forHTTPHeaderField: "CF-Access-Client-Id") == "id")
-        #expect(first.value(forHTTPHeaderField: "CF-Access-Client-Secret") == "secret")
+        #expect(first.value(forHTTPHeaderField: "X-Proxy-Token") == "secret")
         let sessionID = try #require(first.value(forHTTPHeaderField: "X-Hermes-Session-Id"))
         #expect(second.value(forHTTPHeaderField: "X-Hermes-Session-Id") == sessionID)
 
@@ -27,7 +28,7 @@ struct HermesSessionTests {
         #expect(messages.last == ["role": "user", "content": "Hello"])
     }
 
-    @Test func leavesOutAccessHeadersWithoutAToken() throws {
+    @Test func sendsNoExtraHeadersUnlessConfigured() throws {
         let request = try HermesSession(baseURL: base, credentials: .init(apiKey: "k")).request(for: "Hi")
         #expect(request.value(forHTTPHeaderField: "CF-Access-Client-Id") == nil)
     }
