@@ -8,8 +8,8 @@ struct OmpStreamTests {
         #expect(OmpStream.parse(line: line) == .event(.textDelta("Hi")))
     }
 
-    @Test func ignoresThinkingAndOtherUpdates() {
-        #expect(OmpStream.parse(line: #"{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","delta":"hmm"}}"#) == nil)
+    @Test func ignoresOtherUpdates() {
+        #expect(OmpStream.parse(line: #"{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","delta":"{"}}"#) == nil)
         #expect(OmpStream.parse(line: #"{"type":"agent_end"}"#) == nil)
         #expect(OmpStream.parse(line: "not json") == nil)
     }
@@ -101,5 +101,50 @@ struct ModelSwitchTests {
         let request = object?["request"] as? [String: String]
         #expect(object?["type"] as? String == "control_request")
         #expect(request == ["subtype": "set_model", "model": "opus"])
+    }
+}
+
+struct OmpActivityTests {
+    private func activity(_ line: String) -> Activity? {
+        if case .event(.activity(let activity)) = OmpStream.parse(line: line) { return activity }
+        return nil
+    }
+
+    @Test func readsThinkingDeltas() {
+        let line = #"{"type":"message_update","messageId":"m1","message":{"role":"assistant"},"assistantMessageEvent":{"type":"thinking_delta","contentIndex":0,"delta":"Let me look."}}"#
+        #expect(activity(line) == .thinking("Let me look."))
+    }
+
+    @Test func readsToolStartWithReadableInput() {
+        let bash = #"{"type":"tool_execution_start","toolCallId":"c1","toolName":"bash","args":{"command":"ls -la","timeout":5},"intent":"List"}"#
+        #expect(activity(bash) == .toolStarted(id: "c1", name: "bash", input: "ls -la"))
+        let other = #"{"type":"tool_execution_start","toolCallId":"c2","toolName":"x","args":{"a":1}}"#
+        #expect(activity(other) == .toolStarted(id: "c2", name: "x", input: #"{"a":1}"#))
+    }
+
+    @Test func readsToolEndFromTextBlocksOrString() {
+        let blocks = #"{"type":"tool_execution_end","toolCallId":"c1","toolName":"bash","result":{"content":[{"type":"text","text":"a"},{"type":"text","text":"b"}]},"isError":true}"#
+        #expect(activity(blocks) == .toolFinished(id: "c1", output: "a\nb", failed: true))
+        let plain = #"{"type":"tool_execution_end","toolCallId":"c1","toolName":"bash","result":"done"}"#
+        #expect(activity(plain) == .toolFinished(id: "c1", output: "done", failed: false))
+    }
+
+    @Test func readsSubagentLifecycle() {
+        let start = #"{"type":"subagent_lifecycle","payload":{"id":"s1","agent":"explore","description":"Find callers","status":"started","index":0}}"#
+        #expect(activity(start) == .helper("Started a helper: explore — Find callers"))
+        let end = #"{"type":"subagent_lifecycle","payload":{"id":"s1","agent":"explore","status":"completed","index":0}}"#
+        #expect(activity(end) == .helper("Helper finished: explore"))
+    }
+
+    @Test func readsUsageOnAssistantMessageEnd() {
+        let line = #"{"type":"message_end","messageId":"m1","message":{"role":"assistant","content":[],"usage":{"input":100,"output":20,"cacheRead":30,"cacheWrite":5,"totalTokens":155,"cost":{"total":0.0123}}}}"#
+        #expect(activity(line) == .usage(inputTokens: 135, outputTokens: 20, cost: 0.0123))
+        #expect(activity(#"{"type":"message_end","message":{"role":"user","content":"hi"}}"#) == nil)
+    }
+
+    @Test func ignoresUnrelatedEvents() {
+        #expect(OmpStream.parse(line: #"{"type":"turn_start"}"#) == nil)
+        #expect(OmpStream.parse(line: #"{"type":"subagent_progress","payload":{}}"#) == nil)
+        #expect(OmpStream.parse(line: #"{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","delta":"{"}}"#) == nil)
     }
 }

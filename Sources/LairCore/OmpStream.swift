@@ -23,9 +23,33 @@ public enum OmpStream {
         switch type {
         case "message_update":
             let event = object["assistantMessageEvent"] as? [String: Any]
-            guard event?["type"] as? String == "text_delta", let delta = event?["delta"] as? String, !delta.isEmpty
+            guard let delta = event?["delta"] as? String, !delta.isEmpty else { return nil }
+            switch event?["type"] as? String {
+            case "text_delta": return .event(.textDelta(delta))
+            case "thinking_delta": return .event(.activity(.thinking(delta)))
+            default: return nil
+            }
+        case "message_end":
+            // One assistant message, one usage report (the deltas carry none).
+            guard let message = object["message"] as? [String: Any], message["role"] as? String == "assistant",
+                  let usage = message["usage"] as? [String: Any]
             else { return nil }
-            return .event(.textDelta(delta))
+            func count(_ key: String) -> Int { (usage[key] as? NSNumber)?.intValue ?? 0 }
+            let cost = ((usage["cost"] as? [String: Any])?["total"] as? NSNumber)?.doubleValue
+            return .event(.activity(.usage(
+                inputTokens: count("input") + count("cacheRead") + count("cacheWrite"), outputTokens: count("output"), cost: cost)))
+        case "tool_execution_start":
+            guard let id = object["toolCallId"] as? String, let name = object["toolName"] as? String else { return nil }
+            return .event(.activity(.toolStarted(id: id, name: name, input: readable(args: object["args"]))))
+        case "tool_execution_end":
+            guard let id = object["toolCallId"] as? String else { return nil }
+            let output = Activity.trimmed(resultText(object["result"]))
+            return .event(.activity(.toolFinished(id: id, output: output, failed: object["isError"] as? Bool ?? false)))
+        case "subagent_lifecycle":
+            guard let payload = object["payload"] as? [String: Any], let status = payload["status"] as? String else { return nil }
+            let agent = payload["agent"] as? String ?? "helper"
+            let label = (payload["description"] as? String).map { "\(agent) — \($0)" } ?? agent
+            return .event(.activity(.helper(status == "started" ? "Started a helper: \(label)" : "Helper finished: \(label)")))
         case "prompt_result":
             guard object["status"] as? String == "error" else { return .event(.finished("")) }
             let error = object["error"] as? [String: Any]
@@ -53,6 +77,25 @@ public enum OmpStream {
         default:
             return nil
         }
+    }
+
+    /// The argument that says most about a tool call, else the arguments as compact JSON.
+    private static func readable(args: Any?) -> String {
+        guard let args = args as? [String: Any] else { return "" }
+        for key in ["command", "path", "file_path", "filePath", "pattern", "url", "query", "description"] {
+            if let value = args[key] as? String, !value.isEmpty { return String(value.prefix(200)) }
+        }
+        guard !args.isEmpty, let data = try? JSONSerialization.data(withJSONObject: args, options: [.sortedKeys]) else { return "" }
+        return String(String(decoding: data, as: UTF8.self).prefix(200))
+    }
+
+    /// A tool result is a string, or `{content: [{type: "text", text}]}`, or the bare block array.
+    private static func resultText(_ result: Any?) -> String {
+        if let text = result as? String { return text }
+        let blocks = (result as? [String: Any])?["content"] ?? result
+        if let text = blocks as? String { return text }
+        let parts = (blocks as? [[String: Any]])?.compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }
+        return parts?.joined(separator: "\n") ?? ""
     }
 
     /// Asks for text deltas instead of whole message snapshots on every update.
