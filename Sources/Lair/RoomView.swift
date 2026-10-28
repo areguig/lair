@@ -1,15 +1,12 @@
 import KeyboardShortcuts
 import LairCore
 import LairVoice
-import OSLog
-import ServiceManagement
 import SwiftUI
 
 /// The menu-bar panel: the focused agent's orb, what was said, and the call controls.
 struct RoomView: View {
     let room: Room
     @Environment(\.openWindow) private var openWindow
-    @State private var opensAtLogin = SMAppService.mainApp.status == .enabled
 
     var body: some View {
         let call = room.focused
@@ -37,27 +34,17 @@ struct RoomView: View {
         .environment(\.colorScheme, .dark)
     }
 
-    private func setOpensAtLogin(_ on: Bool) {
-        do {
-            if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
-        } catch {
-            Logger(subsystem: Bundle.main.bundleIdentifier ?? "lair", category: "login").error("\(error)")
-        }
-        opensAtLogin = SMAppService.mainApp.status == .enabled
-    }
-
     private var header: some View {
         HStack {
             Text("Lair")
                 .font(.system(.headline, design: .rounded, weight: .semibold))
             Spacer()
             Menu {
-                Button("Push-to-Talk Shortcut…") {
-                    openWindow(id: ShortcutWindow.id)
+                Button("Settings…") {
+                    openWindow(id: SettingsView.id)
                     NSApp.activate()
                 }
-                Button("Open Config…") { NSWorkspace.shared.open(LairConfig.defaultURL) }
-                Toggle("Open at Login", isOn: Binding(get: { opensAtLogin }, set: setOpensAtLogin))
+                .keyboardShortcut(",")
                 Divider()
                 Button("Quit Lair") { NSApp.terminate(nil) }
             } label: {

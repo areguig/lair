@@ -41,3 +41,37 @@ struct AgentLogTests {
         #expect(AgentLog.firstLine(for: "missing-\(UUID().uuidString)") == nil)
     }
 }
+
+struct LairConfigSavingTests {
+    @Test func savesAndReadsBackTheSameConfig() throws {
+        let url = FileManager.default.temporaryDirectory.appending(path: "lair-\(UUID().uuidString)/config.json")
+        var config = LairConfig.initial
+        config.agents.append(AgentConfig(id: "sage", name: "Sage", kind: .hermes, voice: "bf_emma", color: "#7B5CFF",
+                                         url: "http://hermes.local:8642"))
+        try config.save(to: url)
+        #expect(try LairConfig.load(from: url) == config)
+        let text = try String(contentsOf: url, encoding: .utf8)
+        #expect(text.contains("\"url\" : \"http://hermes.local:8642\""))
+        #expect(!text.contains("permissionMode"))
+    }
+
+    @Test func givesNewAgentsUniqueReadableIDs() {
+        let config = LairConfig.initial
+        #expect(config.newAgentID(for: "Claude") == "claude2")
+        #expect(config.newAgentID(for: "My Agent!") == "myagent")
+        #expect(config.newAgentID(for: "Écho") == "cho")
+        #expect(config.newAgentID(for: "") == "agent")
+    }
+}
+
+struct KeychainTests {
+    @Test func storesReplacesAndRemovesASecret() throws {
+        let service = "lair.test-\(UUID().uuidString)"
+        defer { Keychain.delete(service: service, account: "api-key") }
+        try Keychain.setPassword("first", service: service, account: "api-key")
+        try Keychain.setPassword("second", service: service, account: "api-key")
+        #expect(Keychain.password(service: service, account: "api-key") == "second")
+        try Keychain.setPassword("", service: service, account: "api-key")
+        #expect(Keychain.password(service: service, account: "api-key") == nil)
+    }
+}

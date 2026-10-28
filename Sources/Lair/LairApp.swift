@@ -10,6 +10,7 @@ extension KeyboardShortcuts.Name {
 @main
 struct LairApp: App {
     private let room: Room
+    private let store: ConfigStore
 
     init() {
         // An agent process that exits must not take Lair down with it: writing to it then just throws.
@@ -32,18 +33,19 @@ struct LairApp: App {
             Snapshot.write(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]))
             exit(0)
         }
+        if let i = CommandLine.arguments.firstIndex(of: "--settings-snapshot"), i + 1 < CommandLine.arguments.count {
+            Snapshot.writeSettings(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]))
+            exit(0)
+        }
         if let i = CommandLine.arguments.firstIndex(of: "--icon"), i + 1 < CommandLine.arguments.count {
             Snapshot.writeIcon(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]))
             exit(0)
         }
-        let config: LairConfig
-        do {
-            config = try LairConfig.load()
-        } catch {
-            config = .initial
-            NSLog("Lair: couldn't read \(LairConfig.defaultURL.path), using defaults: \(error)")
-        }
-        let room = Room(config: config)
+        let store = ConfigStore()
+        let room = Room(config: store.config)
+        store.onChange = { room.apply($0) }
+        store.watch()
+        self.store = store
         self.room = room
         KeyboardShortcuts.onKeyDown(for: .pushToTalk) { room.pressTalk() }
         KeyboardShortcuts.onKeyUp(for: .pushToTalk) { room.releaseTalk() }
@@ -58,22 +60,10 @@ struct LairApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        Window("Push-to-Talk Shortcut", id: ShortcutWindow.id) {
-            ShortcutWindow()
+        Window("Lair Settings", id: SettingsView.id) {
+            SettingsView(store: store, room: room)
         }
         .windowResizability(.contentSize)
-    }
-}
-
-struct ShortcutWindow: View {
-    static let id = "shortcut"
-
-    var body: some View {
-        Form {
-            KeyboardShortcuts.Recorder("Hold to talk:", name: .pushToTalk)
-        }
-        .padding(20)
-        .frame(width: 320)
     }
 }
 
@@ -122,6 +112,23 @@ struct MenuBarIcon: View {
     }
 
     /// `Lair --icon out.png`: the 1024px app icon, drawn from the orb.
+    /// The settings window with demo agents, drawn in a hidden window so native controls render.
+    static func writeSettings(to url: URL) {
+        let file = FileManager.default.temporaryDirectory.appending(path: "lair-settings-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: file) }
+        try? LairConfig(agents: Demo.agents).save(to: file)
+        let store = ConfigStore(url: file)
+        let view = NSHostingView(rootView: SettingsView(store: store, room: Room(config: store.config)))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 660, height: 500), styleMask: [.titled],
+                              backing: .buffered, defer: false)
+        window.contentView = view
+        view.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        try? rep.representation(using: .png, properties: [:])?.write(to: url)
+    }
+
     static func writeIcon(to url: URL) {
         writePNG(AppIcon(), scale: 1, to: url)
     }

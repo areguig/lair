@@ -19,7 +19,7 @@ import os
         var text: String
     }
 
-    let agent: AgentConfig
+    var agent: AgentConfig
     var state = State.offline
     var lines: [Line] = []
     var pendingApproval: ApprovalRequest?
@@ -50,7 +50,7 @@ import os
     }
 
     var readiness = Readiness.loading
-    let calls: [Call]
+    private(set) var calls: [Call]
     var focusedID: String
 
     @ObservationIgnored private let voice = VoiceModels()
@@ -70,6 +70,28 @@ import os
     }
 
     var focused: Call? { calls.first { $0.id == focusedID } }
+
+    /// Takes a new config without dropping calls: an agent in a call keeps it, and its model, folder or address
+    /// apply from its next call; removed agents are hung up.
+    func apply(_ config: LairConfig) {
+        let next = config.agents.map { agent in
+            guard let call = calls.first(where: { $0.id == agent.id }) else { return Call(agent: agent) }
+            call.agent = agent
+            return call
+        }
+        for call in calls where !next.contains(where: { $0 === call }) && call.inCall { hangUp(call) }
+        calls = next
+        if focused == nil { focusedID = calls.first?.id ?? "" }
+    }
+
+    /// Says a short line in `voice`, so a voice can be tried before choosing it.
+    func preview(voice: String, name: String) {
+        guard readiness == .ready, let speaker else { return }
+        Task {
+            guard let samples = try? await self.voice.speech(for: "Hi, I'm \(name).", voice: voice) else { return }
+            speaker.enqueue(samples)
+        }
+    }
 
     func start() async {
         notifier.onAnswer = { [weak self] id, decision in

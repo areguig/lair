@@ -18,13 +18,31 @@ public struct LairConfig: Codable, Equatable, Sendable {
 
     public static func load(from url: URL = defaultURL) throws -> LairConfig {
         guard FileManager.default.fileExists(atPath: url.path) else {
-            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-            try encoder.encode(initial).write(to: url)
+            try initial.save(to: url)
             return initial
         }
         return try JSONDecoder().decode(LairConfig.self, from: Data(contentsOf: url))
+    }
+
+    /// Readable on purpose: the file is meant to be edited by hand too.
+    public func save(to url: URL = defaultURL) throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        try encoder.encode(self).write(to: url, options: .atomic)
+    }
+
+    /// A stable id for a new agent: its name in lowercase letters and digits, made unique.
+    public func newAgentID(for name: String) -> String {
+        let base = name.lowercased().filter { $0.isASCII && ($0.isLetter || $0.isNumber) }
+        let stem = base.isEmpty ? "agent" : base
+        var id = stem
+        var suffix = 2
+        while agents.contains(where: { $0.id == id }) {
+            id = "\(stem)\(suffix)"
+            suffix += 1
+        }
+        return id
     }
 }
 

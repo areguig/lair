@@ -10,6 +10,9 @@ public actor VoiceModels {
     private var asr: AsrManager?
     private var tts: KokoroAneManager?
 
+    /// Kokoro's English voices: American (`a`) and British (`b`), female (`f`) and male (`m`).
+    public static let voices = KokoroAneConstants.englishVoices.filter { $0.hasPrefix("a") || $0.hasPrefix("b") }
+
     public init() {}
 
     public func load(warmUpVoice: String) async throws {
