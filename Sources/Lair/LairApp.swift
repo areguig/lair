@@ -30,6 +30,20 @@ struct LairApp: App {
             // The demo's tasks run on the main queue; keep it turning instead of starting the app.
             RunLoop.main.run()
         }
+        if let i = CommandLine.arguments.firstIndex(of: "--demo-frame"), i + 2 < CommandLine.arguments.count,
+           let seconds = Double(CommandLine.arguments[i + 1]) {
+            let url = URL(fileURLWithPath: CommandLine.arguments[i + 2])
+            Task { @MainActor in
+                do {
+                    try await Demo.writeFrame(at: seconds, to: url)
+                    exit(0)
+                } catch {
+                    print("Demo frame failed: \(error)")
+                    exit(1)
+                }
+            }
+            RunLoop.main.run()
+        }
         if let i = CommandLine.arguments.firstIndex(of: "--snapshot"), i + 1 < CommandLine.arguments.count {
             let variant = i + 2 < CommandLine.arguments.count ? CommandLine.arguments[i + 2] : "approval"
             Snapshot.write(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]), variant: variant)
