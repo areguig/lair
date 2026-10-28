@@ -8,11 +8,12 @@ struct Orb: View {
     let state: Call.State
     var meter: LevelMeter?
     @State private var smoothed = Smoothed()
+    @Environment(\.renderTime) private var renderTime
 
     var body: some View {
         TimelineView(.animation(paused: state == .offline)) { timeline in
-            let time = timeline.date.timeIntervalSinceReferenceDate
-            let level = smoothed.next(Double(meter?.level ?? 0))
+            let time = renderTime ?? timeline.date.timeIntervalSinceReferenceDate
+            let level = renderTime == nil ? smoothed.next(Double(meter?.level ?? 0)) : Double(meter?.level ?? 0)
             let scale = scale(time: time, level: level)
             ZStack {
                 Circle()

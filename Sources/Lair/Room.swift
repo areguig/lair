@@ -54,6 +54,8 @@ import os
     @ObservationIgnored private let voice = VoiceModels()
     @ObservationIgnored let microphone = Microphone()
     @ObservationIgnored private(set) var speaker: Speaker?
+    /// Drives the orb instead of the live microphone and speaker, for the demo video.
+    @ObservationIgnored var meterOverride: LevelMeter?
     @ObservationIgnored private var environment: [String: String]?
     @ObservationIgnored private let notifier = ApprovalNotifier()
 

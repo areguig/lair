@@ -14,6 +14,20 @@ struct LairApp: App {
     init() {
         // An agent process that exits must not take Lair down with it: writing to it then just throws.
         signal(SIGPIPE, SIG_IGN)
+        if let i = CommandLine.arguments.firstIndex(of: "--demo"), i + 1 < CommandLine.arguments.count {
+            let folder = URL(fileURLWithPath: CommandLine.arguments[i + 1])
+            Task { @MainActor in
+                do {
+                    try await Demo.run(into: folder)
+                    exit(0)
+                } catch {
+                    print("Demo failed: \(error)")
+                    exit(1)
+                }
+            }
+            // The demo's tasks run on the main queue; keep it turning instead of starting the app.
+            RunLoop.main.run()
+        }
         if let i = CommandLine.arguments.firstIndex(of: "--snapshot"), i + 1 < CommandLine.arguments.count {
             Snapshot.write(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]))
             exit(0)

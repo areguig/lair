@@ -162,8 +162,8 @@ struct RoomView: View {
 
     private func meter(for call: Call) -> LevelMeter? {
         switch call.state {
-        case .listening: room.microphone.meter
-        case .speaking: room.speaker?.meter
+        case .listening: room.meterOverride ?? room.microphone.meter
+        case .speaking: room.meterOverride ?? room.speaker?.meter
         default: nil
         }
     }
@@ -188,18 +188,33 @@ struct RoomView: View {
 /// What was said in this call, newest at the bottom, fading out at the top.
 private struct Transcript: View {
     let lines: [Call.Line]
+    @Environment(\.renderTime) private var renderTime
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            LazyVStack(alignment: .leading, spacing: 10) {
-                ForEach(lines) { line in
-                    row(line)
+        Group {
+            if renderTime == nil {
+                ScrollView(showsIndicators: false) {
+                    LazyVStack(alignment: .leading, spacing: 10) {
+                        ForEach(lines) { line in
+                            row(line)
+                        }
+                    }
+                    .padding(.vertical, 12)
                 }
+                // Stays pinned to the newest words as the reply streams in.
+                .defaultScrollAnchor(.bottom)
+            } else {
+                // Scroll views don't render offscreen: the newest lines, bottom-aligned, instead.
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(lines.suffix(4)) { line in
+                        row(line).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                .clipped()
             }
-            .padding(.vertical, 12)
         }
-        // Stays pinned to the newest words as the reply streams in.
-        .defaultScrollAnchor(.bottom)
         .frame(height: lines.isEmpty ? 0 : 150)
         .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.18),
                                      .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom))
@@ -278,11 +293,13 @@ private struct ApprovalCard: View {
 private struct StatusDot: View {
     let color: Color
     let state: Call.State
+    @Environment(\.renderTime) private var renderTime
 
     var body: some View {
         let working = state == .thinking || state == .speaking
         TimelineView(.animation(paused: !working)) { timeline in
-            let pulse = working ? (sin(timeline.date.timeIntervalSinceReferenceDate * 5) + 1) / 2 : 0
+            let time = renderTime ?? timeline.date.timeIntervalSinceReferenceDate
+            let pulse = working ? (sin(time * 5) + 1) / 2 : 0
             Circle().fill(color)
                 .frame(width: 8, height: 8)
                 .opacity(state == .offline ? 0.4 : 1)
