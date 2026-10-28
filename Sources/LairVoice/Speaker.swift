@@ -4,16 +4,21 @@ import AVFoundation
 @MainActor public final class Speaker {
     private let engine = AVAudioEngine()
     private let node = AVAudioPlayerNode()
+    private let earconNode = AVAudioPlayerNode()
     private let format = AVAudioFormat(standardFormatWithSampleRate: 24_000, channels: 1)!
     private let pending = DispatchGroup()
     public let meter = LevelMeter()
 
     public init() throws {
         engine.attach(node)
+        engine.attach(earconNode)
         engine.connect(node, to: engine.mainMixerNode, format: format)
-        engine.mainMixerNode.installTap(onBus: 0, bufferSize: 1024, format: nil, block: Self.tap(meter: meter))
+        engine.connect(earconNode, to: engine.mainMixerNode, format: format)
+        // Tapping the speech node only keeps earcons off the level meter.
+        node.installTap(onBus: 0, bufferSize: 1024, format: nil, block: Self.tap(meter: meter))
         try engine.start()
         node.play()
+        earconNode.play()
     }
 
     public func enqueue(_ samples: [Float]) {
@@ -23,6 +28,15 @@ import AVFoundation
         samples.withUnsafeBufferPointer { buffer.floatChannelData![0].update(from: $0.baseAddress!, count: samples.count) }
         pending.enter()
         node.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { @Sendable [pending] _ in pending.leave() }
+    }
+
+    /// Plays on its own node: never queued with speech, never cut by `stop()`.
+    public func play(_ earcon: Earcon) {
+        let samples = Earcons.samples(for: earcon)
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count))!
+        buffer.frameLength = AVAudioFrameCount(samples.count)
+        samples.withUnsafeBufferPointer { buffer.floatChannelData![0].update(from: $0.baseAddress!, count: samples.count) }
+        earconNode.scheduleBuffer(buffer, at: nil, options: .interrupts)
     }
 
     public func waitUntilDone() async {
