@@ -2,8 +2,8 @@ import AppKit
 import LairCore
 import SwiftUI
 
-/// During a call, the focused agent's orb floats above every window: click to talk, hold to talk while held,
-/// double-click to open Lair, drag to move it.
+/// During a call, the focused agent's orb floats above every window: click to talk, click again to send,
+/// drag to move it.
 @MainActor final class FloatingOrb {
     private let room: Room
     private let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 112, height: 112),
@@ -35,15 +35,6 @@ import SwiftUI
         follow()
     }
 
-    /// SwiftUI can't open a menu-bar extra from code; clicking its status-bar button does, and closes it when open.
-    static func togglePanel() {
-        func button(in view: NSView?) -> NSStatusBarButton? {
-            guard let view else { return nil }
-            return view as? NSStatusBarButton ?? view.subviews.lazy.compactMap(button(in:)).first
-        }
-        NSApp.windows.lazy.compactMap { button(in: $0.contentView) }.first?.performClick(nil)
-    }
-
     private func follow() {
         withObservationTracking {
             if room.calls.contains(where: \.inCall) { panel.orderFrontRegardless() } else { panel.orderOut(nil) }
@@ -67,9 +58,7 @@ private struct FloatingOrbView: View {
 
 private final class OrbPressView: NSView {
     private let room: Room
-    private var press = OrbPress()
-    private var wait: Task<Void, Never>?
-    private var lastEffect: OrbPress.Effect?
+    private var pressedAt: NSPoint?
 
     init(room: Room) {
         self.room = room
@@ -80,35 +69,19 @@ private final class OrbPressView: NSView {
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    override func mouseDown(with event: NSEvent) { handle(.down(clicks: event.clickCount)) }
+    override func mouseDown(with event: NSEvent) { pressedAt = event.locationInWindow }
 
     override func mouseDragged(with event: NSEvent) {
-        handle(.moved)
-        guard case .drag? = lastEffect else { return }
-        // The window's own drag loop takes the mouse-up.
+        // A hand that shakes a little while clicking is still a click.
+        guard let start = pressedAt, hypot(event.locationInWindow.x - start.x, event.locationInWindow.y - start.y) > 3
+        else { return }
+        pressedAt = nil
         window?.performDrag(with: event)
-        handle(.up)
     }
 
-    override func mouseUp(with event: NSEvent) { handle(.up) }
-
-    private func handle(_ input: OrbPress.Input) {
-        let effect = press.handle(input)
-        lastEffect = effect
-        guard let effect else { return }
-        wait?.cancel()
-        switch effect {
-        case .wait:
-            wait = Task { [weak self] in
-                try? await Task.sleep(for: .seconds(NSEvent.doubleClickInterval))
-                guard !Task.isCancelled else { return }
-                self?.handle(.timeout)
-            }
-        case .startHold: room.pressTalk()
-        case .endHold: room.releaseTalk()
-        case .toggleTalk: room.toggleTalk()
-        case .openPanel: FloatingOrb.togglePanel()
-        case .drag: break
-        }
+    override func mouseUp(with event: NSEvent) {
+        guard pressedAt != nil else { return }
+        pressedAt = nil
+        room.toggleTalk()
     }
 }
