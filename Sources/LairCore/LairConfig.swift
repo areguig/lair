@@ -31,6 +31,7 @@ public struct LairConfig: Codable, Equatable, Sendable {
 public struct AgentConfig: Codable, Equatable, Identifiable, Sendable {
     public enum Kind: String, Codable, Sendable {
         case claudeCode = "claude-code"
+        case hermes
     }
 
     public var id: String
@@ -42,9 +43,11 @@ public struct AgentConfig: Codable, Equatable, Identifiable, Sendable {
     public var model: String?
     /// Working folder of the agent's sessions; `~` is your home folder.
     public var directory: String?
+    /// Hermes: base URL of its API server, e.g. `http://hermes.local:8642` at home or a public address away.
+    public var url: String?
 
     public init(id: String, name: String, kind: Kind, voice: String, color: String, model: String? = nil,
-                directory: String? = nil) {
+                directory: String? = nil, url: String? = nil) {
         self.id = id
         self.name = name
         self.kind = kind
@@ -52,7 +55,12 @@ public struct AgentConfig: Codable, Equatable, Identifiable, Sendable {
         self.color = color
         self.model = model
         self.directory = directory
+        self.url = url
     }
+
+    /// Keychain service holding this agent's secrets: `api-key`, and optionally
+    /// `cf-access-client-id` and `cf-access-client-secret`.
+    public var keychainService: String { "lair.\(id)" }
 
     public var directoryURL: URL? {
         directory.map { URL(fileURLWithPath: NSString(string: $0).expandingTildeInPath) }

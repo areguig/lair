@@ -20,7 +20,7 @@ import os
     let agent: AgentConfig
     var state = State.offline
     var lines: [Line] = []
-    @ObservationIgnored var session: ClaudeCodeSession?
+    @ObservationIgnored var session: (any AgentSession)?
     @ObservationIgnored var turn: Task<Void, Never>?
 
     init(agent: AgentConfig) {
@@ -80,12 +80,38 @@ import os
         guard readiness == .ready, !call.inCall else { return }
         do {
             try microphone.open()
-            call.session = try ClaudeCodeSession(model: call.agent.model, directory: call.agent.directoryURL,
-                                                 environment: environment)
+            call.session = try session(for: call.agent)
             call.lines = []
             call.state = .ready
         } catch {
             call.lines.append(.init(role: .notice, text: "Couldn't start \(call.agent.name): \(error.localizedDescription)"))
+        }
+    }
+
+    private func session(for agent: AgentConfig) throws -> any AgentSession {
+        switch agent.kind {
+        case .claudeCode:
+            return try ClaudeCodeSession(model: agent.model, directory: agent.directoryURL, environment: environment)
+        case .hermes:
+            guard let url = agent.url.flatMap(URL.init(string:)) else { throw SetupError.missingURL(agent.name) }
+            let secret = { Keychain.password(service: agent.keychainService, account: $0) }
+            guard let apiKey = secret("api-key") else { throw SetupError.missingKey(agent.keychainService) }
+            return HermesSession(baseURL: url, credentials: .init(apiKey: apiKey,
+                                                                  accessClientID: secret("cf-access-client-id"),
+                                                                  accessClientSecret: secret("cf-access-client-secret")),
+                                 model: agent.model)
+        }
+    }
+
+    enum SetupError: LocalizedError {
+        case missingURL(String)
+        case missingKey(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .missingURL(let name): "\(name) has no url in the config."
+            case .missingKey(let service): "No API key in the keychain under \"\(service)\" (account \"api-key\")."
+            }
         }
     }
 
@@ -140,7 +166,7 @@ import os
             let answer = call.lines.count - 1
 
             var splitter = SentenceSplitter()
-            for await delta in try session.ask(prompt) {
+            for try await delta in try session.ask(prompt) {
                 guard !Task.isCancelled else { return }
                 if firstToken == nil { firstToken = clock.now - start }
                 call.lines[answer].text += delta
