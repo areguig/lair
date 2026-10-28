@@ -30,5 +30,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>NSMicrophoneUsageDescription</key><string>$name listens while you hold the talk key, to hear what you say to your agents.</string>
 </dict></plist>
 PLIST
-codesign --force --deep --sign - "$app"
+# A stable identity keeps macOS permissions (microphone) across rebuilds; LAIR_SIGN_IDENTITY overrides the pick.
+identity=${LAIR_SIGN_IDENTITY:-$(security find-identity -v -p codesigning | awk '/Apple Development/ { print $2; exit }')}
+codesign --force --deep --sign "${identity:--}" "$app"
 echo "Installed $app"
