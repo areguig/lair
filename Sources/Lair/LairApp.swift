@@ -62,7 +62,7 @@ struct LairApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        Window("Lair Settings", id: SettingsView.id) {
+        Window(SettingsView.title, id: SettingsView.id) {
             SettingsView(store: store, room: room)
         }
         .windowResizability(.contentSize)

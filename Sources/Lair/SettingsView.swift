@@ -8,6 +8,18 @@ import os
 /// Agents and preferences. Every change is written to the config file as you make it.
 struct SettingsView: View {
     static let id = "settings"
+    static let title = "Lair Settings"
+
+    /// A menu-bar app isn't the active app when its panel is clicked, so polite activation leaves the window
+    /// behind others: raise it explicitly once it exists, then make it key.
+    @MainActor static func bringForward() {
+        NSApp.activate()
+        DispatchQueue.main.async {
+            guard let window = NSApp.windows.first(where: { $0.title == title }) else { return }
+            window.orderFrontRegardless()
+            window.makeKeyAndOrderFront(nil)
+        }
+    }
     let store: ConfigStore
     let room: Room
     /// The agent shown first; snapshots use it to show a given form.

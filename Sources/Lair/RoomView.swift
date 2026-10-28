@@ -225,7 +225,7 @@ struct RoomView: View {
 
     private func openSettings() {
         openWindow(id: SettingsView.id)
-        NSApp.activate()
+        SettingsView.bringForward()
     }
 
     private func perform(_ action: Call.Line.Action) {
