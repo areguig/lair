@@ -1,5 +1,14 @@
 /// Sent with every call so agents know they are heard, not read.
 public enum VoicePrompt {
+    /// The voice rules, plus who the agent is on this call: the name the user calls it and, when it has one,
+    /// its soul.
+    public static func forCall(name: String?, soul: String?) -> String {
+        var prompt = text
+        if let name, !name.isEmpty { prompt += "\n\nOn this call the user calls you \(name)." }
+        if let soul { prompt += "\n\nYour personality, written by the user:\n\(soul)" }
+        return prompt
+    }
+
     /// Sent when work an agent handed to the background has finished, so the result is heard.
     public static let backgroundResult = """
         Your background task just finished and its result is now in this conversation. \
@@ -13,6 +22,8 @@ public enum VoicePrompt {
         - No markdown, lists, tables, headings, emoji or code blocks: they can't be heard.
         - Never read out URLs, file paths, commands, code, hashes, IDs or long numbers. Say what they are instead, \
         like "the config file in your home folder" or "the link I found on the Apple docs".
+        - When the user needs to see one of those, wrap it in <show>…</show>: it appears on their screen and is \
+        never read aloud. Example: "I updated the config <show>~/.config/app/config.json</show> and restarted it."
         - Round numbers and say units in words. Spell out only what the user must type.
         - When you use tools, don't narrate each step; say briefly what you're doing if it will take a while, \
         then give the result.

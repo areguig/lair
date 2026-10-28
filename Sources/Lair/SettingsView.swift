@@ -140,6 +140,7 @@ private struct AgentsSettings: View {
         config.agents.removeAll { $0.id == agent.id }
         store.save(config)
         for account in agent.secretAccounts { Keychain.delete(service: agent.keychainService, account: account) }
+        Souls.standard.remove(agent.id)
         selection = config.agents.first?.id
     }
 }
@@ -208,6 +209,8 @@ private struct AgentForm: View {
             }
             if agent.kind == .hermes {
                 ExtraHeaders(agent: $agent)
+            } else {
+                SoulEditor(agentID: agent.id)
             }
         }
         .formStyle(.grouped)
@@ -283,6 +286,52 @@ private struct FolderField: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         path = url.path.hasPrefix(home) ? "~" + url.path.dropFirst(home.count) : url.path
+    }
+}
+
+/// This agent's own soul: its personality on calls, kept in `souls/<id>.md` and saved as you type.
+private struct SoulEditor: View {
+    let agentID: String
+    @State private var text = ""
+    @State private var loaded = false
+
+    var body: some View {
+        Section {
+            TextEditor(text: $text)
+                .font(.body)
+                .frame(minHeight: 110)
+                .scrollContentBackground(.hidden)
+                .overlay(alignment: .topLeading) {
+                    if text.isEmpty {
+                        Text("How this agent talks and behaves on a call: tone, humor, how much it says, how it calls you…")
+                            .foregroundStyle(.tertiary)
+                            .padding(.top, 1)
+                            .padding(.leading, 5)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .onChange(of: text) { if loaded { try? Souls.standard.save(text, for: agentID) } }
+        } header: {
+            HStack {
+                Text("Soul")
+                Spacer()
+                Menu("Start from…") {
+                    ForEach(Souls.starters, id: \.name) { starter in
+                        Button(starter.name) { text = starter.text }
+                    }
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+            }
+        } footer: {
+            Text("Only this agent gets it, from its next call. It's a Markdown file you can also edit by hand.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .onAppear {
+            text = Souls.standard.soul(for: agentID) ?? ""
+            loaded = true
+        }
     }
 }
 

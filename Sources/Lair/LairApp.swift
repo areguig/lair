@@ -133,7 +133,8 @@ struct MenuBarIcon: View {
                 call.lines += [
                     .init(role: .you, text: "Yes, go ahead."),
                     .init(role: .info, text: "Always allowed: Bump the build number in Info.plist and commit it"),
-                    .init(role: .agent, text: "Done. The changelog is updated and the build number is bumped."),
+                    .init(role: .agent, text: "Done. The changelog is updated and the build number is bumped.",
+                          shown: ["~/dev/app/CHANGELOG.md", "https://github.com/example/app/pull/42"]),
                 ]
                 room.calls[1].lines = [.init(role: .problem, text: "Sage needs an API key. Add it in Settings › Agents.",
                                              action: .openSettings)]

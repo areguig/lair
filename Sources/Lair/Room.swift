@@ -21,6 +21,8 @@ import os
         let role: Role
         var text: String
         var action: Action?
+        /// Links, paths and commands the agent showed instead of saying (`<show>…</show>`).
+        var shown: [String] = []
     }
 
     var agent: AgentConfig
@@ -175,9 +177,9 @@ import os
             call.lines = []
             call.state = .ready
         } catch let error as SetupError {
-            call.lines.append(.init(role: .problem, text: error.message(for: call.agent.name), action: .openSettings))
+            report(in: call, .init(role: .problem, text: error.message(for: call.agent.name), action: .openSettings))
         } catch {
-            call.lines.append(.init(role: .problem, text: "Couldn't start \(call.agent.name): \(error.localizedDescription)",
+            report(in: call, .init(role: .problem, text: "Couldn't start \(call.agent.name): \(error.localizedDescription)",
                                     action: .openSettings))
         }
     }
@@ -186,10 +188,11 @@ import os
         switch agent.kind {
         case .claudeCode:
             return try ClaudeCodeSession(model: agent.model, directory: agent.directoryURL, environment: environment,
-                                         permissionMode: agent.permissionMode, errorLog: AgentLog.url(for: agent.id))
+                                         permissionMode: agent.permissionMode, errorLog: AgentLog.url(for: agent.id),
+                                         systemPrompt: callPrompt(for: agent))
         case .omp:
             return try OmpSession(model: agent.model, directory: agent.directoryURL, environment: environment,
-                                  errorLog: AgentLog.url(for: agent.id))
+                                  errorLog: AgentLog.url(for: agent.id), systemPrompt: callPrompt(for: agent))
         case .hermes:
             guard let url = agent.url.flatMap(URL.init(string:)), url.host() != nil else { throw SetupError.missingAddress }
             let secret = { Keychain.password(service: agent.keychainService, account: $0) }
@@ -198,6 +201,17 @@ import os
             for name in agent.headers ?? [] { headers[name] = secret(AgentConfig.headerAccount(name)) }
             return HermesSession(baseURL: url, credentials: .init(apiKey: apiKey, headers: headers), model: agent.model)
         }
+    }
+
+    /// A problem line, with its sound so it's noticed with the panel closed.
+    private func report(in call: Call, _ line: Call.Line) {
+        call.lines.append(line)
+        speaker?.play(.problem)
+    }
+
+    /// Hermes agents keep the identity they already have; local agents get their name and soul.
+    private func callPrompt(for agent: AgentConfig) -> String {
+        VoicePrompt.forCall(name: agent.name, soul: Souls.standard.soul(for: agent.id))
     }
 
     enum SetupError: Error {
@@ -238,6 +252,7 @@ import os
             call.lines.append(.init(role: .info, text: "You cut in."))
         }
         guard call.state == .ready || call.state == .waiting else { return }
+        speaker?.play(.listening)
         microphone.startCapture()
         call.state = .listening
     }
@@ -251,6 +266,7 @@ import os
             return
         }
         call.state = .thinking
+        speaker?.play(.sent)
         if call.pendingApproval != nil {
             Task { await hearAnswer(in: call, from: samples) }
         } else {
@@ -282,7 +298,7 @@ import os
             try call.session?.answer(request, decision: decision)
             if call.state == .waiting { call.state = .thinking }
         } catch {
-            call.lines.append(.init(role: .problem, text: error.localizedDescription))
+            report(in: call, .init(role: .problem, text: error.localizedDescription))
         }
     }
 
@@ -307,7 +323,7 @@ import os
         do {
             prompt = try await voice.transcribe(samples)
         } catch {
-            call.lines.append(.init(role: .problem, text: "Couldn't make out what you said: \(error.localizedDescription)"))
+            report(in: call, .init(role: .problem, text: "Couldn't make out what you said: \(error.localizedDescription)"))
             call.state = .ready
             return
         }
@@ -379,6 +395,8 @@ import os
             var answer: Int?
             var answered = false
             var splitter = SentenceSplitter()
+            // Links and paths in <show> tags go to the screen, never to the voice.
+            var showing = ShowFilter()
             for try await reply in try session.ask(prompt) {
                 guard !Task.isCancelled else { return }
                 switch reply {
@@ -388,38 +406,53 @@ import os
                         call.lines.append(.init(role: .agent, text: ""))
                         answer = call.lines.count - 1
                     }
-                    call.lines[answer!].text += delta
+                    let visible = showing.feed(delta)
+                    call.lines[answer!].text += visible.spoken
+                    call.lines[answer!].shown += visible.shown
                     answered = true
-                    for sentence in splitter.feed(delta) where try await say(sentence, in: call) && firstAudio == nil {
+                    for sentence in splitter.feed(visible.spoken) where try await say(sentence, in: call) && firstAudio == nil {
                         firstAudio = clock.now - start
                     }
                 case .approval(let request):
+                    let visible = showing.flush()
+                    if let answer {
+                        call.lines[answer].text += visible.spoken
+                        call.lines[answer].shown += visible.shown
+                    }
+                    for sentence in splitter.feed(visible.spoken) { _ = try await say(sentence, in: call) }
                     if let rest = splitter.flush() { _ = try await say(rest, in: call) }
                     answer = nil
                     try await ask(call, to: request)
                 }
             }
+            let visible = showing.flush()
+            if let answer {
+                call.lines[answer].text += visible.spoken
+                call.lines[answer].shown += visible.shown
+            }
+            for sentence in splitter.feed(visible.spoken) { _ = try await say(sentence, in: call) }
             if let rest = splitter.flush(), try await say(rest, in: call), firstAudio == nil {
                 firstAudio = clock.now - start
             }
             if !answered {
-                call.lines.append(.init(role: .problem, text: "\(call.agent.name) didn't answer."))
+                report(in: call, .init(role: .problem, text: "\(call.agent.name) didn't answer."))
             }
             if call.id == focusedID {
                 await speaker.waitUntilDone()
             } else if !Task.isCancelled {
                 call.unread = true
+                speaker.play(.done)
                 announce("\(call.agent.name) is done.", for: call)
             }
         } catch {
             guard !Task.isCancelled else { return }
             if error is AgentStopped {
                 let reason = AgentLog.firstLine(for: call.id).map { ": \($0)" } ?? "."
-                call.lines.append(.init(role: .problem, text: "\(call.agent.name) stopped\(reason)",
+                report(in: call, .init(role: .problem, text: "\(call.agent.name) stopped\(reason)",
                                         action: .showLog(agentID: call.id)))
                 hangUp(call)
             } else {
-                call.lines.append(.init(role: .problem, text: error.localizedDescription))
+                report(in: call, .init(role: .problem, text: error.localizedDescription))
             }
         }
     }
@@ -428,6 +461,7 @@ import os
     private func ask(_ call: Call, to request: ApprovalRequest) async throws {
         call.pendingApproval = request
         notifier.post(request, from: call.agent.name)
+        speaker?.play(.needsYou)
         if call.id != focusedID {
             call.unread = true
             call.state = .waiting
