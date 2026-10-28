@@ -10,10 +10,12 @@ struct SettingsView: View {
     static let id = "settings"
     let store: ConfigStore
     let room: Room
+    /// The agent shown first; snapshots use it to show a given form.
+    var selectedAgent: String?
 
     var body: some View {
         TabView {
-            AgentsSettings(store: store, room: room)
+            AgentsSettings(store: store, room: room, selection: selectedAgent)
                 .tabItem { Label("Agents", systemImage: "person.2") }
             GeneralSettings(store: store)
                 .tabItem { Label("General", systemImage: "gearshape") }
@@ -27,7 +29,7 @@ struct SettingsView: View {
 private struct AgentsSettings: View {
     let store: ConfigStore
     let room: Room
-    @State private var selection: String?
+    @State var selection: String?
     @State private var removing: AgentConfig?
 
     var body: some View {
@@ -168,13 +170,16 @@ private struct AgentForm: View {
                     TextField("Address", text: optional($agent.url), prompt: Text("http://hermes.local:8642"))
                     TextField("Model", text: optional($agent.model), prompt: Text("hermes-agent"))
                     SecretField(title: "API key", service: agent.keychainService, account: "api-key")
-                    ExtraHeaders(agent: $agent)
                 }
             } footer: {
-                Text("Model, folder and address apply from the agent's next call. Keys stay in your Keychain, "
-                     + "never in the config file.")
+                Text(agent.kind == .hermes
+                     ? "Address and model apply from the agent's next call. Keys stay in your Keychain, never in the config file."
+                     : "Model and folder apply from the agent's next call.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+            if agent.kind == .hermes {
+                ExtraHeaders(agent: $agent)
             }
         }
         .formStyle(.grouped)
@@ -226,7 +231,7 @@ private struct ExtraHeaders: View {
     @State private var newName = ""
 
     var body: some View {
-        DisclosureGroup("Extra headers") {
+        Section {
             ForEach(agent.headers ?? [], id: \.self) { name in
                 HStack {
                     SecretField(title: name, service: agent.keychainService, account: AgentConfig.headerAccount(name))
@@ -241,11 +246,14 @@ private struct ExtraHeaders: View {
                 }
             }
             HStack {
-                TextField("Header name", text: $newName, prompt: Text("X-Access-Token"))
+                TextField("Add a header", text: $newName, prompt: Text("Header name, like X-Access-Token"))
                     .onSubmit(add)
                 Button("Add", action: add).disabled(!isValid(newName))
             }
-            Text("For a proxy in front of the agent that wants its own token. Values are kept in your Keychain.")
+        } header: {
+            Text("Extra headers")
+        } footer: {
+            Text("Only needed when a proxy in front of the agent wants its own token. Values are kept in your Keychain.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -277,19 +285,27 @@ private struct SecretField: View {
     let account: String
     @State private var value = ""
     @State private var saved = false
+    @State private var replacing = false
     @State private var problem: String?
 
     var body: some View {
         LabeledContent(title) {
             HStack {
-                SecureField(saved ? "Saved in Keychain" : "Not set", text: $value)
-                    .onSubmit(save)
-                Button("Save", action: save).disabled(value.isEmpty)
-                if saved {
+                if saved && !replacing {
+                    Label("Saved", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Button("Replace") { replacing = true }
                     Button("Remove") {
                         Keychain.delete(service: service, account: account)
                         saved = false
                     }
+                } else {
+                    SecureField(title, text: $value, prompt: Text("Paste the value"))
+                        .labelsHidden()
+                        .frame(minWidth: 180)
+                        .onSubmit(save)
+                    Button("Save", action: save).disabled(value.isEmpty)
+                    if replacing { Button("Cancel") { replacing = false; value = "" } }
                 }
             }
         }
@@ -298,9 +314,11 @@ private struct SecretField: View {
     }
 
     private func save() {
+        guard !value.isEmpty else { return }
         do {
             try Keychain.setPassword(value, service: service, account: account)
             saved = true
+            replacing = false
             value = ""
             problem = nil
         } catch {

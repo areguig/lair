@@ -34,7 +34,8 @@ struct LairApp: App {
             exit(0)
         }
         if let i = CommandLine.arguments.firstIndex(of: "--settings-snapshot"), i + 1 < CommandLine.arguments.count {
-            Snapshot.writeSettings(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]))
+            let agent = i + 2 < CommandLine.arguments.count ? CommandLine.arguments[i + 2] : nil
+            Snapshot.writeSettings(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]), agent: agent)
             exit(0)
         }
         if let i = CommandLine.arguments.firstIndex(of: "--icon"), i + 1 < CommandLine.arguments.count {
@@ -113,12 +114,13 @@ struct MenuBarIcon: View {
 
     /// `Lair --icon out.png`: the 1024px app icon, drawn from the orb.
     /// The settings window with demo agents, drawn in a hidden window so native controls render.
-    static func writeSettings(to url: URL) {
+    static func writeSettings(to url: URL, agent: String? = nil) {
         let file = FileManager.default.temporaryDirectory.appending(path: "lair-settings-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: file) }
         try? LairConfig(agents: Demo.agents).save(to: file)
         let store = ConfigStore(url: file)
-        let view = NSHostingView(rootView: SettingsView(store: store, room: Room(config: store.config)))
+        let view = NSHostingView(rootView: SettingsView(store: store, room: Room(config: store.config),
+                                                        selectedAgent: agent))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 660, height: 500), styleMask: [.titled],
                               backing: .buffered, defer: false)
         window.contentView = view
