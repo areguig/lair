@@ -42,6 +42,11 @@ private struct AgentsSettings: View {
                             Text(agent.name.isEmpty ? "Unnamed" : agent.name)
                             Text(agent.kind.label).font(.caption).foregroundStyle(.secondary)
                         }
+                        if hasProblem(agent) {
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                                .help("This agent needs attention")
+                                .accessibilityLabel("Needs attention")
+                        }
                     }
                     .tag(agent.id)
                 }
@@ -58,6 +63,7 @@ private struct AgentsSettings: View {
                     .menuIndicator(.hidden)
                     .fixedSize()
                     .help("Add an agent")
+                    .accessibilityLabel("Add an agent")
                     Button {
                         removing = store.config.agents.first { $0.id == selection }
                     } label: {
@@ -66,6 +72,7 @@ private struct AgentsSettings: View {
                     .buttonStyle(.borderless)
                     .disabled(selection == nil)
                     .help("Remove the selected agent")
+                    .accessibilityLabel("Remove the selected agent")
                     Spacer()
                 }
                 .padding(6)
@@ -73,7 +80,7 @@ private struct AgentsSettings: View {
             .frame(width: 190)
             Divider()
             if let index = store.config.agents.firstIndex(where: { $0.id == selection }) {
-                AgentForm(agent: binding(at: index), room: room)
+                AgentForm(agent: binding(at: index), others: store.config.agents.filter { $0.id != selection }, room: room)
                     .id(store.config.agents[index].id)
             } else {
                 Text("Select an agent, or add one with +.")
@@ -102,11 +109,23 @@ private struct AgentsSettings: View {
             })
     }
 
+    private func hasProblem(_ agent: AgentConfig) -> Bool {
+        let others = store.config.agents.filter { $0.id != agent.id }
+        if nameProblem(agent.name, others: others) != nil { return true }
+        guard agent.kind == .hermes else { return false }
+        return addressProblem(agent.url) != nil || Keychain.password(service: agent.keychainService, account: "api-key") == nil
+    }
+
     private func add(_ kind: AgentConfig.Kind) {
         var config = store.config
         let used = Set(config.agents.map(\.voice))
+        // "Claude Code", then "Claude Code 2"…: two new agents never share a name.
+        let taken = Set(config.agents.map { $0.name.lowercased() })
+        var name = kind.label
+        var n = 2
+        while taken.contains(name.lowercased()) { name = "\(kind.label) \(n)"; n += 1 }
         let agent = AgentConfig(
-            id: config.newAgentID(for: kind.label), name: kind.label, kind: kind,
+            id: config.newAgentID(for: kind.label), name: name, kind: kind,
             voice: VoiceModels.voices.first { !used.contains($0) } ?? "af_heart",
             color: AgentConfig.palette[config.agents.count % AgentConfig.palette.count],
             directory: kind == .hermes ? nil : "~")
@@ -126,13 +145,17 @@ private struct AgentsSettings: View {
 
 private struct AgentForm: View {
     @Binding var agent: AgentConfig
+    let others: [AgentConfig]
     let room: Room
 
     var body: some View {
         Form {
             Section {
-                TextField("Name", text: $agent.name, prompt: Text("What you call it by voice"))
-                Picker("Kind", selection: $agent.kind) {
+                VStack(alignment: .leading, spacing: 2) {
+                    TextField("Name", text: $agent.name, prompt: Text("What you call it by voice"))
+                    if let problem = nameProblem(agent.name, others: others) { Helper(problem) }
+                }
+                Picker("Kind", selection: kind) {
                     ForEach(AgentConfig.Kind.allCases, id: \.self) { Text($0.label).tag($0) }
                 }
                 ColorPicker("Color", selection: Binding(get: { Color(hex: agent.color) }, set: { agent.color = $0.hex }),
@@ -142,11 +165,12 @@ private struct AgentForm: View {
                         ForEach(VoiceModels.voices, id: \.self) { Text(voiceLabel($0)).tag($0) }
                     }
                     Button {
-                        room.preview(voice: agent.voice, name: agent.name)
+                        room.preview(voice: agent.voice, name: agent.name.isEmpty ? "your agent" : agent.name)
                     } label: {
                         Image(systemName: "play.fill")
                     }
                     .help("Hear this voice")
+                    .accessibilityLabel("Hear this voice")
                     .disabled(room.readiness != .ready)
                 }
             }
@@ -167,7 +191,10 @@ private struct AgentForm: View {
                     TextField("Model", text: optional($agent.model), prompt: Text("omp's default"))
                     FolderField(path: $agent.directory)
                 case .hermes:
-                    TextField("Address", text: optional($agent.url), prompt: Text("http://hermes.local:8642"))
+                    VStack(alignment: .leading, spacing: 2) {
+                        TextField("Address", text: optional($agent.url), prompt: Text("http://hermes.local:8642"))
+                        if let problem = addressProblem(agent.url) { Helper(problem) }
+                    }
                     TextField("Model", text: optional($agent.model), prompt: Text("hermes-agent"))
                     SecretField(title: "API key", service: agent.keychainService, account: "api-key")
                 }
@@ -185,6 +212,18 @@ private struct AgentForm: View {
         .formStyle(.grouped)
     }
 
+    /// Switching kind drops the settings that only made sense for the old one.
+    private var kind: Binding<AgentConfig.Kind> {
+        Binding(get: { agent.kind }, set: { new in
+            guard new != agent.kind else { return }
+            agent.kind = new
+            agent.model = nil
+            agent.directory = new == .hermes ? nil : "~"
+            if new != .hermes { agent.url = nil; agent.headers = nil }
+            if new != .claudeCode { agent.permissionMode = nil }
+        })
+    }
+
     /// An empty field means "not set", so the agent's own default applies.
     private func optional(_ value: Binding<String?>) -> Binding<String> {
         Binding(get: { value.wrappedValue ?? "" }, set: { value.wrappedValue = $0.isEmpty ? nil : $0 })
@@ -198,6 +237,28 @@ private struct AgentForm: View {
         let gender = parts[0].last == "m" ? "male" : "female"
         return "\(parts[1].capitalized) · \(accent) \(gender)"
     }
+}
+
+private struct Helper: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+    var body: some View { Text(text).font(.caption).foregroundStyle(.red) }
+}
+
+private func nameProblem(_ name: String, others: [AgentConfig]) -> String? {
+    let name = name.trimmingCharacters(in: .whitespaces)
+    if name.isEmpty { return "A name is needed to call this agent by voice" }
+    if others.contains(where: { $0.name.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare(name) == .orderedSame }) {
+        return "Another agent already has this name; saying it would be ambiguous"
+    }
+    return nil
+}
+
+private func addressProblem(_ address: String?) -> String? {
+    guard let address, !address.isEmpty else { return "Needed to reach the agent" }
+    guard let url = URL(string: address), ["http", "https"].contains(url.scheme?.lowercased()), url.host?.isEmpty == false
+    else { return "Use a full address, like http://hermes.local:8642" }
+    return nil
 }
 
 private struct FolderField: View {
@@ -243,12 +304,16 @@ private struct ExtraHeaders: View {
                     }
                     .buttonStyle(.borderless)
                     .help("Remove this header")
+                    .accessibilityLabel("Remove header \(name)")
                 }
             }
-            HStack {
-                TextField("Add a header", text: $newName, prompt: Text("Header name, like X-Access-Token"))
-                    .onSubmit(add)
-                Button("Add", action: add).disabled(!isValid(newName))
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    TextField("Add a header", text: $newName, prompt: Text("Header name, like X-Access-Token"))
+                        .onSubmit(add)
+                    Button("Add", action: add).disabled(!isValid(newName))
+                }
+                if let hint = headerHint(newName) { Helper(hint) }
             }
         } header: {
             Text("Extra headers")
@@ -268,9 +333,16 @@ private struct ExtraHeaders: View {
 
     /// HTTP header names: letters, digits and hyphens, not already listed.
     private func isValid(_ name: String) -> Bool {
+        !name.trimmingCharacters(in: .whitespaces).isEmpty && headerHint(name) == nil
+    }
+
+    /// Why the typed name can't be added; nil while empty or fine.
+    private func headerHint(_ name: String) -> String? {
         let name = name.trimmingCharacters(in: .whitespaces)
-        return !name.isEmpty && name.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }
-            && !(agent.headers ?? []).contains { $0.caseInsensitiveCompare(name) == .orderedSame }
+        guard !name.isEmpty else { return nil }
+        if !name.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }) { return "Letters, digits and hyphens only" }
+        if (agent.headers ?? []).contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) { return "Already added" }
+        return nil
     }
 }
 
@@ -339,6 +411,13 @@ private struct GeneralSettings: View {
             Section {
                 KeyboardShortcuts.Recorder("Hold to talk:", name: .pushToTalk)
                 Toggle("Open at login", isOn: Binding(get: { opensAtLogin }, set: setOpensAtLogin))
+            } footer: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Pick a shortcut no other app uses; it works from anywhere.")
+                    Text("Allow notifications to answer approvals from anywhere; without them, answer by voice or in the panel.")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
             Section {
                 LabeledContent("Config file") {
@@ -358,8 +437,17 @@ private struct GeneralSettings: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            Section {
+                Text(Self.version).font(.caption).foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
+    }
+
+    private static var version: String {
+        let info = Bundle.main.infoDictionary
+        guard let short = info?["CFBundleShortVersionString"] as? String else { return "Lair, development build" }
+        return "Lair \(short)" + ((info?["CFBundleVersion"] as? String).map { " (build \($0))" } ?? "")
     }
 
     private func setOpensAtLogin(_ on: Bool) {
