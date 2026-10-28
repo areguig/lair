@@ -152,20 +152,19 @@ private struct Transcript: View {
     let lines: [Call.Line]
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: 10) {
-                    ForEach(lines) { line in
-                        row(line).id(line.id)
-                    }
+        ScrollView(showsIndicators: false) {
+            LazyVStack(alignment: .leading, spacing: 10) {
+                ForEach(lines) { line in
+                    row(line)
                 }
-                .padding(.vertical, 12)
             }
-            .frame(height: lines.isEmpty ? 0 : 150)
-            .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.18),
-                                         .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom))
-            .onChange(of: lines.last?.text) { proxy.scrollTo(lines.last?.id, anchor: .bottom) }
+            .padding(.vertical, 12)
         }
+        // Stays pinned to the newest words as the reply streams in.
+        .defaultScrollAnchor(.bottom)
+        .frame(height: lines.isEmpty ? 0 : 150)
+        .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.18),
+                                     .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom))
         .animation(.smooth, value: lines.isEmpty)
     }
 

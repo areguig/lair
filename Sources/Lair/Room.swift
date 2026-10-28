@@ -2,6 +2,7 @@ import Foundation
 import LairCore
 import LairVoice
 import Observation
+import os
 
 /// One agent you can call; while in a call it holds a live session.
 @Observable @MainActor final class Call: @MainActor Identifiable {
@@ -116,10 +117,23 @@ import Observation
         call.turn = Task { await reply(in: call, to: samples) }
     }
 
+    private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "lair", category: "turn")
+
     private func reply(in call: Call, to samples: [Float]) async {
         defer { if call.inCall { call.state = .ready } }
+        let clock = ContinuousClock()
+        let start = clock.now
+        var heard, firstToken, firstAudio: Duration?
+        defer {
+            func ms(_ d: Duration?) -> Int { d.map { Int($0 / .milliseconds(1)) } ?? -1 }
+            Self.log.info("""
+                \(call.id, privacy: .public): \(samples.count / 16) ms of speech; heard \(ms(heard)) ms, \
+                first token \(ms(firstToken)) ms, first audio \(ms(firstAudio)) ms after release
+                """)
+        }
         do {
             let prompt = try await voice.transcribe(samples)
+            heard = clock.now - start
             guard !prompt.isEmpty, let session = call.session, let speaker else { return }
             call.lines.append(.init(role: .you, text: prompt))
             call.lines.append(.init(role: .agent, text: ""))
@@ -128,10 +142,15 @@ import Observation
             var splitter = SentenceSplitter()
             for await delta in try session.ask(prompt) {
                 guard !Task.isCancelled else { return }
+                if firstToken == nil { firstToken = clock.now - start }
                 call.lines[answer].text += delta
-                for sentence in splitter.feed(delta) { try await say(sentence, in: call) }
+                for sentence in splitter.feed(delta) where try await say(sentence, in: call) && firstAudio == nil {
+                    firstAudio = clock.now - start
+                }
             }
-            if let rest = splitter.flush() { try await say(rest, in: call) }
+            if let rest = splitter.flush(), try await say(rest, in: call), firstAudio == nil {
+                firstAudio = clock.now - start
+            }
             if call.lines[answer].text.isEmpty {
                 call.lines[answer] = .init(role: .notice, text: "\(call.agent.name) didn't answer.")
             }
@@ -141,12 +160,14 @@ import Observation
         }
     }
 
-    private func say(_ sentence: String, in call: Call) async throws {
+    /// Returns whether the sentence was queued for playback.
+    private func say(_ sentence: String, in call: Call) async throws -> Bool {
         let text = Speakable.text(sentence)
-        guard !text.isEmpty, let speaker else { return }
+        guard !text.isEmpty, let speaker else { return false }
         let samples = try await voice.speech(for: text, voice: call.agent.voice)
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled else { return false }
         speaker.enqueue(samples)
         call.state = .speaking
+        return true
     }
 }
