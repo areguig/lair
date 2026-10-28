@@ -13,12 +13,30 @@ public protocol AgentSession: Sendable {
     var details: AsyncStream<String> { get }
     /// Work the agent finished in the background after the turn that started it ended.
     var news: AsyncStream<String> { get }
+    /// Models the agent offers right now, for the switcher.
+    var models: [String] { get }
+    /// Thinking levels, from least to most.
+    var thinkingLevels: [String] { get }
+    /// Switches the model for the rest of the call.
+    func setModel(_ model: String) throws
+    /// Changes how much the agent thinks for the rest of the call; throws `ChangeLater` when it only applies
+    /// from the next call.
+    func setThinking(_ level: String) throws
+}
+
+/// The agent can't make this change mid-call; it applies from the next call.
+public struct ChangeLater: Error {
+    public init() {}
 }
 
 extension AgentSession {
     public func answer(_ request: ApprovalRequest, decision: ApprovalDecision) throws {}
     public var details: AsyncStream<String> { AsyncStream { $0.finish() } }
     public var news: AsyncStream<String> { AsyncStream { $0.finish() } }
+    public var models: [String] { [] }
+    public var thinkingLevels: [String] { [] }
+    public func setModel(_ model: String) throws { throw ChangeLater() }
+    public func setThinking(_ level: String) throws { throw ChangeLater() }
 }
 
 /// "gpt-6-luna" and "low" → "gpt-6-luna · low thinking".

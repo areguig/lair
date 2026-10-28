@@ -74,3 +74,32 @@ struct AgentDetailsTests {
         #expect(agentDetails(model: nil, thinking: nil) == nil)
     }
 }
+
+struct ModelSwitchTests {
+    @Test func readsOmpsAvailableModels() {
+        let line = #"{"type":"response","command":"get_available_models","success":true,"data":{"models":[{"id":"gpt-6-luna","provider":"github-copilot","name":"Luna"},{"id":"claude-opus-5.5","provider":"github-copilot"}]}}"#
+        #expect(OmpStream.parse(line: line) == .models([
+            OmpModel(provider: "github-copilot", id: "gpt-6-luna"), OmpModel(provider: "github-copilot", id: "claude-opus-5.5"),
+        ]))
+    }
+
+    @Test func writesOmpsSwitchCommands() throws {
+        let model = try JSONSerialization.jsonObject(with: OmpStream.setModel(OmpModel(provider: "p", id: "m"))) as? [String: String]
+        #expect(model == ["type": "set_model", "provider": "p", "modelId": "m"])
+        let thinking = try JSONSerialization.jsonObject(with: OmpStream.setThinking("high")) as? [String: String]
+        #expect(thinking == ["type": "set_thinking_level", "level": "high"])
+    }
+
+    @Test func readsTheModelClaudeCodeSwitchedTo() {
+        let line = #"{"type":"control_response","response":{"subtype":"success","request_id":"r","response":{"model":"claude-sonnet-5-5"}}}"#
+        #expect(ClaudeCodeStream.parse(line: line) == .details("claude-sonnet-5-5"))
+        #expect(ClaudeCodeStream.parse(line: #"{"type":"control_response","response":{"subtype":"success","request_id":"r"}}"#) == nil)
+    }
+
+    @Test func asksClaudeCodeToSwitchModel() throws {
+        let object = try JSONSerialization.jsonObject(with: ClaudeCodeStream.setModelRequest("opus")) as? [String: Any]
+        let request = object?["request"] as? [String: String]
+        #expect(object?["type"] as? String == "control_request")
+        #expect(request == ["subtype": "set_model", "model": "opus"])
+    }
+}

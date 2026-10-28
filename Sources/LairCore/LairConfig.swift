@@ -62,6 +62,8 @@ public struct AgentConfig: Codable, Equatable, Identifiable, Sendable {
     public var model: String?
     /// Working folder of the agent's sessions; `~` is your home folder.
     public var directory: String?
+    /// How much the agent thinks: Claude Code's effort (low…max), omp's thinking level (off…max).
+    public var thinking: String?
     /// Claude Code: `--permission-mode` for its sessions; unset keeps your own Claude Code settings.
     public var permissionMode: String?
     /// Hermes: base URL of its API server, e.g. `http://hermes.local:8642` at home or a public address away.

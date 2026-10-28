@@ -83,7 +83,9 @@ struct RoomView: View {
                 Text(call.agent.name)
                     .font(.system(.title3, design: .rounded, weight: .semibold))
                     .lineLimit(1)
-                if let details = call.details {
+                if call.inCall && call.agent.kind != .hermes {
+                    ModelSwitcher(call: call, room: room)
+                } else if let details = call.details {
                     Text(details)
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.55))
@@ -266,6 +268,57 @@ struct RoomView: View {
         case .speaking: "speaking"
         case .waiting: "waiting for your OK"
         }
+    }
+}
+
+/// The model line under the name, during a call: click it to switch model or thinking for this call.
+private struct ModelSwitcher: View {
+    let call: Call
+    let room: Room
+
+    var body: some View {
+        let models = call.session?.models ?? []
+        let levels = call.session?.thinkingLevels ?? []
+        Menu {
+            if !models.isEmpty {
+                Section("Model") {
+                    ForEach(models, id: \.self) { model in
+                        Button(model) { run(.model(model)) }
+                    }
+                }
+            }
+            if !levels.isEmpty {
+                Section(call.agent.kind == .claudeCode ? "Effort, from the next call" : "Thinking") {
+                    ForEach(levels, id: \.self) { level in
+                        Toggle(level, isOn: Binding(get: { (call.thinkingNextCall ?? call.thinking) == level },
+                                                    set: { _ in run(.thinking(level)) }))
+                    }
+                }
+            }
+            Divider()
+            Button("Go fast", systemImage: "hare") { run(.fast) }
+            Button("Go deep", systemImage: "tortoise") { run(.deep) }
+        } label: {
+            HStack(spacing: 4) {
+                Text(call.details ?? "Choose model")
+                    .lineLimit(1)
+                Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
+            }
+            .font(.system(.caption, design: .monospaced))
+            .foregroundStyle(.white.opacity(0.62))
+            .padding(.horizontal, 8).padding(.vertical, 2)
+            .background(.white.opacity(0.06), in: Capsule())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Switch model or thinking for this call — or just say “switch to Opus”, “think harder”")
+        .accessibilityLabel("Model: \(call.details ?? "default"). Switch model or thinking")
+    }
+
+    private func run(_ command: VoiceCommand) {
+        Task { await room.run(command, in: call) }
     }
 }
 

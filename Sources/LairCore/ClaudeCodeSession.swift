@@ -9,8 +9,13 @@ public final class ClaudeCodeSession: AgentSession {
     private let detailsContinuation: AsyncStream<String>.Continuation
 
     /// `permissionMode` nil keeps your Claude Code settings; whatever they would ask you about comes to Lair.
-    public init(model: String? = nil, directory: URL? = nil, environment: [String: String]? = nil,
-                permissionMode: String? = nil, errorLog: URL? = nil, systemPrompt: String = VoicePrompt.text) throws {
+    public let models = ["opus", "sonnet", "haiku"]
+    /// Claude Code's effort; it only changes from the next call.
+    public let thinkingLevels = ["low", "medium", "high", "xhigh", "max"]
+
+    public init(model: String? = nil, effort: String? = nil, directory: URL? = nil,
+                environment: [String: String]? = nil, permissionMode: String? = nil, errorLog: URL? = nil,
+                systemPrompt: String = VoicePrompt.text) throws {
         (details, detailsContinuation) = AsyncStream<String>.makeStream()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.currentDirectoryURL = directory
@@ -20,6 +25,7 @@ public final class ClaudeCodeSession: AgentSession {
                              "--permission-prompt-tool", "stdio", "--append-system-prompt", systemPrompt]
             + (model.map { ["--model", $0] } ?? [])
             + (permissionMode.map { ["--permission-mode", $0] } ?? [])
+            + (effort.map { ["--effort", $0] } ?? [])
         let output = Pipe()
         process.standardInput = input
         process.standardOutput = output
@@ -51,6 +57,10 @@ public final class ClaudeCodeSession: AgentSession {
 
     public func answer(_ request: ApprovalRequest, decision: ApprovalDecision) throws {
         try send(ClaudeCodeStream.approvalResponse(request, decision: decision))
+    }
+
+    public func setModel(_ model: String) throws {
+        try send(ClaudeCodeStream.setModelRequest(model))
     }
 
     public func interrupt() {

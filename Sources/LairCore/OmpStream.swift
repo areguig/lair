@@ -8,6 +8,8 @@ public enum OmpStream {
         case unsupportedDialog(id: String)
         /// The model or thinking level changed: ask for the state again.
         case stateChanged
+        /// What `get_available_models` answered.
+        case models([OmpModel])
     }
 
     /// Dialogs that block omp until answered; the rest (notify, widgets, titles) need no answer.
@@ -34,6 +36,12 @@ public enum OmpStream {
             return agentDetails(model: model, thinking: data?["thinkingLevel"] as? String).map { .event(.details($0)) }
         case "model_changed", "thinking_level_changed":
             return .stateChanged
+        case "response" where object["command"] as? String == "get_available_models":
+            let list = ((object["data"] as? [String: Any])?["models"] as? [[String: Any]]) ?? []
+            return .models(list.compactMap { model in
+                guard let id = model["id"] as? String, let provider = model["provider"] as? String else { return nil }
+                return OmpModel(provider: provider, id: id)
+            })
         case "extension_ui_request":
             guard let id = object["id"] as? String, let method = object["method"] as? String else { return nil }
             if method == "confirm" {
@@ -50,6 +58,18 @@ public enum OmpStream {
     /// Asks for text deltas instead of whole message snapshots on every update.
     public static func deltaUpdates() throws -> Data {
         try line(["type": "set_event_filter", "events": NSNull(), "messageUpdates": "delta"])
+    }
+
+    public static func getAvailableModels() throws -> Data {
+        try line(["type": "get_available_models"])
+    }
+
+    public static func setModel(_ model: OmpModel) throws -> Data {
+        try line(["type": "set_model", "provider": model.provider, "modelId": model.id])
+    }
+
+    public static func setThinking(_ level: String) throws -> Data {
+        try line(["type": "set_thinking_level", "level": level])
     }
 
     public static func getState() throws -> Data {
@@ -74,5 +94,15 @@ public enum OmpStream {
 
     private static func line(_ object: [String: Any]) throws -> Data {
         try JSONSerialization.data(withJSONObject: object) + Data("\n".utf8)
+    }
+}
+
+public struct OmpModel: Equatable, Sendable {
+    public let provider: String
+    public let id: String
+
+    public init(provider: String, id: String) {
+        self.provider = provider
+        self.id = id
     }
 }

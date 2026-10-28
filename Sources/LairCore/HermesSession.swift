@@ -48,7 +48,7 @@ public final class HermesSession: AgentSession {
     public let news: AsyncStream<String>
     private let newsContinuation: AsyncStream<String>.Continuation
     private let credentials: Credentials
-    private let model: String
+    private let model: Mutex<String>
     private let systemPrompt: String
     private let sessionID = "lair-\(UUID().uuidString.lowercased())"
     private let currentTurn = Mutex<Task<Void, Never>?>(nil)
@@ -60,7 +60,7 @@ public final class HermesSession: AgentSession {
         (news, newsContinuation) = AsyncStream<String>.makeStream()
         endpoint = baseURL.appending(path: "v1/chat/completions")
         self.credentials = credentials
-        self.model = model ?? "hermes-agent"
+        self.model = Mutex(model ?? "hermes-agent")
         self.systemPrompt = systemPrompt
     }
 
@@ -92,6 +92,10 @@ public final class HermesSession: AgentSession {
         continuation.onTermination = { _ in turn.cancel() }
         currentTurn.withLock { $0 = turn }
         return reply
+    }
+
+    public func setModel(_ model: String) throws {
+        self.model.withLock { $0 = model }
     }
 
     public func interrupt() {
@@ -163,7 +167,7 @@ public final class HermesSession: AgentSession {
         request.setValue(sessionID, forHTTPHeaderField: "X-Hermes-Session-Id")
         // With a session id Hermes loads the history itself, so only the new turn is sent.
         let body: [String: Any] = [
-            "model": model,
+            "model": model.withLock { $0 },
             "stream": true,
             "messages": [["role": "system", "content": systemPrompt], ["role": "user", "content": text]],
         ]

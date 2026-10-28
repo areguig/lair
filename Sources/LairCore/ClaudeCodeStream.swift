@@ -23,6 +23,11 @@ public enum ClaudeCodeStream {
             return agentDetails(model: message.model, thinking: nil).map(AgentEvent.details)
         case "control_request":
             return approval(from: data).map(AgentEvent.approval)
+        case "control_response":
+            // A model switch answers with the model it resolved to.
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            let answer = (object?["response"] as? [String: Any])?["response"] as? [String: Any]
+            return (answer?["model"] as? String).flatMap { agentDetails(model: $0, thinking: nil) }.map(AgentEvent.details)
         case "result":
             return .finished(message.result ?? "")
         default:
@@ -49,6 +54,11 @@ public enum ClaudeCodeStream {
         }
         return try line(["type": "control_response",
                          "response": ["subtype": "success", "request_id": request.id, "response": body]])
+    }
+
+    public static func setModelRequest(_ model: String) throws -> Data {
+        try line(["type": "control_request", "request_id": "lair-\(UUID().uuidString)",
+                  "request": ["subtype": "set_model", "model": model]])
     }
 
     public static func interruptRequest() throws -> Data {

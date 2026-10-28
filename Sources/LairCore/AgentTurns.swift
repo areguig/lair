@@ -70,5 +70,10 @@ final class AgentTurns: Sendable {
 /// An agent reported that its turn failed.
 public struct AgentFailure: LocalizedError {
     public let message: String
+
+    public init(message: String) {
+        self.message = message
+    }
+
     public var errorDescription: String? { message }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 /// One `omp --mode rpc` process per call, run directly (no omp-relay) and not saved as an omp session.
 public final class OmpSession: AgentSession {
@@ -6,16 +7,20 @@ public final class OmpSession: AgentSession {
     private let input = Pipe()
     private let turns = AgentTurns()
     public let details: AsyncStream<String>
+    public let thinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
+    private let available = Mutex<[OmpModel]>([])
     private let detailsContinuation: AsyncStream<String>.Continuation
 
-    public init(model: String? = nil, directory: URL? = nil, environment: [String: String]? = nil,
-                errorLog: URL? = nil, systemPrompt: String = VoicePrompt.text) throws {
+    public init(model: String? = nil, thinking: String? = nil, directory: URL? = nil,
+                environment: [String: String]? = nil, errorLog: URL? = nil,
+                systemPrompt: String = VoicePrompt.text) throws {
         (details, detailsContinuation) = AsyncStream<String>.makeStream()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.currentDirectoryURL = directory
         if let environment { process.environment = environment }
         process.arguments = ["omp", "--mode", "rpc", "--no-session", "--append-system-prompt", systemPrompt]
             + (model.map { ["--model", $0] } ?? [])
+            + (thinking.map { ["--thinking=\($0)"] } ?? [])
         let output = Pipe()
         process.standardInput = input
         process.standardOutput = output
@@ -23,6 +28,7 @@ public final class OmpSession: AgentSession {
         try process.run()
         try send(OmpStream.deltaUpdates())
         try send(OmpStream.getState())
+        try send(OmpStream.getAvailableModels())
         Task { await routeReplies(from: output.fileHandleForReading) }
     }
 
@@ -34,6 +40,7 @@ public final class OmpSession: AgentSession {
                 case .event(.details(let text)): detailsContinuation.yield(text)
                 case .event(let event): turns.receive(event)
                 case .stateChanged: try? send(OmpStream.getState())
+                case .models(let models): available.withLock { $0 = models }
                 case .unsupportedDialog(let id): try? send(OmpStream.cancelDialog(id: id))
                 case nil: break
                 }
@@ -51,6 +58,23 @@ public final class OmpSession: AgentSession {
 
     public func answer(_ request: ApprovalRequest, decision: ApprovalDecision) throws {
         try send(OmpStream.confirm(request, decision: decision))
+    }
+
+    public var models: [String] { available.withLock { $0.map(\.id) } }
+
+    /// Takes a model id from the list, or "provider/id".
+    public func setModel(_ model: String) throws {
+        let parts = model.split(separator: "/", maxSplits: 1).map(String.init)
+        let choice: OmpModel? = parts.count == 2
+            ? OmpModel(provider: parts[0], id: parts[1])
+            : available.withLock { list in list.first { $0.id.caseInsensitiveCompare(model) == .orderedSame }
+                ?? list.first { $0.id.localizedCaseInsensitiveContains(model) } }
+        guard let choice else { throw AgentFailure(message: "omp has no model called \(model).") }
+        try send(OmpStream.setModel(choice))
+    }
+
+    public func setThinking(_ level: String) throws {
+        try send(OmpStream.setThinking(level))
     }
 
     public func interrupt() {

@@ -33,6 +33,10 @@ import os
     var unread = false
     /// Model and thinking level, once the agent says.
     var details: String?
+    /// The thinking level this call runs at, as last set.
+    var thinking: String?
+    /// A thinking level asked for mid-call that the agent can only take from its next call.
+    @ObservationIgnored var thinkingNextCall: String?
     @ObservationIgnored var session: (any AgentSession)?
     @ObservationIgnored var turn: Task<Void, Never>?
     /// Identifies the running turn, so an interrupted one can't reset the state of the next.
@@ -56,6 +60,8 @@ import os
     }
 
     var readiness = Readiness.loading
+    /// Models each agent offered on its last call, offered again in Settings.
+    private(set) var knownModels: [String: [String]] = [:]
     /// A short-lived line under the agent's name, for a key press that can't do anything yet.
     private(set) var hint: String?
     private(set) var calls: [Call]
@@ -169,9 +175,16 @@ import os
         call.lines.removeAll { $0.action == .openSettings }
         do {
             try microphone.open()
-            let session = try session(for: call.agent)
+            call.thinking = call.thinkingNextCall ?? call.agent.thinking
+            let session = try session(for: call.agent, thinking: call.thinking)
+            call.thinkingNextCall = nil
             call.session = session
             call.details = nil
+            Task {
+                // omp lists its models once it has started.
+                try? await Task.sleep(for: .seconds(3))
+                if !session.models.isEmpty { knownModels[call.id] = session.models }
+            }
             Task { for await details in session.details { call.details = details } }
             Task { for await _ in session.news { hearNews(from: call) } }
             call.lines = []
@@ -184,14 +197,16 @@ import os
         }
     }
 
-    private func session(for agent: AgentConfig) throws -> any AgentSession {
+    private func session(for agent: AgentConfig, thinking: String?) throws -> any AgentSession {
         switch agent.kind {
         case .claudeCode:
-            return try ClaudeCodeSession(model: agent.model, directory: agent.directoryURL, environment: environment,
+            return try ClaudeCodeSession(model: agent.model, effort: thinking, directory: agent.directoryURL,
+                                         environment: environment,
                                          permissionMode: agent.permissionMode, errorLog: AgentLog.url(for: agent.id),
                                          systemPrompt: callPrompt(for: agent))
         case .omp:
-            return try OmpSession(model: agent.model, directory: agent.directoryURL, environment: environment,
+            return try OmpSession(model: agent.model, thinking: thinking, directory: agent.directoryURL,
+                                  environment: environment,
                                   errorLog: AgentLog.url(for: agent.id), systemPrompt: callPrompt(for: agent))
         case .hermes:
             guard let url = agent.url.flatMap(URL.init(string:)), url.host() != nil else { throw SetupError.missingAddress }
@@ -348,7 +363,71 @@ import os
             target.turn = Task { await converse(in: target, prompt: rest, speech: samples.count, start: start) }
             return
         }
+        // "Switch to Opus", "think harder": for Lair, not for the agent.
+        if let command = VoiceCommand.parse(prompt) {
+            call.lines.append(.init(role: .you, text: prompt))
+            await run(command, in: call)
+            if call.inCall { call.state = .ready }
+            return
+        }
         await converse(in: call, prompt: prompt, speech: samples.count, start: start)
+    }
+
+    /// Changes the call's model or thinking level, from a voice command or the panel, and says what happened.
+    func run(_ command: VoiceCommand, in call: Call) async {
+        guard let session = call.session else { return }
+        let local = call.agent.kind != .hermes
+        let confirmation: String
+        do {
+            switch command {
+            case .model(let model):
+                try session.setModel(model)
+                confirmation = "Switched to \(model)."
+            case .thinking(let level):
+                confirmation = try setThinking(level, in: call, session: session)
+            case .thinkMore, .thinkLess:
+                guard let level = step(command == .thinkMore ? 1 : -1, from: call.thinking, in: session.thinkingLevels)
+                else { throw ChangeLater() }
+                confirmation = try setThinking(level, in: call, session: session)
+            case .fast where call.agent.kind == .claudeCode:
+                try session.setModel("haiku")
+                confirmation = "Going fast, on Haiku."
+            case .deep where call.agent.kind == .claudeCode:
+                try session.setModel("opus")
+                confirmation = "Going deep, on Opus."
+            case .fast, .deep:
+                guard local else { throw ChangeLater() }
+                confirmation = try setThinking(command == .fast ? "low" : "high", in: call, session: session)
+            }
+        } catch is ChangeLater {
+            confirmation = local ? "That can't change during a call." : "\(call.agent.name) chooses that itself."
+        } catch {
+            report(in: call, .init(role: .problem, text: error.localizedDescription))
+            return
+        }
+        call.lines.append(.init(role: .info, text: confirmation))
+        _ = try? await say(confirmation, in: call)
+    }
+
+    /// Thinking changes now when the agent allows it, otherwise from the next call.
+    private func setThinking(_ level: String, in call: Call, session: any AgentSession) throws -> String {
+        guard session.thinkingLevels.isEmpty || session.thinkingLevels.contains(level) else {
+            throw AgentFailure(message: "\(call.agent.name) has no \(level) thinking level.")
+        }
+        do {
+            try session.setThinking(level)
+            call.thinking = level
+            return "Thinking \(level) now."
+        } catch is ChangeLater where !session.thinkingLevels.isEmpty {
+            call.thinkingNextCall = level
+            return "I'll think \(level) from the next call."
+        }
+    }
+
+    private func step(_ by: Int, from current: String?, in levels: [String]) -> String? {
+        guard !levels.isEmpty else { return nil }
+        let index = current.flatMap { levels.firstIndex(of: $0) } ?? levels.firstIndex(of: "medium") ?? levels.count / 2
+        return levels[min(max(index + by, 0), levels.count - 1)]
     }
 
     /// The agent finished work in the background: take a turn so it says what it found.
