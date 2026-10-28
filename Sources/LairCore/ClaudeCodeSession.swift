@@ -37,20 +37,25 @@ public final class ClaudeCodeSession: AgentSession {
 
     public func ask(_ text: String) throws -> AsyncThrowingStream<AgentReply, Error> {
         let reply = turns.begin()
-        try input.fileHandleForWriting.write(contentsOf: ClaudeCodeStream.userMessage(text))
+        try send(ClaudeCodeStream.userMessage(text))
         return reply
     }
 
     public func answer(_ request: ApprovalRequest, decision: ApprovalDecision) throws {
-        try input.fileHandleForWriting.write(contentsOf: ClaudeCodeStream.approvalResponse(request, decision: decision))
+        try send(ClaudeCodeStream.approvalResponse(request, decision: decision))
     }
 
     public func interrupt() {
         guard turns.interrupt() else { return }
-        try? input.fileHandleForWriting.write(contentsOf: ClaudeCodeStream.interruptRequest())
+        try? send(ClaudeCodeStream.interruptRequest())
     }
 
     public func stop() {
         process.terminate()
+    }
+
+    private func send(_ line: Data) throws {
+        guard process.isRunning else { throw AgentStopped() }
+        try input.fileHandleForWriting.write(contentsOf: line)
     }
 }

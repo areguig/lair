@@ -6,6 +6,12 @@ public enum AgentLog {
         FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Logs/Lair/\(agentID).log")
     }
 
+    /// The first thing the agent printed, which usually says why it stopped.
+    public static func firstLine(for agentID: String) -> String? {
+        guard let text = try? String(contentsOf: url(for: agentID), encoding: .utf8) else { return nil }
+        return text.split(whereSeparator: \.isNewline).first.map(String.init)
+    }
+
     static func handle(for url: URL?) -> FileHandle {
         guard let url else { return .nullDevice }
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -13,3 +19,6 @@ public enum AgentLog {
         return (try? FileHandle(forWritingTo: url)) ?? .nullDevice
     }
 }
+
+/// The agent's process has exited; whatever it printed is in its log.
+public struct AgentStopped: Error {}

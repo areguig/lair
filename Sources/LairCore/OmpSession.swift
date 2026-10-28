@@ -56,6 +56,7 @@ public final class OmpSession: AgentSession {
     }
 
     private func send(_ line: Data) throws {
+        guard process.isRunning else { throw AgentStopped() }
         try input.fileHandleForWriting.write(contentsOf: line)
     }
 }

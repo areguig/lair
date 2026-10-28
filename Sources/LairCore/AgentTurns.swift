@@ -57,10 +57,10 @@ final class AgentTurns: Sendable {
         }
     }
 
-    /// The process is gone.
+    /// The process is gone; a turn still waiting on it fails with `AgentStopped`.
     func close() {
         state.withLock { state in
-            state.reply?.finish()
+            state.reply?.finish(throwing: AgentStopped())
             state = State()
         }
     }

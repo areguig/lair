@@ -29,3 +29,15 @@ struct LairConfigTests {
         #expect(agent.directoryURL?.path == FileManager.default.homeDirectoryForCurrentUser.appending(path: "dev").path)
     }
 }
+
+struct AgentLogTests {
+    @Test func readsTheFirstLineOfAnAgentsLog() throws {
+        let id = "test-\(UUID().uuidString)"
+        let url = AgentLog.url(for: id)
+        defer { try? FileManager.default.removeItem(at: url) }
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "No default model selected.\n\nMore help.\n".write(to: url, atomically: true, encoding: .utf8)
+        #expect(AgentLog.firstLine(for: id) == "No default model selected.")
+        #expect(AgentLog.firstLine(for: "missing-\(UUID().uuidString)") == nil)
+    }
+}

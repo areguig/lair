@@ -319,9 +319,10 @@ import os
             }
         } catch {
             guard !Task.isCancelled else { return }
-            if (error as NSError).domain == NSPOSIXErrorDomain, (error as NSError).code == Int(EPIPE) {
-                call.lines.append(.init(role: .notice, text: "\(call.agent.name) stopped running. "
-                    + "Its log is in Library/Logs/Lair/\(call.id).log."))
+            if error is AgentStopped {
+                let reason = AgentLog.firstLine(for: call.id).map { ": \($0)" } ?? "."
+                call.lines.append(.init(role: .notice, text: "\(call.agent.name) stopped\(reason) "
+                    + "Full log in Library/Logs/Lair/\(call.id).log."))
                 hangUp(call)
             } else {
                 call.lines.append(.init(role: .notice, text: error.localizedDescription))

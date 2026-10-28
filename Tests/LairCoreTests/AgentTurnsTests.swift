@@ -44,11 +44,11 @@ struct AgentTurnsTests {
         #expect(try await collect(second) == [.text("next")])
     }
 
-    @Test func closingEndsTheTurn() async throws {
+    @Test func closingFailsTheWaitingTurnAsStopped() async {
         let turns = AgentTurns()
         let reply = turns.begin()
         turns.close()
-        #expect(try await collect(reply).isEmpty)
+        await #expect(throws: AgentStopped.self) { _ = try await collect(reply) }
     }
 
     @Test func aFailedTurnThrowsItsMessage() async {
