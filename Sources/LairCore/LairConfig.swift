@@ -8,6 +8,9 @@ public struct LairConfig: Codable, Equatable, Sendable {
         self.agents = agents
     }
 
+    /// The agents you can call: turned-off ones keep their settings but stay out of the room.
+    public var enabledAgents: [AgentConfig] { agents.filter { $0.disabled != true } }
+
     public static let defaultURL = FileManager.default.homeDirectoryForCurrentUser
         .appending(path: ".config/lair/config.json")
 
@@ -68,6 +71,8 @@ public struct AgentConfig: Codable, Equatable, Identifiable, Sendable {
     public var permissionMode: String?
     /// Hermes: base URL of its API server, e.g. `http://hermes.local:8642` at home or a public address away.
     public var url: String?
+    /// Turned off: kept in the file and in Settings, but not in the panel, Mission Control or by name.
+    public var disabled: Bool?
     /// Hermes: extra HTTP headers sent with every request, such as a proxy's access token.
     /// Only the names are here; the values are secrets kept in the Keychain.
     public var headers: [String]?

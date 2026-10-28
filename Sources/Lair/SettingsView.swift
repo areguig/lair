@@ -52,8 +52,10 @@ private struct AgentsSettings: View {
                         Circle().fill(Color(hex: agent.color)).frame(width: 10, height: 10)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(agent.name.isEmpty ? "Unnamed" : agent.name)
-                            Text(agent.kind.label).font(.caption).foregroundStyle(.secondary)
+                            Text(agent.disabled == true ? "\(agent.kind.label) · off" : agent.kind.label)
+                                .font(.caption).foregroundStyle(.secondary)
                         }
+                        .opacity(agent.disabled == true ? 0.5 : 1)
                         if hasProblem(agent) {
                             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                                 .help("This agent needs attention")
@@ -165,6 +167,8 @@ private struct AgentForm: View {
     var body: some View {
         Form {
             Section {
+                Toggle("On", isOn: Binding(get: { agent.disabled != true }, set: { agent.disabled = $0 ? nil : true }))
+                    .help("Off keeps this agent's settings but takes it out of the panel and Mission Control")
                 VStack(alignment: .leading, spacing: 2) {
                     TextField("Name", text: $agent.name, prompt: Text("What you call it by voice"))
                     if let problem = nameProblem(agent.name, others: others) { Helper(problem) }

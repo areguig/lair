@@ -86,16 +86,16 @@ import os
     private let minimumSpeech = 16_000 / 3
 
     init(config: LairConfig) {
-        calls = config.agents.map(Call.init)
-        focusedID = config.agents.first?.id ?? ""
+        calls = config.enabledAgents.map(Call.init)
+        focusedID = config.enabledAgents.first?.id ?? ""
     }
 
     var focused: Call? { calls.first { $0.id == focusedID } }
 
     /// Takes a new config without dropping calls: an agent in a call keeps it, and its model, folder or address
-    /// apply from its next call; removed agents are hung up.
+    /// apply from its next call; removed or turned-off agents are hung up.
     func apply(_ config: LairConfig) {
-        let next = config.agents.map { agent in
+        let next = config.enabledAgents.map { agent in
             guard let call = calls.first(where: { $0.id == agent.id }) else { return Call(agent: agent) }
             call.agent = agent
             return call

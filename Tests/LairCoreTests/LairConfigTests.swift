@@ -85,3 +85,22 @@ struct KeychainTests {
         #expect(Keychain.password(service: service, account: "api-key") == nil)
     }
 }
+
+struct DisabledAgentTests {
+    private func config(_ agents: String) throws -> LairConfig {
+        try JSONDecoder().decode(LairConfig.self, from: Data(#"{"agents":[\#(agents)]}"#.utf8))
+    }
+
+    @Test func turnedOffAgentsStayInTheFileButOutOfTheRoom() throws {
+        let config = try config(#"{"id":"a","name":"A","kind":"omp","voice":"af_heart","color":"red"},"#
+            + #"{"id":"b","name":"B","kind":"omp","voice":"af_heart","color":"red","disabled":true}"#)
+        #expect(config.agents.map(\.id) == ["a", "b"])
+        #expect(config.enabledAgents.map(\.id) == ["a"])
+    }
+
+    @Test func anAgentIsOnUnlessTurnedOff() throws {
+        let config = try config(#"{"id":"a","name":"A","kind":"omp","voice":"af_heart","color":"red"}"#)
+        #expect(config.agents[0].disabled == nil)
+        #expect(config.enabledAgents.count == 1)
+    }
+}
