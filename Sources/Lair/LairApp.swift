@@ -34,6 +34,10 @@ struct LairApp: App {
             Snapshot.write(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]), variant: variant)
             exit(0)
         }
+        if let i = CommandLine.arguments.firstIndex(of: "--mission-snapshot"), i + 1 < CommandLine.arguments.count {
+            Snapshot.writeMissionControl(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]))
+            exit(0)
+        }
         if let i = CommandLine.arguments.firstIndex(of: "--settings-snapshot"), i + 1 < CommandLine.arguments.count {
             let agent = i + 2 < CommandLine.arguments.count ? CommandLine.arguments[i + 2] : nil
             Snapshot.writeSettings(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]), agent: agent)
@@ -51,6 +55,7 @@ struct LairApp: App {
         self.room = room
         KeyboardShortcuts.onKeyDown(for: .pushToTalk) { room.pressTalk() }
         KeyboardShortcuts.onKeyUp(for: .pushToTalk) { room.releaseTalk() }
+        KeyboardShortcuts.onKeyDown(for: .missionControl) { MissionControl.toggle(room: room) }
         Task { await room.start() }
     }
 
@@ -148,6 +153,45 @@ struct MenuBarIcon: View {
         }
         let problem = variant == "chat" ? "The config file has an error: line 4 is missing a comma." : nil
         writePNG(RoomView(room: room, configProblem: problem).environment(\.renderTime, 0), scale: 2, to: url)
+    }
+
+    /// Mission Control with a demo exchange, drawn in a hidden window so scroll views render.
+    static func writeMissionControl(to url: URL) {
+        let room = Room(config: LairConfig(agents: Array(Demo.agents.prefix(2))))
+        room.readiness = .ready
+        let claude = room.calls[0]
+        claude.state = .speaking
+        claude.details = "claude-haiku-5-5"
+        claude.log(.you("What's left before we ship the release?"))
+        claude.record(.thinking("The user wants the release status. I should check the changelog and the build number "
+            + "before answering, and look at the open TODOs."))
+        claude.record(.toolStarted(id: "t1", name: "Bash", input: "git log --oneline -5"))
+        claude.record(.toolFinished(id: "t1", output: "b68c50f Settings footer\n410f237 Model picker\n08c8726 Voice switch",
+                                 failed: false))
+        claude.record(.toolStarted(id: "t2", name: "Edit", input: "~/dev/app/CHANGELOG.md"))
+        claude.record(.toolFinished(id: "t2", output: "@@ -1,3 +1,4 @@\n # Changelog\n+- Voice: switch model by voice\n- WIP",
+                                 failed: false))
+        claude.record(.toolStarted(id: "t3", name: "Bash", input: "swift test"))
+        claude.logText("Two things are left: the changelog needed the voice section, which I just added, and the "
+            + "build number. Tests are running now.")
+        claude.record(.usage(inputTokens: 18_400, outputTokens: 512, cost: 0.0213))
+        claude.log(.timing(heard: 140, firstWord: 1_880, firstSound: 2_410, total: 6_120))
+        let sage = room.calls[1]
+        sage.state = .thinking
+        sage.log(.you("did last night's backups finish?"))
+        sage.record(.toolStarted(id: "c1", name: "delegate_task", input: ""))
+        sage.logText("I've started the check in the background; we can keep talking.")
+        sage.log(.note("Background task finished"))
+        sage.logText("Yes. All three finished, and the newest one is from three this morning.")
+        let view = NSHostingView(rootView: MissionControl(room: room))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1240, height: 780), styleMask: [.titled],
+                              backing: .buffered, defer: false)
+        window.contentView = view
+        view.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        try? rep.representation(using: .png, properties: [:])?.write(to: url)
     }
 
     /// The settings window with demo agents, drawn in a hidden window so native controls render.

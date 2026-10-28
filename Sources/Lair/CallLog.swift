@@ -37,7 +37,8 @@ extension Call {
         }
     }
 
-    func log(_ activity: Activity) {
+    /// Named apart from `log(_:)`: both enums have a `usage` case, and the same name made this call itself.
+    func record(_ activity: Activity) {
         switch activity {
         case .thinking(let text):
             if case .thinking(let previous) = entries.last?.kind {

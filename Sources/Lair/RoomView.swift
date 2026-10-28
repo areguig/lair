@@ -49,6 +49,7 @@ struct RoomView: View {
                 .font(.system(.headline, design: .rounded, weight: .semibold))
             Spacer()
             Menu {
+                Button("Mission Control…") { MissionControl.toggle(room: room) }
                 Button("Settings…", action: openSettings)
                 Divider()
                 Button("Quit Lair") { NSApp.terminate(nil) }

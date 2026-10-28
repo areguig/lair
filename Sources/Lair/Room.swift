@@ -381,6 +381,23 @@ import os
         await converse(in: call, prompt: prompt, speech: samples.count, start: start)
     }
 
+    /// Text typed in Mission Control: the same as saying it, without the microphone.
+    func type(_ text: String, to call: Call) {
+        guard readiness == .ready else { return show(hint: "Still getting the voices ready…") }
+        focus(call)
+        if !call.inCall { summon(call) }
+        if call.state == .speaking || call.state == .thinking, call.pendingApproval == nil { interrupt(call) }
+        guard call.state == .ready else { return }
+        if let command = VoiceCommand.parse(text) {
+            call.lines.append(.init(role: .you, text: text))
+            call.log(.you(text))
+            Task { await run(command, in: call) }
+            return
+        }
+        call.state = .thinking
+        call.turn = Task { await converse(in: call, prompt: text, speech: 0, start: Self.clock.now) }
+    }
+
     /// Changes the call's model or thinking level, from a voice command or the panel, and says what happened.
     func run(_ command: VoiceCommand, in call: Call) async {
         guard let session = call.session else { return }
@@ -493,7 +510,7 @@ import os
                 guard !Task.isCancelled else { return }
                 switch reply {
                 case .activity(let activity):
-                    call.log(activity)
+                    call.record(activity)
                 case .text(let delta):
                     if firstToken == nil { firstToken = clock.now - start }
                     call.logText(delta)
