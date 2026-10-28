@@ -191,7 +191,9 @@ private struct AgentForm: View {
             Section {
                 switch agent.kind {
                 case .claudeCode:
-                    TextField("Model", text: optional($agent.model), prompt: Text("Claude Code's default"))
+                    ModelField(model: $agent.model, prompt: "Claude Code's default",
+                               choices: [("Opus", "opus"), ("Sonnet", "sonnet"), ("Haiku", "haiku")], emptyHint: nil)
+                    ThinkingPicker(title: "Effort", thinking: $agent.thinking, levels: ["low", "medium", "high", "xhigh", "max"])
                     FolderField(path: $agent.directory)
                     Picker("Approvals", selection: $agent.permissionMode) {
                         Text("As in my Claude Code settings").tag(String?.none)
@@ -202,7 +204,11 @@ private struct AgentForm: View {
                         Text("Allow everything").tag(String?("bypassPermissions"))
                     }
                 case .omp:
-                    TextField("Model", text: optional($agent.model), prompt: Text("omp's default"))
+                    let known = (room.knownModels[agent.id] ?? []).sorted()
+                    ModelField(model: $agent.model, prompt: "omp's default", choices: known.map { ($0, $0) },
+                               emptyHint: "Call this agent once to list its models")
+                    ThinkingPicker(title: "Thinking", thinking: $agent.thinking,
+                                   levels: ["off", "minimal", "low", "medium", "high", "xhigh", "max"])
                     FolderField(path: $agent.directory)
                 case .hermes:
                     VStack(alignment: .leading, spacing: 2) {
@@ -213,11 +219,16 @@ private struct AgentForm: View {
                     SecretField(title: "API key", service: agent.keychainService, account: "api-key")
                 }
             } footer: {
-                Text(agent.kind == .hermes
-                     ? "Address and model apply from the agent's next call. Keys stay in your Keychain, never in the config file."
-                     : "Model and folder apply from the agent's next call.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(agent.kind == .hermes
+                         ? "Address and model apply from the agent's next call. Keys stay in your Keychain, never in the config file."
+                         : "Model and folder apply from the agent's next call.")
+                    if let note = thinkingNote { Text(note) }
+                }
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
             if agent.kind == .hermes {
                 ExtraHeaders(agent: $agent)
@@ -234,10 +245,19 @@ private struct AgentForm: View {
             guard new != agent.kind else { return }
             agent.kind = new
             agent.model = nil
+            agent.thinking = nil
             agent.directory = new == .hermes ? nil : "~"
             if new != .hermes { agent.url = nil; agent.headers = nil }
             if new != .claudeCode { agent.permissionMode = nil }
         })
+    }
+
+    private var thinkingNote: String? {
+        switch agent.kind {
+        case .claudeCode: "Effort applies from the next call; you can say “think harder” or “switch to Opus” during a call."
+        case .omp: "You can also say “think harder”, “go fast” or “switch to …” during a call."
+        case .hermes: nil
+        }
     }
 
     /// An empty field means "not set", so the agent's own default applies.
@@ -252,6 +272,49 @@ private struct AgentForm: View {
         let accent = parts[0].first == "b" ? "British" : "American"
         let gender = parts[0].last == "m" ? "male" : "female"
         return "\(parts[1].capitalized) · \(accent) \(gender)"
+    }
+}
+
+/// Free-text model plus a menu of known choices; empty text means the agent's own default.
+private struct ModelField: View {
+    @Binding var model: String?
+    let prompt: String
+    let choices: [(label: String, value: String)]
+    /// Shown, disabled, when there are no choices yet.
+    let emptyHint: String?
+
+    var body: some View {
+        HStack(spacing: 4) {
+            TextField("Model", text: Binding(get: { model ?? "" }, set: { model = $0.isEmpty ? nil : $0 }),
+                      prompt: Text(prompt))
+            Menu {
+                Button("Default") { model = nil }
+                Divider()
+                ForEach(choices, id: \.value) { choice in
+                    Button(choice.label) { model = choice.value }
+                }
+                if choices.isEmpty, let emptyHint { Button(emptyHint) {}.disabled(true) }
+            } label: {
+                Image(systemName: "chevron.down")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .accessibilityLabel("Choose a model")
+        }
+    }
+}
+
+private struct ThinkingPicker: View {
+    let title: String
+    @Binding var thinking: String?
+    let levels: [String]
+
+    var body: some View {
+        Picker(title, selection: $thinking) {
+            Text("Default").tag(String?.none)
+            ForEach(levels, id: \.self) { Text($0).tag(String?($0)) }
+        }
     }
 }
 
