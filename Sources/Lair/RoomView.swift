@@ -513,10 +513,12 @@ private extension Call.Line.Action {
 }
 
 /// What the agent wants to do, with the same Allow and Deny as the notification and your voice.
-private struct ApprovalCard: View {
+struct ApprovalCard: View {
     let agent: String
     let request: ApprovalRequest
     let tint: Color
+    /// Return and Escape answer it; off where several cards or a text field share the window.
+    var shortcuts = true
     let answer: (ApprovalDecision) -> Void
 
     var body: some View {
@@ -544,7 +546,7 @@ private struct ApprovalCard: View {
                     Text("Deny").frame(maxWidth: .infinity).padding(.vertical, 7)
                         .background(.white.opacity(0.1), in: Capsule())
                 }
-                .keyboardShortcut(.cancelAction)
+                .keyboardShortcut(shortcuts ? .cancelAction : nil)
                 if request.canAlwaysAllow {
                     Button { answer(.allowAlways) } label: {
                         Text("Always allow").fontWeight(.semibold).foregroundStyle(tint).lineLimit(1)
@@ -557,7 +559,7 @@ private struct ApprovalCard: View {
                         .frame(maxWidth: .infinity).padding(.vertical, 7)
                         .background(.white, in: Capsule())
                 }
-                .keyboardShortcut(.defaultAction)
+                .keyboardShortcut(shortcuts ? .defaultAction : nil)
             }
             .buttonStyle(.plain)
             .font(.system(.callout, design: .rounded))

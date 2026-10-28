@@ -118,6 +118,12 @@ private struct AgentColumn: View {
                 .padding(14)
             }
             .defaultScrollAnchor(.bottom)
+            if let request = call.pendingApproval {
+                ApprovalCard(agent: call.agent.name, request: request, tint: tint, shortcuts: false) {
+                    room.answer(call, decision: $0)
+                }
+                .padding([.horizontal, .top], 10)
+            }
             composer(tint: tint)
         }
         .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))

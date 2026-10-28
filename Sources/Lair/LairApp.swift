@@ -185,6 +185,9 @@ struct MenuBarIcon: View {
         sage.logText("I've started the check in the background; we can keep talking.")
         sage.log(.note("Background task finished"))
         sage.logText("Yes. All three finished, and the newest one is from three this morning.")
+        sage.log(.approval("Delete backups older than 30 days"))
+        sage.state = .waiting
+        sage.pendingApproval = ApprovalRequest(id: "demo", tool: "terminal", summary: "Delete backups older than 30 days")
         let view = NSHostingView(rootView: MissionControl(room: room))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1240, height: 780), styleMask: [.titled],
                               backing: .buffered, defer: false)

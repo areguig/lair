@@ -409,7 +409,13 @@ import os
         guard readiness == .ready else { return show(hint: "Still getting the voices ready…") }
         focus(call)
         if !call.inCall { summon(call) }
-        if call.state == .speaking || call.state == .thinking, call.pendingApproval == nil { interrupt(call) }
+        if let request = call.pendingApproval {
+            guard let decision = SpokenAnswer.parse(text) else {
+                return show(hint: "Type yes" + (request.canAlwaysAllow ? ", always" : "") + " or no, or use the buttons.")
+            }
+            return answer(call, decision: decision)
+        }
+        if call.state == .speaking || call.state == .thinking { interrupt(call) }
         guard call.state == .ready else { return }
         if let command = VoiceCommand.parse(text) {
             call.lines.append(.init(role: .you, text: text))
