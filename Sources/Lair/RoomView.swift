@@ -150,7 +150,7 @@ struct RoomView: View {
         case .listening: return "Listening…"
         case .thinking: return "Thinking…"
         case .speaking: return "Speaking"
-        case .waiting: return "Waiting for your OK — say yes or no"
+        case .waiting: return call.pendingApproval?.canAlwaysAllow == true ? "Your OK? Say yes, always or no" : "Your OK? Say yes or no"
         }
     }
 }
