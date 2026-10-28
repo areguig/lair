@@ -16,6 +16,10 @@ struct LairApp: App {
             Snapshot.write(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]))
             exit(0)
         }
+        if let i = CommandLine.arguments.firstIndex(of: "--icon"), i + 1 < CommandLine.arguments.count {
+            Snapshot.writeIcon(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]))
+            exit(0)
+        }
         let config: LairConfig
         do {
             config = try LairConfig.load()
@@ -97,11 +101,37 @@ struct MenuBarIcon: View {
             .init(role: .agent, text: "Two things: the changelog still needs the new voice section, and the build "
                 + "number hasn't been bumped yet. Want me to do both?"),
         ]
-        let renderer = ImageRenderer(content: RoomView(room: room))
-        renderer.scale = 2
+        writePNG(RoomView(room: room), scale: 2, to: url)
+    }
+
+    /// `Lair --icon out.png`: the 1024px app icon, drawn from the orb.
+    static func writeIcon(to url: URL) {
+        writePNG(AppIcon(), scale: 1, to: url)
+    }
+
+    private static func writePNG(_ view: some View, scale: Double, to url: URL) {
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = scale
         guard let image = renderer.nsImage, let tiff = image.tiffRepresentation,
               let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:])
         else { return }
         try? png.write(to: url)
+    }
+}
+
+/// A dark rounded square on the Big Sur grid (824pt in a 1024pt canvas) with a big glowing orb.
+struct AppIcon: View {
+    private let color = Color(red: 0.851, green: 0.467, blue: 0.341).mix(with: Color(red: 0.482, green: 0.361, blue: 1), by: 0.12)
+
+    var body: some View {
+        ZStack {
+            Color(red: 0.055, green: 0.06, blue: 0.075)
+            RadialGradient(colors: [color.opacity(0.45), .clear], center: .center, startRadius: 0, endRadius: 420)
+            Orb(color: color, state: .ready)
+                .frame(width: 560, height: 560)
+        }
+        .frame(width: 824, height: 824)
+        .clipShape(RoundedRectangle(cornerRadius: 185, style: .continuous))
+        .frame(width: 1024, height: 1024)
     }
 }
