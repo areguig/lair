@@ -70,5 +70,7 @@ Secrets (API keys, header values) live in the Keychain, never in the file. A sou
 
 ## Troubleshooting
 
-- Agent errors: `~/Library/Logs/Lair/<id>.log`
-- Turn timings: `log show --predicate 'process == "Lair" AND category == "turn"' --info`
+- What happened: `log show --last 1h --predicate 'subsystem == "dev.lair.app"'`. This shows each call
+  start, agent process start and exit, output an agent printed outside its protocol, every problem
+  shown in the panel, and turn timings.
+- Agent error output: `~/Library/Logs/Lair/<id>.log`

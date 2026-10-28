@@ -184,6 +184,10 @@ import os
             try microphone.open()
             call.thinking = call.thinkingNextCall ?? call.agent.thinking
             let session = try session(for: call.agent, thinking: call.thinking)
+            Self.log.notice("""
+                \(call.id, privacy: .public): call started, \(call.agent.kind.rawValue, privacy: .public) \
+                model \(call.agent.model ?? "default", privacy: .public)
+                """)
             call.thinkingNextCall = nil
             call.session = session
             call.details = nil
@@ -229,6 +233,7 @@ import os
 
     /// A problem line, with its sound so it's noticed with the panel closed.
     private func report(in call: Call, _ line: Call.Line) {
+        Self.log.error("\(call.id, privacy: .public): \(line.text, privacy: .public)")
         call.lines.append(line)
         call.log(.problem(line.text))
         speaker?.play(.problem)
@@ -508,7 +513,7 @@ import os
             func optionalMS(_ d: Duration?) -> Int? { d.map { Int($0 / .milliseconds(1)) } }
             call.log(.timing(heard: speech > 0 ? optionalMS(heard) : nil, firstWord: optionalMS(firstToken),
                              firstSound: optionalMS(firstAudio), total: ms(clock.now - start)))
-            Self.log.info("""
+            Self.log.notice("""
                 \(call.id, privacy: .public): \(speech / 16) ms of speech; heard \(ms(heard)) ms, \
                 first token \(ms(firstToken)) ms, first audio \(ms(firstAudio)) ms after release
                 """)

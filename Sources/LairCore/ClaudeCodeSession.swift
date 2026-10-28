@@ -32,7 +32,7 @@ public final class ClaudeCodeSession: AgentSession {
         process.standardInput = input
         process.standardOutput = output
         process.standardError = AgentLog.handle(for: errorLog)
-        try process.run()
+        try AgentLog.run(process)
         Task { await routeReplies(from: output.fileHandleForReading) }
     }
 
@@ -40,6 +40,7 @@ public final class ClaudeCodeSession: AgentSession {
         // A read error means the process is gone: closing the turns is the signal.
         do {
             for try await line in output.bytes.lines {
+                AgentLog.stray(line)
                 for event in ClaudeCodeStream.parseAll(line: line) {
                     if case .details(let text) = event { detailsContinuation.yield(text) } else { turns.receive(event) }
                 }

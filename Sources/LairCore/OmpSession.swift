@@ -28,7 +28,7 @@ public final class OmpSession: AgentSession {
         process.standardInput = input
         process.standardOutput = output
         process.standardError = AgentLog.handle(for: errorLog)
-        try process.run()
+        try AgentLog.run(process)
         try send(OmpStream.deltaUpdates())
         try send(OmpStream.getState())
         try send(OmpStream.getAvailableModels())
@@ -39,6 +39,7 @@ public final class OmpSession: AgentSession {
         // A read error means the process is gone: closing the turns is the signal.
         do {
             for try await line in output.bytes.lines {
+                AgentLog.stray(line)
                 switch OmpStream.parse(line: line) {
                 case .event(.details(let text)): detailsContinuation.yield(text)
                 case .event(let event): turns.receive(event)
