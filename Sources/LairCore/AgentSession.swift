@@ -13,8 +13,8 @@ public protocol AgentSession: Sendable {
     var details: AsyncStream<String> { get }
     /// Work the agent finished in the background after the turn that started it ended.
     var news: AsyncStream<String> { get }
-    /// Models the agent offers right now, for the switcher.
-    var models: [String] { get }
+    /// Models the agent offers, each time it lists them, for the switcher.
+    var models: AsyncStream<[String]> { get }
     /// Thinking levels, from least to most.
     var thinkingLevels: [String] { get }
     /// Switches the model for the rest of the call.
@@ -33,7 +33,7 @@ extension AgentSession {
     public func answer(_ request: ApprovalRequest, decision: ApprovalDecision) throws {}
     public var details: AsyncStream<String> { AsyncStream { $0.finish() } }
     public var news: AsyncStream<String> { AsyncStream { $0.finish() } }
-    public var models: [String] { [] }
+    public var models: AsyncStream<[String]> { AsyncStream { $0.finish() } }
     public var thinkingLevels: [String] { [] }
     public func setModel(_ model: String) throws { throw ChangeLater() }
     public func setThinking(_ level: String) throws { throw ChangeLater() }

@@ -9,7 +9,9 @@ public final class ClaudeCodeSession: AgentSession {
     private let detailsContinuation: AsyncStream<String>.Continuation
 
     /// `permissionMode` nil keeps your Claude Code settings; whatever they would ask you about comes to Lair.
-    public let models = ["opus", "sonnet", "haiku"]
+    public var models: AsyncStream<[String]> {
+        AsyncStream { $0.yield(["opus", "sonnet", "haiku"]); $0.finish() }
+    }
     /// Claude Code's effort; it only changes from the next call.
     public let thinkingLevels = ["low", "medium", "high", "xhigh", "max"]
 

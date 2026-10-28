@@ -33,6 +33,8 @@ import os
     var unread = false
     /// Model and thinking level, once the agent says.
     var details: String?
+    /// Models the agent offers on this call, once it lists them.
+    var models: [String] = []
     /// The thinking level this call runs at, as last set.
     var thinking: String?
     /// A thinking level asked for mid-call that the agent can only take from its next call.
@@ -185,10 +187,12 @@ import os
             call.thinkingNextCall = nil
             call.session = session
             call.details = nil
+            call.models = []
             Task {
-                // omp lists its models once it has started.
-                try? await Task.sleep(for: .seconds(3))
-                if !session.models.isEmpty { knownModels[call.id] = session.models }
+                for await models in session.models where !models.isEmpty {
+                    call.models = models
+                    knownModels[call.id] = models
+                }
             }
             Task { for await details in session.details { call.details = details } }
             Task { for await _ in session.news { hearNews(from: call) } }

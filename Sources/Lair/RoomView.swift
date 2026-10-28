@@ -278,7 +278,7 @@ private struct ModelSwitcher: View {
     let room: Room
 
     var body: some View {
-        let models = call.session?.models ?? []
+        let models = call.models
         let levels = call.session?.thinkingLevels ?? []
         Menu {
             if !models.isEmpty {

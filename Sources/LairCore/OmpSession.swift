@@ -10,11 +10,14 @@ public final class OmpSession: AgentSession {
     public let thinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
     private let available = Mutex<[OmpModel]>([])
     private let detailsContinuation: AsyncStream<String>.Continuation
+    public let models: AsyncStream<[String]>
+    private let modelsContinuation: AsyncStream<[String]>.Continuation
 
     public init(model: String? = nil, thinking: String? = nil, directory: URL? = nil,
                 environment: [String: String]? = nil, errorLog: URL? = nil,
                 systemPrompt: String = VoicePrompt.text) throws {
         (details, detailsContinuation) = AsyncStream<String>.makeStream()
+        (models, modelsContinuation) = AsyncStream<[String]>.makeStream()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.currentDirectoryURL = directory
         if let environment { process.environment = environment }
@@ -40,7 +43,9 @@ public final class OmpSession: AgentSession {
                 case .event(.details(let text)): detailsContinuation.yield(text)
                 case .event(let event): turns.receive(event)
                 case .stateChanged: try? send(OmpStream.getState())
-                case .models(let models): available.withLock { $0 = models }
+                case .models(let models):
+                    available.withLock { $0 = models }
+                    modelsContinuation.yield(models.map(\.id))
                 case .unsupportedDialog(let id): try? send(OmpStream.cancelDialog(id: id))
                 case nil: break
                 }
@@ -48,6 +53,7 @@ public final class OmpSession: AgentSession {
         } catch {}
         turns.close()
         detailsContinuation.finish()
+        modelsContinuation.finish()
     }
 
     public func ask(_ text: String) throws -> AsyncThrowingStream<AgentReply, Error> {
@@ -59,8 +65,6 @@ public final class OmpSession: AgentSession {
     public func answer(_ request: ApprovalRequest, decision: ApprovalDecision) throws {
         try send(OmpStream.confirm(request, decision: decision))
     }
-
-    public var models: [String] { available.withLock { $0.map(\.id) } }
 
     /// Takes a model id from the list, or "provider/id".
     public func setModel(_ model: String) throws {
