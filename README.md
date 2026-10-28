@@ -2,16 +2,17 @@
 
 A macOS menu-bar app to talk with your coding agents by voice. Speech-to-text and text-to-speech run on your Mac.
 
-[Demo video](docs/demo.mp4)
+**[Website](https://areguig.github.io/lair/)** · [Demo video](docs/demo.mp4)
 
 ## What it does
 
 - **Talk:** hold <kbd>⌥ Space</kbd>, speak, let go. The agent answers out loud. Talking over it cuts it off.
 - **Floating orb:** during a call, the agent's orb floats above every window. Click it to talk, click again to send, drag to move it.
-- **Several agents:** each call is a new session. Several can run at once; only the one in focus speaks, and the others tell you in one line when they're done.
+- **Several agents:** each call is a new session. Several can run at once; only the one in focus speaks, and the others tell you in one line when they're done or need you.
+- **Switch agents:** start a sentence with an agent's name ("Iris, …"), click its name in the panel, or click its column in Mission Control.
 - **Approvals:** when an agent asks before acting, answer by voice, in the panel or from the notification. The first answer wins. Nothing is approved automatically.
 - **Model and thinking:** pick them from the model line, or say "switch to Opus", "think harder", "go fast", "go deep".
-- **Mission Control** (<kbd>⌥ ⌘ L</kbd>): each agent's whole stream side by side, with tool calls, diffs, thinking, timings and cost, and a line to type in.
+- **Mission Control** (<kbd>⌥ ⌘ L</kbd>): each agent's whole stream side by side, with tool calls, diffs, thinking, timings and cost, a line to type in, and Allow/Deny on approvals.
 - **Show, don't say:** links and paths appear as chips on screen and are never read aloud.
 
 ## Agents
@@ -65,6 +66,7 @@ Use **Settings…** in the panel, or edit `~/.config/lair/config.json`, which La
 | `directory` | Working folder for Claude Code and omp sessions |
 | `permissionMode` | Claude Code's `--permission-mode`; unset keeps your Claude Code settings |
 | `url`, `headers` | Hermes: API address, and names of extra headers such as a proxy token |
+| `disabled` | `true` turns the agent off: it keeps its settings but leaves the panel and Mission Control (the **On** switch in Settings) |
 
 Secrets (API keys, header values) live in the Keychain, never in the file. A soul, which is extra instructions for one Claude Code or omp agent, is a Markdown file at `~/.config/lair/souls/<id>.md`.
 
@@ -74,3 +76,16 @@ Secrets (API keys, header values) live in the Keychain, never in the file. A sou
   start, agent process start and exit, output an agent printed outside its protocol, every problem
   shown in the panel, and turn timings.
 - Agent error output: `~/Library/Logs/Lair/<id>.log`
+
+## Credits
+
+- [FluidAudio](https://github.com/FluidInference/FluidAudio) (Apache 2.0) runs the speech models on the Neural Engine.
+- [Parakeet TDT 0.6B v2](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2) by NVIDIA (CC-BY-4.0) for speech-to-text.
+- [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) (Apache 2.0) for the voices.
+- [KeyboardShortcuts](https://github.com/sindresorhus/KeyboardShortcuts) (MIT) for the global shortcuts.
+
+The models download on first launch; they're not part of this repository.
+
+## License
+
+[MIT](LICENSE)
