@@ -1,0 +1,93 @@
+/// Splits streamed reply text into spoken text and `<show>…</show>` items (seen, not spoken).
+public struct ShowFilter: Sendable {
+    public struct Output: Equatable, Sendable {
+        public var spoken: String
+        public var shown: [String]
+        public init(spoken: String = "", shown: [String] = []) {
+            self.spoken = spoken
+            self.shown = shown
+        }
+    }
+
+    private static let open = Array("<show>")
+    private static let close = Array("</show>")
+
+    private enum Match { case full, partial, none }
+
+    private var pending: [Character] = []  // held-back text that may be a tag start
+    private var content = ""  // text collected inside the current tag
+    private var inTag = false
+    private var lastSpoken: Character?
+    private var afterTag = false  // a tag was just removed, so collapse doubled spaces
+
+    public init() {}
+
+    public mutating func feed(_ delta: String) -> Output {
+        pending += Array(delta)
+        var out = Output()
+        var i = 0
+        scan: while i < pending.count {
+            let tag = inTag ? Self.close : Self.open
+            guard let lt = pending[i...].firstIndex(of: "<") else {
+                take(pending[i...], into: &out)
+                i = pending.count
+                break
+            }
+            take(pending[i..<lt], into: &out)
+            i = lt
+            switch Self.match(pending[lt...], tag) {
+            case .partial:
+                break scan  // may still become a tag; wait for more text
+            case .full:
+                i = lt + tag.count
+                if inTag {
+                    let item = content.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !item.isEmpty { out.shown.append(item) }
+                    content = ""
+                    afterTag = true
+                }
+                inTag.toggle()
+            case .none:
+                take(pending[lt...(lt)], into: &out)
+                i = lt + 1
+            }
+        }
+        pending.removeFirst(i)
+        return out
+    }
+
+    public mutating func flush() -> Output {
+        var out = Output()
+        if inTag {
+            // Forgotten close tag: show the content, never speak it.
+            let item = content.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !item.isEmpty { out.shown.append(item) }
+        } else {
+            take(pending[...], into: &out)
+        }
+        self = ShowFilter()
+        return out
+    }
+
+    private static func match(_ text: ArraySlice<Character>, _ tag: [Character]) -> Match {
+        let head = text.prefix(tag.count).map { Character($0.lowercased()) }
+        guard head == Array(tag.prefix(head.count)) else { return .none }
+        return head.count == tag.count ? .full : .partial
+    }
+
+    private mutating func take(_ text: ArraySlice<Character>, into out: inout Output) {
+        guard !text.isEmpty else { return }
+        if inTag {
+            content += String(text)
+            return
+        }
+        var text = text
+        if afterTag, lastSpoken == " ", text.first == " " { text = text.dropFirst() }
+        guard !text.isEmpty else { return }
+        out.spoken += String(text)
+        lastSpoken = text.last
+        afterTag = false
+    }
+}
+
+import Foundation
