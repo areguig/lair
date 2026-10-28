@@ -37,6 +37,8 @@ import os
     var thinking: String?
     /// A thinking level asked for mid-call that the agent can only take from its next call.
     @ObservationIgnored var thinkingNextCall: String?
+    /// What the agent said while another agent had the floor, heard when you switch to it.
+    @ObservationIgnored var unheard: [String] = []
     @ObservationIgnored var session: (any AgentSession)?
     @ObservationIgnored var turn: Task<Void, Never>?
     /// Identifies the running turn, so an interrupted one can't reset the state of the next.
@@ -156,6 +158,7 @@ import os
     func focus(_ call: Call) {
         call.unread = false
         guard call.id != focusedID else { return }
+        defer { replayUnheard(call) }
         if let previous = focused {
             if previous.state == .listening {
                 _ = try? microphone.stopCapture()
@@ -248,6 +251,7 @@ import os
         if call.state == .speaking { speaker?.stop() }
         call.state = .offline
         call.unread = false
+        call.unheard = []
         if !calls.contains(where: \.inCall) { microphone.close() }
     }
 
@@ -450,6 +454,7 @@ import os
                           shown: Call.Line? = nil) async {
         let turnID = UUID()
         call.turnID = turnID
+        call.unheard = []
         defer {
             if call.inCall, call.turnID == turnID {
                 call.state = .ready
@@ -563,12 +568,39 @@ import os
     }
 
     /// Returns whether the sentence was queued for playback; only the focused agent is heard.
+    /// Speaks what the agent said in the background, once you switch to it and it isn't mid-turn.
+    private func replayUnheard(_ call: Call) {
+        guard !call.unheard.isEmpty, call.state == .ready || call.state == .waiting else {
+            // Mid-turn, it speaks from here on; the earlier part stays in the transcript.
+            if call.inCall, call.state != .ready, call.state != .waiting { call.unheard = [] }
+            return
+        }
+        let sentences = call.unheard
+        call.unheard = []
+        let resume = call.state
+        Task {
+            for sentence in sentences {
+                guard call.id == focusedID else { return }
+                _ = try? await say(sentence, in: call)
+            }
+            await speaker?.waitUntilDone()
+            if call.id == focusedID, call.state == .speaking { call.state = resume }
+        }
+    }
+
     private func say(_ sentence: String, in call: Call) async throws -> Bool {
         let text = Speakable.text(sentence)
-        guard !text.isEmpty, call.id == focusedID, let speaker else { return false }
+        guard !text.isEmpty, let speaker else { return false }
+        guard call.id == focusedID else {
+            call.unheard.append(sentence)
+            return false
+        }
         let samples = try await voice.speech(for: text, voice: call.agent.voice)
         // Focus may have moved while the sentence was being synthesized.
-        guard !Task.isCancelled, call.id == focusedID else { return false }
+        guard !Task.isCancelled, call.id == focusedID else {
+            call.unheard.append(sentence)
+            return false
+        }
         speaker.enqueue(samples)
         call.state = .speaking
         return true
