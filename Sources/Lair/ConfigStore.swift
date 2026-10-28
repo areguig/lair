@@ -11,6 +11,8 @@ import os
     @ObservationIgnored private let url: URL
     @ObservationIgnored private var modified: Date?
     @ObservationIgnored private var watcher: Timer?
+    /// The file on disk couldn't be read; it's kept aside before Lair writes over it.
+    @ObservationIgnored private var unreadable = false
 
     /// How often the file is checked for edits made outside Lair.
     private static let checkEvery: TimeInterval = 2
@@ -22,6 +24,7 @@ import os
             config = try LairConfig.load(from: url)
         } catch {
             config = .initial
+            unreadable = true
             problem = "Couldn't read the config file: \(error.localizedDescription)"
         }
         modified = Self.modificationDate(of: url)
@@ -36,6 +39,12 @@ import os
     func save(_ new: LairConfig) {
         guard new != config else { return }
         do {
+            if unreadable {
+                let backup = url.deletingPathExtension().appendingPathExtension("broken.json")
+                try? FileManager.default.removeItem(at: backup)
+                try FileManager.default.copyItem(at: url, to: backup)
+                unreadable = false
+            }
             try new.save(to: url)
             config = new
             problem = nil
@@ -54,11 +63,13 @@ import os
         do {
             let loaded = try LairConfig.load(from: url)
             problem = nil
+            unreadable = false
             guard loaded != config else { return }
             config = loaded
             onChange?(loaded)
         } catch {
             // Keep running with the last good config until the file is fixed.
+            unreadable = true
             problem = "The config file has an error: \(error.localizedDescription)"
         }
     }

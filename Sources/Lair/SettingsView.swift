@@ -76,6 +76,7 @@ private struct AgentsSettings: View {
                     Spacer()
                 }
                 .padding(6)
+                .background(Color(nsColor: .windowBackgroundColor))
             }
             .frame(width: 190)
             Divider()

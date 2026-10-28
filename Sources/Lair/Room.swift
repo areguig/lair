@@ -13,10 +13,14 @@ import os
     }
 
     struct Line: Identifiable {
-        enum Role { case you, agent, notice }
+        /// `info` is what Lair tells you along the way; `problem` is something that went wrong.
+        enum Role { case you, agent, info, problem }
+        /// A button next to a line, so a problem comes with its way out.
+        enum Action: Equatable { case openSettings, showLog(agentID: String) }
         let id = UUID()
         let role: Role
         var text: String
+        var action: Action?
     }
 
     var agent: AgentConfig
@@ -46,10 +50,12 @@ import os
 /// Only the focused agent speaks; the others work silently and announce themselves in one line.
 @Observable @MainActor final class Room {
     enum Readiness: Equatable {
-        case loading, ready, failed(String)
+        case loading, ready, microphoneDenied, failed(String)
     }
 
     var readiness = Readiness.loading
+    /// A short-lived line under the agent's name, for a key press that can't do anything yet.
+    private(set) var hint: String?
     private(set) var calls: [Call]
     var focusedID: String
 
@@ -60,6 +66,7 @@ import os
     @ObservationIgnored var meterOverride: LevelMeter?
     @ObservationIgnored private var environment: [String: String]?
     @ObservationIgnored private let notifier = ApprovalNotifier()
+    @ObservationIgnored private var hintTask: Task<Void, Never>?
 
     /// Shortest press that counts as speech, in 16 kHz samples.
     private let minimumSpeech = 16_000 / 3
@@ -98,18 +105,37 @@ import os
             guard let call = self?.calls.first(where: { $0.pendingApproval?.id == id }) else { return }
             self?.answer(call, decision: decision)
         }
+        notifier.onOpen = { [weak self] id in
+            guard let call = self?.calls.first(where: { $0.pendingApproval?.id == id }) else { return }
+            self?.focus(call)
+        }
         await notifier.setUp()
         environment = await LoginShell.environment()
+        await prepare()
+    }
+
+    /// Microphone access and the voice models; run again by "Try again" after a failure.
+    func prepare() async {
+        readiness = .loading
         guard await Microphone.requestAccess() else {
-            readiness = .failed("Lair needs the microphone. Allow it in System Settings › Privacy & Security.")
+            readiness = .microphoneDenied
             return
         }
         do {
             try await voice.load(warmUpVoice: calls.first?.agent.voice ?? "af_heart")
-            speaker = try Speaker()
+            if speaker == nil { speaker = try Speaker() }
             readiness = .ready
         } catch {
-            readiness = .failed("Couldn't load the voice models: \(error.localizedDescription)")
+            readiness = .failed("Couldn't load the voices: \(error.localizedDescription)")
+        }
+    }
+
+    private func show(hint text: String) {
+        hint = text
+        hintTask?.cancel()
+        hintTask = Task {
+            try? await Task.sleep(for: .seconds(2.5))
+            if !Task.isCancelled { hint = nil }
         }
     }
 
@@ -137,6 +163,8 @@ import os
 
     func summon(_ call: Call) {
         guard readiness == .ready, !call.inCall else { return }
+        // A new attempt replaces the last setup problem instead of stacking another.
+        call.lines.removeAll { $0.action == .openSettings }
         do {
             try microphone.open()
             let session = try session(for: call.agent)
@@ -146,8 +174,11 @@ import os
             Task { for await _ in session.news { hearNews(from: call) } }
             call.lines = []
             call.state = .ready
+        } catch let error as SetupError {
+            call.lines.append(.init(role: .problem, text: error.message(for: call.agent.name), action: .openSettings))
         } catch {
-            call.lines.append(.init(role: .notice, text: "Couldn't start \(call.agent.name): \(error.localizedDescription)"))
+            call.lines.append(.init(role: .problem, text: "Couldn't start \(call.agent.name): \(error.localizedDescription)",
+                                    action: .openSettings))
         }
     }
 
@@ -160,23 +191,22 @@ import os
             return try OmpSession(model: agent.model, directory: agent.directoryURL, environment: environment,
                                   errorLog: AgentLog.url(for: agent.id))
         case .hermes:
-            guard let url = agent.url.flatMap(URL.init(string:)) else { throw SetupError.missingURL(agent.name) }
+            guard let url = agent.url.flatMap(URL.init(string:)), url.host() != nil else { throw SetupError.missingAddress }
             let secret = { Keychain.password(service: agent.keychainService, account: $0) }
-            guard let apiKey = secret("api-key") else { throw SetupError.missingKey(agent.keychainService) }
+            guard let apiKey = secret("api-key") else { throw SetupError.missingKey }
             var headers: [String: String] = [:]
             for name in agent.headers ?? [] { headers[name] = secret(AgentConfig.headerAccount(name)) }
             return HermesSession(baseURL: url, credentials: .init(apiKey: apiKey, headers: headers), model: agent.model)
         }
     }
 
-    enum SetupError: LocalizedError {
-        case missingURL(String)
-        case missingKey(String)
+    enum SetupError: Error {
+        case missingAddress, missingKey
 
-        var errorDescription: String? {
+        func message(for name: String) -> String {
             switch self {
-            case .missingURL(let name): "\(name) has no url in the config."
-            case .missingKey(let service): "No API key in the keychain under \"\(service)\" (account \"api-key\")."
+            case .missingAddress: "\(name) needs an address. Add it in Settings › Agents."
+            case .missingKey: "\(name) needs an API key. Add it in Settings › Agents."
             }
         }
     }
@@ -193,10 +223,20 @@ import os
     }
 
     func pressTalk() {
-        guard let call = focused else { return }
+        switch readiness {
+        case .ready: break
+        case .loading: return show(hint: "Still getting the voices ready…")
+        case .microphoneDenied, .failed: return show(hint: "Lair can't listen yet; see below.")
+        }
+        // An agent waiting on your OK takes the answer, even if another one is in focus.
+        if focused?.state != .waiting, let waiting = calls.first(where: { $0.state == .waiting }) { focus(waiting) }
+        guard let call = focused else { return show(hint: "Add an agent in Settings first.") }
         if !call.inCall { summon(call) }
         // Talking over the agent cuts it off.
-        if call.pendingApproval == nil, call.state == .speaking || call.state == .thinking { interrupt(call) }
+        if call.pendingApproval == nil, call.state == .speaking || call.state == .thinking {
+            interrupt(call)
+            call.lines.append(.init(role: .info, text: "You cut in."))
+        }
         guard call.state == .ready || call.state == .waiting else { return }
         microphone.startCapture()
         call.state = .listening
@@ -237,12 +277,12 @@ import os
         case .allowAlways: "Always allowed"
         case .deny: "Denied"
         }
-        call.lines.append(.init(role: .notice, text: "\(verdict): \(request.summary)"))
+        call.lines.append(.init(role: .info, text: "\(verdict): \(request.summary)"))
         do {
             try call.session?.answer(request, decision: decision)
             if call.state == .waiting { call.state = .thinking }
         } catch {
-            call.lines.append(.init(role: .notice, text: error.localizedDescription))
+            call.lines.append(.init(role: .problem, text: error.localizedDescription))
         }
     }
 
@@ -267,7 +307,7 @@ import os
         do {
             prompt = try await voice.transcribe(samples)
         } catch {
-            call.lines.append(.init(role: .notice, text: error.localizedDescription))
+            call.lines.append(.init(role: .problem, text: "Couldn't make out what you said: \(error.localizedDescription)"))
             call.state = .ready
             return
         }
@@ -283,8 +323,9 @@ import os
             call.state = .ready
             focus(target)
             if !target.inCall { summon(target) }
+            guard target.inCall else { return }
             guard target.state == .ready else {
-                target.lines.append(.init(role: .notice, text: "\(name) is busy; try again when it's done."))
+                target.lines.append(.init(role: .info, text: "\(name) is busy; say it again when it's done."))
                 return
             }
             target.state = .thinking
@@ -305,7 +346,7 @@ import os
         call.state = .thinking
         call.turn = Task {
             await converse(in: call, prompt: VoicePrompt.backgroundResult, speech: 0, start: Self.clock.now,
-                           shown: .init(role: .notice, text: "Background task finished"))
+                           shown: .init(role: .info, text: "Background task finished"))
         }
     }
 
@@ -362,7 +403,7 @@ import os
                 firstAudio = clock.now - start
             }
             if !answered {
-                call.lines.append(.init(role: .notice, text: "\(call.agent.name) didn't answer."))
+                call.lines.append(.init(role: .problem, text: "\(call.agent.name) didn't answer."))
             }
             if call.id == focusedID {
                 await speaker.waitUntilDone()
@@ -374,11 +415,11 @@ import os
             guard !Task.isCancelled else { return }
             if error is AgentStopped {
                 let reason = AgentLog.firstLine(for: call.id).map { ": \($0)" } ?? "."
-                call.lines.append(.init(role: .notice, text: "\(call.agent.name) stopped\(reason) "
-                    + "Full log in Library/Logs/Lair/\(call.id).log."))
+                call.lines.append(.init(role: .problem, text: "\(call.agent.name) stopped\(reason)",
+                                        action: .showLog(agentID: call.id)))
                 hangUp(call)
             } else {
-                call.lines.append(.init(role: .notice, text: error.localizedDescription))
+                call.lines.append(.init(role: .problem, text: error.localizedDescription))
             }
         }
     }

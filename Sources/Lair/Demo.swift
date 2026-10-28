@@ -53,7 +53,7 @@ import SwiftUI
         try await s.you("Always.", to: 0, transcript: false)
         s.at {
             $0.calls[0].pendingApproval = nil
-            $0.calls[0].lines.append(.init(role: .notice, text: "Always allowed: Bump the build number in Info.plist and commit it"))
+            $0.calls[0].lines.append(.init(role: .info, text: "Always allowed: Bump the build number in Info.plist and commit it"))
         }
         try await s.agent(0, says: "Done. The changelog is updated, and the build number is bumped and committed.",
                           after: 1.6)

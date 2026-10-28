@@ -11,6 +11,8 @@ import UserNotifications
 
     /// Called with the request id and the decision.
     var onAnswer: ((String, ApprovalDecision) -> Void)?
+    /// Called with the request id when the notification itself is clicked.
+    var onOpen: ((String) -> Void)?
 
     func setUp() async {
         let center = UNUserNotificationCenter.current()
@@ -45,15 +47,16 @@ import UserNotifications
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
                                             didReceive response: UNNotificationResponse) async {
         let id = response.notification.request.identifier
-        // Tapping the notification itself is not an answer.
         let decision: ApprovalDecision? = switch response.actionIdentifier {
         case Self.allow: .allowOnce
         case Self.always: .allowAlways
         case Self.deny: .deny
         default: nil
         }
-        guard let decision else { return }
-        await MainActor.run { onAnswer?(id, decision) }
+        // Clicking the notification itself is not an answer: it brings that agent into focus.
+        await MainActor.run {
+            if let decision { onAnswer?(id, decision) } else { onOpen?(id) }
+        }
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,

@@ -20,4 +20,14 @@ struct AddressingTests {
         #expect(Addressing.split("Sage.", names: names) == nil)
         #expect(Addressing.split("Ask Sage about it", names: names) == nil)
     }
+
+    @Test func prefersTheLongestMatchingName() {
+        let found = Addressing.split("Claude Code, fix the tests", names: ["Claude", "Claude Code"])
+        #expect(found?.name == "Claude Code")
+        #expect(found?.rest == "fix the tests")
+    }
+
+    @Test func ignoresEmptyNames() {
+        #expect(Addressing.split(", hello", names: [""]) == nil)
+    }
 }

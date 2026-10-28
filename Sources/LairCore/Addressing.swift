@@ -7,7 +7,9 @@ public enum Addressing {
         for greeting in ["hey ", "ok ", "okay "] where trimmed.lowercased().hasPrefix(greeting) {
             trimmed = trimmed.dropFirst(greeting.count)
         }
-        for name in names where trimmed.lowercased().hasPrefix(name.lowercased()) {
+        // Longest first, so "Claude Code, …" isn't taken for "Claude" with "Code, …" left over.
+        for name in names.filter({ !$0.isEmpty }).sorted(by: { $0.count > $1.count })
+        where trimmed.lowercased().hasPrefix(name.lowercased()) {
             let after = trimmed.dropFirst(name.count)
             // The name must stand alone: "Sages are…" is not addressed to Sage.
             guard let next = after.first, !next.isLetter, !next.isNumber else { continue }

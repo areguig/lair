@@ -6,30 +6,39 @@ import SwiftUI
 /// The menu-bar panel: the focused agent's orb, what was said, and the call controls.
 struct RoomView: View {
     let room: Room
+    /// The config file has an error; Lair keeps running with the last good version until it's fixed.
+    var configProblem: String?
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         let call = room.focused
-        let tint = call.map { Color(hex: $0.agent.color) } ?? .gray
+        let tint = call.map { Color(hex: $0.agent.color) } ?? Color(hex: "#8A8F98")
         VStack(spacing: 0) {
             header
+            if let configProblem {
+                Banner(text: configProblem, action: "Open file") { NSWorkspace.shared.open(LairConfig.defaultURL) }
+                    .padding(.top, 10)
+            }
             if let call {
                 stage(call, tint: tint)
                 if room.calls.count > 1 { roster.padding(.top, 14) }
-                Transcript(lines: call.lines).padding(.top, 18)
+                Transcript(lines: call.lines, live: call.inCall, perform: perform).padding(.top, 16)
                 if let request = call.pendingApproval {
                     ApprovalCard(agent: call.agent.name, request: request, tint: tint,
                                  answer: { room.answer(call, decision: $0) })
                         .padding(.top, 12)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                controls(call, tint: tint).padding(.top, 14)
+                controls(call).padding(.top, 14)
+            } else {
+                emptyState
             }
             footer.padding(.top, 14)
         }
         .padding(18)
         .frame(width: 340)
         .animation(.smooth(duration: 0.3), value: call?.pendingApproval)
+        .animation(.smooth(duration: 0.3), value: room.focusedID)
         .background(Backdrop(tint: tint, live: call?.inCall == true))
         .environment(\.colorScheme, .dark)
     }
@@ -40,11 +49,7 @@ struct RoomView: View {
                 .font(.system(.headline, design: .rounded, weight: .semibold))
             Spacer()
             Menu {
-                Button("Settings…") {
-                    openWindow(id: SettingsView.id)
-                    NSApp.activate()
-                }
-                .keyboardShortcut(",")
+                Button("Settings…", action: openSettings)
                 Divider()
                 Button("Quit Lair") { NSApp.terminate(nil) }
             } label: {
@@ -57,6 +62,7 @@ struct RoomView: View {
             .buttonStyle(.plain)
             .menuIndicator(.hidden)
             .fixedSize()
+            .accessibilityLabel("More")
         }
         .foregroundStyle(.white.opacity(0.9))
     }
@@ -67,33 +73,73 @@ struct RoomView: View {
                 .frame(width: 112, height: 112)
                 .frame(height: 150)
                 .contentShape(Circle())
-                .onTapGesture { room.toggle(call) }
+                // Starts a call; hanging up stays on the red button, so a stray click can't end one.
+                .onTapGesture { if !call.inCall { room.summon(call) } }
+                .accessibilityElement()
+                .accessibilityLabel("\(call.agent.name), \(spoken(call.state))")
+                .accessibilityAddTraits(call.inCall ? [] : .isButton)
+                .accessibilityAction { if !call.inCall { room.summon(call) } }
             VStack(spacing: 4) {
                 Text(call.agent.name)
                     .font(.system(.title3, design: .rounded, weight: .semibold))
+                    .lineLimit(1)
                 if let details = call.details {
                     Text(details)
                         .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.4))
+                        .foregroundStyle(.white.opacity(0.55))
+                        .lineLimit(1)
                         .transition(.opacity)
                 }
-                Text(caption(for: call))
-                    .font(.system(.subheadline, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.55))
-                    .contentTransition(.opacity)
-                    .animation(.easeInOut(duration: 0.2), value: caption(for: call))
+                status(for: call)
             }
         }
         .padding(.top, 4)
     }
 
+    /// The caption under the name, or what's in the way and how to fix it.
+    @ViewBuilder private func status(for call: Call) -> some View {
+        switch room.readiness {
+        case .microphoneDenied:
+            Problem(text: "Lair needs your microphone to hear you.") {
+                Button("Open Privacy Settings") {
+                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
+                }
+                Button("Try again") { Task { await room.prepare() } }
+            }
+        case .failed(let message):
+            Problem(text: message) {
+                Button("Try again") { Task { await room.prepare() } }
+            }
+        case .loading, .ready:
+            let text = room.hint ?? caption(for: call)
+            Text(text)
+                .font(.system(.subheadline, design: .rounded))
+                .foregroundStyle(.white.opacity(room.hint == nil ? 0.62 : 0.9))
+                .multilineTextAlignment(.center)
+                .contentTransition(.opacity)
+                .animation(.easeInOut(duration: 0.2), value: text)
+        }
+    }
+
     private var roster: some View {
-        HStack(spacing: 10) {
+        // Centered while the chips fit, scrolling sideways once there are more agents than room.
+        ViewThatFits(in: .horizontal) {
+            chips
+            ScrollView(.horizontal, showsIndicators: false) { chips }
+        }
+    }
+
+    private var chips: some View {
+        HStack(spacing: 8) {
             ForEach(room.calls) { call in
                 Button { room.focus(call) } label: {
                     HStack(spacing: 6) {
                         StatusDot(color: Color(hex: call.agent.color), state: call.state)
-                        Text(call.agent.name).font(.system(.caption, design: .rounded, weight: .medium))
+                        Text(call.agent.name)
+                            .font(.system(.caption, design: .rounded, weight: .medium))
+                            .lineLimit(1)
+                            .frame(maxWidth: 96)
+                            .fixedSize()
                         if call.state == .waiting {
                             Image(systemName: "hand.raised.fill").font(.system(size: 9)).foregroundStyle(.orange)
                         }
@@ -108,27 +154,52 @@ struct RoomView: View {
                 }
                 .buttonStyle(.plain)
                 .help(call.unread ? "\(call.agent.name) has news" : call.agent.name)
+                .accessibilityLabel([call.agent.name, spoken(call.state), call.unread ? "has news" : nil]
+                    .compactMap { $0 }.joined(separator: ", "))
             }
         }
+        .padding(.vertical, 2)
     }
 
-    private func controls(_ call: Call, tint: Color) -> some View {
+    /// The talk button stays centered; the call button sits to its left, balanced by empty space on the right.
+    private func controls(_ call: Call) -> some View {
         HStack(spacing: 28) {
             RoundButton(symbol: call.inCall ? "phone.down.fill" : "phone.fill",
                         fill: call.inCall ? Color(red: 0.92, green: 0.3, blue: 0.3) : Color(red: 0.25, green: 0.75, blue: 0.45),
                         size: 44) { room.toggle(call) }
+                .disabled(room.readiness != .ready)
                 .help(call.inCall ? "Hang up" : "Call \(call.agent.name)")
-            HoldToTalk(active: call.state == .listening, tint: tint,
+                .accessibilityLabel(call.inCall ? "Hang up" : "Call \(call.agent.name)")
+            HoldToTalk(active: call.state == .listening, tint: Color(hex: call.agent.color),
                        onPress: room.pressTalk, onRelease: room.releaseTalk)
                 .disabled(room.readiness != .ready)
-            RoundButton(symbol: "folder", fill: .white.opacity(0.1), size: 44) {
-                if let url = call.agent.directoryURL { NSWorkspace.shared.open(url) }
-            }
-            .help(call.agent.directory ?? "")
-            // Kept in the layout so the talk button stays centered.
-            .opacity(call.agent.directoryURL == nil ? 0 : 1)
-            .disabled(call.agent.directoryURL == nil)
+            Color.clear.frame(width: 44, height: 44)
         }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "person.2.wave.2")
+                .font(.system(size: 34, weight: .light))
+                .foregroundStyle(.white.opacity(0.7))
+            Text("No agents yet")
+                .font(.system(.title3, design: .rounded, weight: .semibold))
+            Text("Add Claude Code, omp or a Hermes agent, then hold the talk key to call it.")
+                .font(.system(.subheadline, design: .rounded))
+                .foregroundStyle(.white.opacity(0.62))
+                .multilineTextAlignment(.center)
+            Button(action: openSettings) {
+                Text("Add an agent…")
+                    .font(.system(.callout, design: .rounded, weight: .semibold))
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, 18).padding(.vertical, 8)
+                    .background(.white, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 4)
+        }
+        .padding(.vertical, 36)
+        .frame(maxWidth: .infinity)
     }
 
     @ViewBuilder private var footer: some View {
@@ -137,13 +208,30 @@ struct RoomView: View {
                 Text("Hold")
                 Text(shortcut.description)
                     .font(.system(.caption, design: .rounded, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.8))
+                    .foregroundStyle(.white.opacity(0.85))
                     .padding(.horizontal, 7).padding(.vertical, 2)
                     .background(.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
                 Text("anywhere to talk")
             }
             .font(.system(.caption, design: .rounded))
-            .foregroundStyle(.white.opacity(0.45))
+            .foregroundStyle(.white.opacity(0.6))
+        } else {
+            Button("Set a talk shortcut in Settings…", action: openSettings)
+                .buttonStyle(.plain)
+                .font(.system(.caption, design: .rounded, weight: .medium))
+                .foregroundStyle(.white.opacity(0.75))
+        }
+    }
+
+    private func openSettings() {
+        openWindow(id: SettingsView.id)
+        NSApp.activate()
+    }
+
+    private func perform(_ action: Call.Line.Action) {
+        switch action {
+        case .openSettings: openSettings()
+        case .showLog(let agentID): NSWorkspace.shared.open(AgentLog.url(for: agentID))
         }
     }
 
@@ -156,30 +244,96 @@ struct RoomView: View {
     }
 
     private func caption(for call: Call) -> String {
-        switch room.readiness {
-        case .loading: return "Waking up the voices…"
-        case .failed(let message): return message
-        case .ready: break
-        }
+        if room.readiness == .loading { return "Getting the voices ready… the first launch downloads them once." }
+        let key = KeyboardShortcuts.getShortcut(for: .pushToTalk)?.description ?? "the talk key"
         switch call.state {
-        case .offline: return "Tap the orb or hold to talk"
-        case .ready: return "Listening when you hold"
-        case .listening: return "Listening…"
-        case .thinking: return "Thinking…"
-        case .speaking: return "Speaking"
-        case .waiting: return call.pendingApproval?.canAlwaysAllow == true ? "Your OK? Say yes, always or no" : "Your OK? Say yes or no"
+        case .offline: return "Hold \(key) to talk, or tap the orb"
+        case .ready: return "Hold \(key) to talk"
+        case .listening: return "Listening… let go when you're done"
+        case .thinking: return "Thinking… hold \(key) to cut in"
+        case .speaking: return "Speaking · hold \(key) to cut in"
+        case .waiting:
+            return call.pendingApproval?.canAlwaysAllow == true ? "Your OK? Say yes, always or no" : "Your OK? Say yes or no"
         }
+    }
+
+    private func spoken(_ state: Call.State) -> String {
+        switch state {
+        case .offline: "not in a call"
+        case .ready: "in a call"
+        case .listening: "listening"
+        case .thinking: "thinking"
+        case .speaking: "speaking"
+        case .waiting: "waiting for your OK"
+        }
+    }
+}
+
+/// A problem with its way out, under the agent's name.
+private struct Problem<Actions: View>: View {
+    let text: String
+    @ViewBuilder let actions: Actions
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Label(text, systemImage: "exclamationmark.triangle.fill")
+                .font(.system(.subheadline, design: .rounded))
+                .foregroundStyle(.orange)
+                .multilineTextAlignment(.center)
+            HStack(spacing: 8) { actions }
+                .buttonStyle(PillButtonStyle())
+        }
+    }
+}
+
+/// A slim warning across the panel, with one action.
+private struct Banner: View {
+    let text: String
+    let action: String
+    let perform: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+            Text(text)
+                .font(.system(.caption, design: .rounded))
+                .foregroundStyle(.white.opacity(0.85))
+                .lineLimit(2)
+            Spacer(minLength: 4)
+            Button(action, action: perform).buttonStyle(PillButtonStyle())
+        }
+        .padding(10)
+        .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+/// Small rounded buttons used for actions inside the panel.
+private struct PillButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(.caption, design: .rounded, weight: .semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .background(.white.opacity(configuration.isPressed ? 0.24 : 0.14), in: Capsule())
     }
 }
 
 /// What was said in this call, newest at the bottom, fading out at the top.
 private struct Transcript: View {
     let lines: [Call.Line]
+    /// In a call, the space stays reserved so the panel doesn't jump at the first words.
+    let live: Bool
+    let perform: (Call.Line.Action) -> Void
     @Environment(\.renderTime) private var renderTime
 
     var body: some View {
         Group {
-            if renderTime == nil {
+            if lines.isEmpty {
+                Text("What you and the agent say shows up here.")
+                    .font(.system(.caption, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.35))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if renderTime == nil {
                 ScrollView(showsIndicators: false) {
                     LazyVStack(alignment: .leading, spacing: 10) {
                         ForEach(lines) { line in
@@ -202,28 +356,52 @@ private struct Transcript: View {
                 .clipped()
             }
         }
-        .frame(height: lines.isEmpty ? 0 : 150)
+        .frame(height: lines.isEmpty ? (live ? 44 : 0) : 150)
+        .opacity(lines.isEmpty && !live ? 0 : 1)
         .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.18),
                                      .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom))
         .animation(.smooth, value: lines.isEmpty)
+        .animation(.smooth, value: live)
     }
 
     @ViewBuilder private func row(_ line: Call.Line) -> some View {
         switch line.role {
         case .you:
             Text(line.text)
+                .textSelection(.enabled)
                 .padding(.horizontal, 12).padding(.vertical, 7)
                 .background(.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .padding(.leading, 40)
         case .agent:
             Text(line.text.isEmpty ? "…" : line.text)
-                .foregroundStyle(.white.opacity(0.88))
+                .textSelection(.enabled)
+                .foregroundStyle(.white.opacity(0.9))
                 .padding(.trailing, 24)
-        case .notice:
-            Label(line.text, systemImage: "exclamationmark.circle")
-                .font(.caption)
-                .foregroundStyle(.orange.opacity(0.9))
+        case .info:
+            Label(line.text, systemImage: "info.circle")
+                .font(.system(.caption, design: .rounded))
+                .foregroundStyle(.white.opacity(0.55))
+                .lineLimit(2)
+        case .problem:
+            VStack(alignment: .leading, spacing: 6) {
+                Label(line.text, systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(.caption, design: .rounded))
+                    .foregroundStyle(.orange)
+                    .textSelection(.enabled)
+                if let action = line.action {
+                    Button(action.title) { perform(action) }.buttonStyle(PillButtonStyle())
+                }
+            }
+        }
+    }
+}
+
+private extension Call.Line.Action {
+    var title: String {
+        switch self {
+        case .openSettings: "Open Settings"
+        case .showLog: "Show log"
         }
     }
 }
@@ -240,23 +418,30 @@ private struct ApprovalCard: View {
             HStack(spacing: 6) {
                 Image(systemName: "hand.raised.fill").foregroundStyle(tint)
                 Text("\(agent) needs your OK").font(.system(.subheadline, design: .rounded, weight: .semibold))
-                Spacer()
+                    .lineLimit(1)
+                Spacer(minLength: 6)
                 Text(request.tool)
                     .font(.system(.caption2, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(.white.opacity(0.65))
+                    .lineLimit(1)
             }
+            // A long command stays readable without pushing the panel off screen; the whole text is in the tooltip.
             Text(request.summary)
                 .font(.system(.callout, design: .rounded))
-                .foregroundStyle(.white.opacity(0.85))
+                .foregroundStyle(.white.opacity(0.88))
+                .lineLimit(5)
                 .fixedSize(horizontal: false, vertical: true)
+                .help(request.summary)
+                .textSelection(.enabled)
             HStack(spacing: 8) {
                 Button { answer(.deny) } label: {
                     Text("Deny").frame(maxWidth: .infinity).padding(.vertical, 7)
                         .background(.white.opacity(0.1), in: Capsule())
                 }
+                .keyboardShortcut(.cancelAction)
                 if request.canAlwaysAllow {
                     Button { answer(.allowAlways) } label: {
-                        Text("Always").fontWeight(.semibold).foregroundStyle(tint)
+                        Text("Always allow").fontWeight(.semibold).foregroundStyle(tint).lineLimit(1)
                             .frame(maxWidth: .infinity).padding(.vertical, 7)
                             .background(tint.opacity(0.22), in: Capsule())
                     }
@@ -266,6 +451,7 @@ private struct ApprovalCard: View {
                         .frame(maxWidth: .infinity).padding(.vertical, 7)
                         .background(.white, in: Capsule())
                 }
+                .keyboardShortcut(.defaultAction)
             }
             .buttonStyle(.plain)
             .font(.system(.callout, design: .rounded))
@@ -338,6 +524,10 @@ private struct HoldToTalk: View {
                 .onChanged { _ in if !pressed { pressed = true; onPress() } }
                 .onEnded { _ in pressed = false; onRelease() })
             .help("Hold to talk")
+            .accessibilityElement()
+            .accessibilityLabel(active ? "Listening; release to send" : "Hold to talk")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction(named: active ? "Send" : "Start talking") { active ? onRelease() : onPress() }
     }
 }
 

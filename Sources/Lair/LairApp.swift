@@ -30,7 +30,8 @@ struct LairApp: App {
             RunLoop.main.run()
         }
         if let i = CommandLine.arguments.firstIndex(of: "--snapshot"), i + 1 < CommandLine.arguments.count {
-            Snapshot.write(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]))
+            let variant = i + 2 < CommandLine.arguments.count ? CommandLine.arguments[i + 2] : "approval"
+            Snapshot.write(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]), variant: variant)
             exit(0)
         }
         if let i = CommandLine.arguments.firstIndex(of: "--settings-snapshot"), i + 1 < CommandLine.arguments.count {
@@ -55,9 +56,9 @@ struct LairApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            RoomView(room: room)
+            RoomView(room: room, configProblem: store.problem)
         } label: {
-            MenuBarIcon(state: room.calls.contains { $0.state == .waiting } ? .waiting : room.focused?.state ?? .offline)
+            MenuBarIcon(room: room)
         }
         .menuBarExtraStyle(.window)
 
@@ -68,51 +69,86 @@ struct LairApp: App {
     }
 }
 
+/// The whole room at a glance: what needs you first, then what's happening, then whether anyone is on a call.
 struct MenuBarIcon: View {
-    let state: Call.State
+    let room: Room
 
     var body: some View {
+        let (symbol, label) = summary
         Image(systemName: symbol)
             .symbolRenderingMode(.hierarchical)
-            .accessibilityLabel("Lair")
+            .accessibilityLabel("Lair, \(label)")
     }
 
-    private var symbol: String {
-        switch state {
-        case .offline: "circle.circle"
-        case .ready: "circle.circle.fill"
-        case .listening, .speaking: "waveform.circle.fill"
-        case .thinking: "ellipsis.circle.fill"
-        case .waiting: "hand.raised.circle.fill"
+    private var summary: (String, String) {
+        switch room.readiness {
+        case .loading: return ("circle.dotted", "getting ready")
+        case .microphoneDenied, .failed: return ("exclamationmark.circle", "needs attention")
+        case .ready: break
         }
+        let calls = room.calls
+        if let waiting = calls.first(where: { $0.state == .waiting }) {
+            return ("hand.raised.circle.fill", "\(waiting.agent.name) needs your OK")
+        }
+        if let active = calls.first(where: { $0.state == .listening || $0.state == .speaking }) {
+            return ("waveform.circle.fill", "\(active.agent.name) is \(active.state == .listening ? "listening" : "speaking")")
+        }
+        if let working = calls.first(where: { $0.state == .thinking }) {
+            return ("ellipsis.circle.fill", "\(working.agent.name) is working")
+        }
+        if let news = calls.first(where: \.unread) { return ("circle.circle.fill", "\(news.agent.name) has news") }
+        if calls.contains(where: \.inCall) { return ("circle.circle.fill", "in a call") }
+        return ("circle.circle", "idle")
     }
 }
 
-/// `Lair --snapshot out.png` renders the panel with a demo call, to check the design without clicking around.
+/// `Lair --snapshot out.png [approval|chat|empty|micdenied|crowded]` renders the panel in a demo state,
+/// to check the design without clicking around.
 @MainActor enum Snapshot {
-    static func write(to url: URL) {
-        let room = Room(config: LairConfig(agents: [
-            AgentConfig(id: "claude", name: "Claude", kind: .claudeCode, voice: "af_heart", color: "#D97757", directory: "~"),
-            AgentConfig(id: "sage", name: "Sage", kind: .claudeCode, voice: "bf_emma", color: "#6C8CFF"),
-        ]))
-        room.readiness = .ready
-        room.calls[1].state = .thinking
-        room.calls[1].unread = true
-        let call = room.calls[0]
-        call.state = .waiting
-        call.details = "claude-haiku-5-5"
-        call.pendingApproval = ApprovalRequest(id: "demo", tool: "Bash",
-                                               summary: "Bump the build number in Info.plist and commit it",
-                                               suggestions: Data(#"[{"type":"addRules","rules":[{"toolName":"Bash"}],"behavior":"allow","destination":"localSettings"}]"#.utf8))
-        call.lines = [
-            .init(role: .you, text: "What's left on the release checklist?"),
-            .init(role: .agent, text: "Two things: the changelog still needs the new voice section, and the build "
-                + "number hasn't been bumped yet. Want me to do both?"),
-        ]
-        writePNG(RoomView(room: room), scale: 2, to: url)
+    static func write(to url: URL, variant: String = "approval") {
+        let agents = variant == "empty" ? [] : variant == "crowded"
+            ? (1...6).map { AgentConfig(id: "a\($0)", name: ["Claude", "Sage", "Copilot", "Research assistant", "Ops", "Docs"][$0 - 1],
+                                        kind: .claudeCode, voice: "af_heart", color: AgentConfig.palette[$0 - 1]) }
+            : [AgentConfig(id: "claude", name: "Claude", kind: .claudeCode, voice: "af_heart", color: "#D97757", directory: "~"),
+               AgentConfig(id: "sage", name: "Sage", kind: .hermes, voice: "bf_emma", color: "#7B5CFF")]
+        let room = Room(config: LairConfig(agents: agents))
+        room.readiness = variant == "micdenied" ? .microphoneDenied : .ready
+        if let call = room.calls.first {
+            call.details = "claude-haiku-5-5"
+            call.lines = [
+                .init(role: .you, text: "What's left on the release checklist?"),
+                .init(role: .agent, text: "Two things: the changelog still needs the new voice section, and the build "
+                    + "number hasn't been bumped yet. Want me to do both?"),
+            ]
+            switch variant {
+            case "approval":
+                room.calls[1].state = .thinking
+                room.calls[1].unread = true
+                call.state = .waiting
+                call.pendingApproval = ApprovalRequest(
+                    id: "demo", tool: "Bash", summary: "Bump the build number in Info.plist and commit it",
+                    suggestions: Data(#"[{"type":"addRules","rules":[{"toolName":"Bash"}],"behavior":"allow","destination":"localSettings"}]"#.utf8))
+            case "chat":
+                call.state = .speaking
+                call.lines += [
+                    .init(role: .you, text: "Yes, go ahead."),
+                    .init(role: .info, text: "Always allowed: Bump the build number in Info.plist and commit it"),
+                    .init(role: .agent, text: "Done. The changelog is updated and the build number is bumped."),
+                ]
+                room.calls[1].lines = [.init(role: .problem, text: "Sage needs an API key. Add it in Settings › Agents.",
+                                             action: .openSettings)]
+            case "crowded":
+                call.state = .ready
+                room.calls[3].state = .thinking
+                room.calls[4].state = .waiting
+            default:
+                break
+            }
+        }
+        let problem = variant == "chat" ? "The config file has an error: line 4 is missing a comma." : nil
+        writePNG(RoomView(room: room, configProblem: problem).environment(\.renderTime, 0), scale: 2, to: url)
     }
 
-    /// `Lair --icon out.png`: the 1024px app icon, drawn from the orb.
     /// The settings window with demo agents, drawn in a hidden window so native controls render.
     static func writeSettings(to url: URL, agent: String? = nil) {
         let file = FileManager.default.temporaryDirectory.appending(path: "lair-settings-\(UUID().uuidString).json")
@@ -131,6 +167,7 @@ struct MenuBarIcon: View {
         try? rep.representation(using: .png, properties: [:])?.write(to: url)
     }
 
+    /// `Lair --icon out.png`: the 1024px app icon, drawn from the orb.
     static func writeIcon(to url: URL) {
         writePNG(AppIcon(), scale: 1, to: url)
     }
