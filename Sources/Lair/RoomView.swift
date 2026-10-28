@@ -84,16 +84,24 @@ struct RoomView: View {
     private var roster: some View {
         HStack(spacing: 10) {
             ForEach(room.calls) { call in
-                Button { room.focusedID = call.id } label: {
+                Button { room.focus(call) } label: {
                     HStack(spacing: 6) {
-                        Circle().fill(Color(hex: call.agent.color)).frame(width: 8, height: 8)
-                            .opacity(call.inCall ? 1 : 0.45)
+                        StatusDot(color: Color(hex: call.agent.color), state: call.state)
                         Text(call.agent.name).font(.system(.caption, design: .rounded, weight: .medium))
+                        if call.state == .waiting {
+                            Image(systemName: "hand.raised.fill").font(.system(size: 9)).foregroundStyle(.orange)
+                        }
                     }
                     .padding(.horizontal, 10).padding(.vertical, 5)
                     .background(.white.opacity(call.id == room.focusedID ? 0.14 : 0.05), in: Capsule())
+                    .overlay(alignment: .topTrailing) {
+                        if call.unread && call.id != room.focusedID {
+                            Circle().fill(.white).frame(width: 7, height: 7).offset(x: 1, y: -1)
+                        }
+                    }
                 }
                 .buttonStyle(.plain)
+                .help(call.unread ? "\(call.agent.name) has news" : call.agent.name)
             }
         }
     }
@@ -110,7 +118,10 @@ struct RoomView: View {
             RoundButton(symbol: "folder", fill: .white.opacity(0.1), size: 44) {
                 if let url = call.agent.directoryURL { NSWorkspace.shared.open(url) }
             }
-            .help(call.agent.directory ?? "No folder")
+            .help(call.agent.directory ?? "")
+            // Kept in the layout so the talk button stays centered.
+            .opacity(call.agent.directoryURL == nil ? 0 : 1)
+            .disabled(call.agent.directoryURL == nil)
         }
     }
 
@@ -241,6 +252,25 @@ private struct ApprovalCard: View {
         .padding(14)
         .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(tint.opacity(0.5), lineWidth: 1))
+    }
+}
+
+/// The agent's color, dim when offline and breathing while it works.
+private struct StatusDot: View {
+    let color: Color
+    let state: Call.State
+
+    var body: some View {
+        let working = state == .thinking || state == .speaking
+        TimelineView(.animation(paused: !working)) { timeline in
+            let pulse = working ? (sin(timeline.date.timeIntervalSinceReferenceDate * 5) + 1) / 2 : 0
+            Circle().fill(color)
+                .frame(width: 8, height: 8)
+                .opacity(state == .offline ? 0.4 : 1)
+                .shadow(color: color.opacity(working ? 0.9 : 0), radius: 2 + pulse * 3)
+                .scaleEffect(1 + pulse * 0.25)
+        }
+        .frame(width: 10, height: 10)
     }
 }
 

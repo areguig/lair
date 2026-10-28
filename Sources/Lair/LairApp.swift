@@ -34,7 +34,7 @@ struct LairApp: App {
         MenuBarExtra {
             RoomView(room: room)
         } label: {
-            MenuBarIcon(state: room.focused?.state ?? .offline)
+            MenuBarIcon(state: room.calls.contains { $0.state == .waiting } ? .waiting : room.focused?.state ?? .offline)
         }
         .menuBarExtraStyle(.window)
 
@@ -85,6 +85,8 @@ struct MenuBarIcon: View {
             AgentConfig(id: "sage", name: "Sage", kind: .claudeCode, voice: "bf_emma", color: "#6C8CFF"),
         ]))
         room.readiness = .ready
+        room.calls[1].state = .thinking
+        room.calls[1].unread = true
         let call = room.calls[0]
         call.state = .waiting
         call.pendingApproval = ApprovalRequest(id: "demo", tool: "Bash",

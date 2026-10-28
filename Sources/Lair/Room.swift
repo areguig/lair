@@ -23,6 +23,8 @@ import os
     var state = State.offline
     var lines: [Line] = []
     var pendingApproval: ApprovalRequest?
+    /// Finished or needs you while you were talking to someone else.
+    var unread = false
     @ObservationIgnored var session: (any AgentSession)?
     @ObservationIgnored var turn: Task<Void, Never>?
 
@@ -35,6 +37,7 @@ import os
 }
 
 /// The agents, the shared voice models, and push-to-talk routed to the focused agent.
+/// Only the focused agent speaks; the others work silently and announce themselves in one line.
 @Observable @MainActor final class Room {
     enum Readiness: Equatable {
         case loading, ready, failed(String)
@@ -81,8 +84,25 @@ import os
     }
 
     func toggle(_ call: Call) {
-        focusedID = call.id
+        focus(call)
         if call.inCall { hangUp(call) } else { summon(call) }
+    }
+
+    /// Hands the floor to `call`; the agent that was speaking goes on working silently.
+    func focus(_ call: Call) {
+        call.unread = false
+        guard call.id != focusedID else { return }
+        if let previous = focused {
+            if previous.state == .listening {
+                _ = try? microphone.stopCapture()
+                previous.state = previous.pendingApproval == nil ? .ready : .waiting
+            }
+            if previous.state == .speaking {
+                speaker?.stop()
+                previous.state = .thinking
+            }
+        }
+        focusedID = call.id
     }
 
     func summon(_ call: Call) {
@@ -130,8 +150,9 @@ import os
         call.turn?.cancel()
         call.session?.stop()
         call.session = nil
+        if call.state == .speaking { speaker?.stop() }
         call.state = .offline
-        speaker?.stop()
+        call.unread = false
         if !calls.contains(where: \.inCall) { microphone.close() }
     }
 
@@ -192,22 +213,54 @@ import os
 
     private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "lair", category: "turn")
 
+    private static let clock = ContinuousClock()
+
     private func reply(in call: Call, to samples: [Float]) async {
+        let start = Self.clock.now
+        let prompt: String
+        do {
+            prompt = try await voice.transcribe(samples)
+        } catch {
+            call.lines.append(.init(role: .notice, text: error.localizedDescription))
+            call.state = .ready
+            return
+        }
+        guard !prompt.isEmpty else {
+            call.state = .ready
+            return
+        }
+        // "Sage, …" while talking to Claude goes to Sage.
+        let others = calls.filter { $0.id != call.id }
+        if let (name, rest) = Addressing.split(prompt, names: others.map(\.agent.name)),
+           let target = others.first(where: { $0.agent.name == name }) {
+            call.state = .ready
+            focus(target)
+            if !target.inCall { summon(target) }
+            guard target.state == .ready else {
+                target.lines.append(.init(role: .notice, text: "\(name) is busy; try again when it's done."))
+                return
+            }
+            target.state = .thinking
+            target.turn = Task { await converse(in: target, prompt: rest, speech: samples.count, start: start) }
+            return
+        }
+        await converse(in: call, prompt: prompt, speech: samples.count, start: start)
+    }
+
+    private func converse(in call: Call, prompt: String, speech: Int, start: ContinuousClock.Instant) async {
         defer { if call.inCall { call.state = .ready } }
-        let clock = ContinuousClock()
-        let start = clock.now
-        var heard, firstToken, firstAudio: Duration?
+        let clock = Self.clock
+        let heard: Duration? = clock.now - start
+        var firstToken, firstAudio: Duration?
         defer {
             func ms(_ d: Duration?) -> Int { d.map { Int($0 / .milliseconds(1)) } ?? -1 }
             Self.log.info("""
-                \(call.id, privacy: .public): \(samples.count / 16) ms of speech; heard \(ms(heard)) ms, \
+                \(call.id, privacy: .public): \(speech / 16) ms of speech; heard \(ms(heard)) ms, \
                 first token \(ms(firstToken)) ms, first audio \(ms(firstAudio)) ms after release
                 """)
         }
         do {
-            let prompt = try await voice.transcribe(samples)
-            heard = clock.now - start
-            guard !prompt.isEmpty, let session = call.session, let speaker else { return }
+            guard let session = call.session, let speaker else { return }
             call.lines.append(.init(role: .you, text: prompt))
 
             // Text after an approval starts a new line, so the transcript reads in order.
@@ -240,7 +293,12 @@ import os
             if !answered {
                 call.lines.append(.init(role: .notice, text: "\(call.agent.name) didn't answer."))
             }
-            await speaker.waitUntilDone()
+            if call.id == focusedID {
+                await speaker.waitUntilDone()
+            } else if !Task.isCancelled {
+                call.unread = true
+                announce("\(call.agent.name) is done.", for: call)
+            }
         } catch {
             call.lines.append(.init(role: .notice, text: error.localizedDescription))
         }
@@ -250,16 +308,34 @@ import os
     private func ask(_ call: Call, to request: ApprovalRequest) async throws {
         call.pendingApproval = request
         notifier.post(request, from: call.agent.name)
+        if call.id != focusedID {
+            call.unread = true
+            call.state = .waiting
+            announce("\(call.agent.name) needs your OK.", for: call)
+            return
+        }
         _ = try await say("\(call.agent.name) needs your OK to \(request.summary.lowercasedFirst). Allow it?" + (request.canAlwaysAllow ? " Say yes, always, or no." : " Say yes or no."), in: call)
         if call.pendingApproval?.id == request.id { call.state = .waiting }
     }
 
-    /// Returns whether the sentence was queued for playback.
+    /// One line from a background agent, once the focused one has stopped talking.
+    private func announce(_ text: String, for call: Call) {
+        Task {
+            while let current = focused, current.state == .speaking || current.state == .listening {
+                try? await Task.sleep(for: .milliseconds(300))
+            }
+            guard let speaker, let samples = try? await voice.speech(for: text, voice: call.agent.voice) else { return }
+            speaker.enqueue(samples)
+        }
+    }
+
+    /// Returns whether the sentence was queued for playback; only the focused agent is heard.
     private func say(_ sentence: String, in call: Call) async throws -> Bool {
         let text = Speakable.text(sentence)
-        guard !text.isEmpty, let speaker else { return false }
+        guard !text.isEmpty, call.id == focusedID, let speaker else { return false }
         let samples = try await voice.speech(for: text, voice: call.agent.voice)
-        guard !Task.isCancelled else { return false }
+        // Focus may have moved while the sentence was being synthesized.
+        guard !Task.isCancelled, call.id == focusedID else { return false }
         speaker.enqueue(samples)
         call.state = .speaking
         return true
