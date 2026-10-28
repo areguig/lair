@@ -70,8 +70,12 @@ public final class HermesSession: AgentSession {
         return reply
     }
 
-    public func stop() {
+    public func interrupt() {
         currentTurn.withLock { $0?.cancel() }
+    }
+
+    public func stop() {
+        interrupt()
     }
 
     func request(for text: String) throws -> URLRequest {

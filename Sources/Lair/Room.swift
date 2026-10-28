@@ -27,6 +27,8 @@ import os
     var unread = false
     @ObservationIgnored var session: (any AgentSession)?
     @ObservationIgnored var turn: Task<Void, Never>?
+    /// Identifies the running turn, so an interrupted one can't reset the state of the next.
+    @ObservationIgnored var turnID: UUID?
 
     init(agent: AgentConfig) {
         self.agent = agent
@@ -159,6 +161,8 @@ import os
     func pressTalk() {
         guard let call = focused else { return }
         if !call.inCall { summon(call) }
+        // Talking over the agent cuts it off.
+        if call.pendingApproval == nil, call.state == .speaking || call.state == .thinking { interrupt(call) }
         guard call.state == .ready || call.state == .waiting else { return }
         microphone.startCapture()
         call.state = .listening
@@ -178,6 +182,14 @@ import os
         } else {
             call.turn = Task { await reply(in: call, to: samples) }
         }
+    }
+
+    func interrupt(_ call: Call) {
+        if call.id == focusedID { speaker?.stop() }
+        call.turnID = nil
+        call.turn?.cancel()
+        call.session?.interrupt()
+        call.state = .ready
     }
 
     /// The first answer wins, whether it comes by voice, the panel or the notification.
@@ -225,6 +237,7 @@ import os
             call.state = .ready
             return
         }
+        guard !Task.isCancelled else { return }
         guard !prompt.isEmpty else {
             call.state = .ready
             return
@@ -248,7 +261,9 @@ import os
     }
 
     private func converse(in call: Call, prompt: String, speech: Int, start: ContinuousClock.Instant) async {
-        defer { if call.inCall { call.state = .ready } }
+        let turnID = UUID()
+        call.turnID = turnID
+        defer { if call.inCall, call.turnID == turnID { call.state = .ready } }
         let clock = Self.clock
         let heard: Duration? = clock.now - start
         var firstToken, firstAudio: Duration?
@@ -300,7 +315,7 @@ import os
                 announce("\(call.agent.name) is done.", for: call)
             }
         } catch {
-            call.lines.append(.init(role: .notice, text: error.localizedDescription))
+            if !Task.isCancelled { call.lines.append(.init(role: .notice, text: error.localizedDescription)) }
         }
     }
 

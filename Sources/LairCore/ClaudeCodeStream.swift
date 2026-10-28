@@ -46,6 +46,10 @@ public enum ClaudeCodeStream {
                          "response": ["subtype": "success", "request_id": request.id, "response": body]])
     }
 
+    public static func interruptRequest() throws -> Data {
+        try line(["type": "control_request", "request_id": "lair-\(UUID().uuidString)", "request": ["subtype": "interrupt"]])
+    }
+
     private static func line(_ object: [String: Any]) throws -> Data {
         try JSONSerialization.data(withJSONObject: object) + Data("\n".utf8)
     }

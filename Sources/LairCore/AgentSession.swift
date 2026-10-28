@@ -6,6 +6,8 @@ public protocol AgentSession: Sendable {
     func ask(_ text: String) throws -> AsyncThrowingStream<AgentReply, Error>
     /// Answers an approval the current turn is waiting on.
     func answer(_ request: ApprovalRequest, decision: ApprovalDecision) throws
+    /// Stops the reply in progress; the current `ask` stream ends.
+    func interrupt()
     func stop()
 }
 

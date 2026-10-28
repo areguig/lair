@@ -1,11 +1,10 @@
 import Foundation
-import Synchronization
 
 /// One long-lived `claude -p` process per call, so only the first turn pays for its startup.
 public final class ClaudeCodeSession: AgentSession {
     private let process = Process()
     private let input = Pipe()
-    private let currentTurn = Mutex<AsyncThrowingStream<AgentReply, Error>.Continuation?>(nil)
+    private let turns = ClaudeCodeTurns()
 
     /// `permissionMode` nil keeps your Claude Code settings; whatever they would ask you about comes to Lair.
     public init(model: String? = nil, directory: URL? = nil, environment: [String: String]? = nil,
@@ -27,33 +26,28 @@ public final class ClaudeCodeSession: AgentSession {
     }
 
     private func routeReplies(from output: FileHandle) async {
-        // A read error means the process is gone: ending the turn is the signal.
+        // A read error means the process is gone: closing the turns is the signal.
         do {
             for try await line in output.bytes.lines {
-                switch ClaudeCodeStream.parse(line: line) {
-                case .textDelta(let text): currentTurn.withLock { _ = $0?.yield(.text(text)) }
-                case .approval(let request): currentTurn.withLock { _ = $0?.yield(.approval(request)) }
-                case .finished: endTurn()
-                case nil: break
-                }
+                if let event = ClaudeCodeStream.parse(line: line) { turns.receive(event) }
             }
         } catch {}
-        endTurn()
-    }
-
-    private func endTurn() {
-        currentTurn.withLock { $0?.finish(); $0 = nil }
+        turns.close()
     }
 
     public func ask(_ text: String) throws -> AsyncThrowingStream<AgentReply, Error> {
-        let (reply, continuation) = AsyncThrowingStream<AgentReply, Error>.makeStream()
-        currentTurn.withLock { $0 = continuation }
+        let reply = turns.begin()
         try input.fileHandleForWriting.write(contentsOf: ClaudeCodeStream.userMessage(text))
         return reply
     }
 
     public func answer(_ request: ApprovalRequest, decision: ApprovalDecision) throws {
         try input.fileHandleForWriting.write(contentsOf: ClaudeCodeStream.approvalResponse(request, decision: decision))
+    }
+
+    public func interrupt() {
+        guard turns.interrupt() else { return }
+        try? input.fileHandleForWriting.write(contentsOf: ClaudeCodeStream.interruptRequest())
     }
 
     public func stop() {
