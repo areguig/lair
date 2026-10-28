@@ -21,6 +21,12 @@ public enum ClaudeCodeStream {
         }
     }
 
+    /// One line of `--input-format stream-json`.
+    public static func userMessage(_ text: String) throws -> Data {
+        let message = ["type": "user", "message": ["role": "user", "content": text]] as [String: Any]
+        return try JSONSerialization.data(withJSONObject: message) + Data("\n".utf8)
+    }
+
     private struct Message: Decodable {
         let type: String
         let event: Event?

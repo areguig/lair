@@ -1,3 +1,4 @@
+import Foundation
 import LairCore
 import Testing
 
@@ -10,6 +11,16 @@ struct ClaudeCodeStreamTests {
     @Test func readsTheFinalResult() {
         let line = #"{"type":"result","subtype":"success","result":"Hello there."}"#
         #expect(ClaudeCodeStream.parse(line: line) == .finished("Hello there."))
+    }
+
+    @Test func writesOneUserMessagePerLine() throws {
+        let line = String(decoding: try ClaudeCodeStream.userMessage("Say \"hi\"\nplease"), as: UTF8.self)
+        #expect(line.hasSuffix("}\n"))
+        #expect(line.dropLast().contains("\n") == false)
+        let decoded = try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any]
+        let message = decoded?["message"] as? [String: String]
+        #expect(decoded?["type"] as? String == "user")
+        #expect(message == ["role": "user", "content": "Say \"hi\"\nplease"])
     }
 
     @Test func ignoresOtherEventsAndGarbage() {

@@ -37,7 +37,7 @@ enum Recorder {
 }
 
 /// Plays 24 kHz mono chunks back to back and keeps a copy for `--out`.
-final class Speaker {
+@MainActor final class Speaker {
     private let engine = AVAudioEngine()
     private let node = AVAudioPlayerNode()
     private let format = AVAudioFormat(standardFormatWithSampleRate: 24_000, channels: 1)!
@@ -61,11 +61,11 @@ final class Speaker {
         buffer.frameLength = AVAudioFrameCount(samples.count)
         samples.withUnsafeBufferPointer { buffer.floatChannelData![0].update(from: $0.baseAddress!, count: samples.count) }
         pending.enter()
-        node.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [pending] _ in pending.leave() }
+        node.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { @Sendable [pending] _ in pending.leave() }
     }
 
     func waitUntilDone() async {
-        await withCheckedContinuation { done in pending.notify(queue: .global()) { done.resume() } }
+        await withCheckedContinuation { done in pending.notify(queue: .global()) { @Sendable in done.resume() } }
     }
 
     func write(to url: URL) throws {
