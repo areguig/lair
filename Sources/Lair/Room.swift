@@ -1,0 +1,152 @@
+import Foundation
+import LairCore
+import LairVoice
+import Observation
+
+/// One agent you can call; while in a call it holds a live session.
+@Observable @MainActor final class Call: @MainActor Identifiable {
+    enum State {
+        case offline, ready, listening, thinking, speaking
+    }
+
+    struct Line: Identifiable {
+        enum Role { case you, agent, notice }
+        let id = UUID()
+        let role: Role
+        var text: String
+    }
+
+    let agent: AgentConfig
+    var state = State.offline
+    var lines: [Line] = []
+    @ObservationIgnored var session: ClaudeCodeSession?
+    @ObservationIgnored var turn: Task<Void, Never>?
+
+    init(agent: AgentConfig) {
+        self.agent = agent
+    }
+
+    var id: String { agent.id }
+    var inCall: Bool { state != .offline }
+}
+
+/// The agents, the shared voice models, and push-to-talk routed to the focused agent.
+@Observable @MainActor final class Room {
+    enum Readiness: Equatable {
+        case loading, ready, failed(String)
+    }
+
+    var readiness = Readiness.loading
+    let calls: [Call]
+    var focusedID: String
+
+    @ObservationIgnored private let voice = VoiceModels()
+    @ObservationIgnored let microphone = Microphone()
+    @ObservationIgnored private(set) var speaker: Speaker?
+    @ObservationIgnored private var environment: [String: String]?
+
+    /// Shortest press that counts as speech, in 16 kHz samples.
+    private let minimumSpeech = 16_000 / 3
+
+    init(config: LairConfig) {
+        calls = config.agents.map(Call.init)
+        focusedID = config.agents.first?.id ?? ""
+    }
+
+    var focused: Call? { calls.first { $0.id == focusedID } }
+
+    func start() async {
+        environment = await LoginShell.environment()
+        guard await Microphone.requestAccess() else {
+            readiness = .failed("Lair needs the microphone. Allow it in System Settings › Privacy & Security.")
+            return
+        }
+        do {
+            try await voice.load(warmUpVoice: calls.first?.agent.voice ?? "af_heart")
+            speaker = try Speaker()
+            readiness = .ready
+        } catch {
+            readiness = .failed("Couldn't load the voice models: \(error.localizedDescription)")
+        }
+    }
+
+    func toggle(_ call: Call) {
+        focusedID = call.id
+        if call.inCall { hangUp(call) } else { summon(call) }
+    }
+
+    func summon(_ call: Call) {
+        guard readiness == .ready, !call.inCall else { return }
+        do {
+            try microphone.open()
+            call.session = try ClaudeCodeSession(model: call.agent.model, directory: call.agent.directoryURL,
+                                                 environment: environment)
+            call.lines = []
+            call.state = .ready
+        } catch {
+            call.lines.append(.init(role: .notice, text: "Couldn't start \(call.agent.name): \(error.localizedDescription)"))
+        }
+    }
+
+    func hangUp(_ call: Call) {
+        call.turn?.cancel()
+        call.session?.stop()
+        call.session = nil
+        call.state = .offline
+        speaker?.stop()
+        if !calls.contains(where: \.inCall) { microphone.close() }
+    }
+
+    func pressTalk() {
+        guard let call = focused else { return }
+        if !call.inCall { summon(call) }
+        guard call.state == .ready else { return }
+        microphone.startCapture()
+        call.state = .listening
+    }
+
+    func releaseTalk() {
+        guard let call = focused, call.state == .listening else { return }
+        let samples = (try? microphone.stopCapture()) ?? []
+        guard samples.count >= minimumSpeech else {
+            call.state = .ready
+            return
+        }
+        call.state = .thinking
+        call.turn = Task { await reply(in: call, to: samples) }
+    }
+
+    private func reply(in call: Call, to samples: [Float]) async {
+        defer { if call.inCall { call.state = .ready } }
+        do {
+            let prompt = try await voice.transcribe(samples)
+            guard !prompt.isEmpty, let session = call.session, let speaker else { return }
+            call.lines.append(.init(role: .you, text: prompt))
+            call.lines.append(.init(role: .agent, text: ""))
+            let answer = call.lines.count - 1
+
+            var splitter = SentenceSplitter()
+            for await delta in try session.ask(prompt) {
+                guard !Task.isCancelled else { return }
+                call.lines[answer].text += delta
+                for sentence in splitter.feed(delta) { try await say(sentence, in: call) }
+            }
+            if let rest = splitter.flush() { try await say(rest, in: call) }
+            if call.lines[answer].text.isEmpty {
+                call.lines[answer] = .init(role: .notice, text: "\(call.agent.name) didn't answer.")
+            }
+            await speaker.waitUntilDone()
+        } catch {
+            call.lines.append(.init(role: .notice, text: error.localizedDescription))
+        }
+    }
+
+    private func say(_ sentence: String, in call: Call) async throws {
+        let text = Speakable.text(sentence)
+        guard !text.isEmpty, let speaker else { return }
+        let samples = try await voice.speech(for: text, voice: call.agent.voice)
+        guard !Task.isCancelled else { return }
+        speaker.enqueue(samples)
+        call.state = .speaking
+    }
+}

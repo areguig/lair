@@ -7,8 +7,11 @@ public final class ClaudeCodeSession: Sendable {
     private let input = Pipe()
     private let currentTurn = Mutex<AsyncStream<String>.Continuation?>(nil)
 
-    public init(model: String? = nil, systemPrompt: String = VoicePrompt.text) throws {
+    public init(model: String? = nil, directory: URL? = nil, environment: [String: String]? = nil,
+                systemPrompt: String = VoicePrompt.text) throws {
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.currentDirectoryURL = directory
+        if let environment { process.environment = environment }
         process.arguments = ["claude", "-p", "--input-format", "stream-json", "--output-format", "stream-json",
                              "--verbose", "--include-partial-messages", "--no-session-persistence",
                              "--append-system-prompt", systemPrompt]
