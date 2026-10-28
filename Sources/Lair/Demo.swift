@@ -109,13 +109,35 @@ import SwiftUI
         }
         s.wait(1.2)
 
-        s.caption("Close it; they keep working, the orb stays on top")
+        s.caption("Close it; they keep working")
         s.cursor(to: CGPoint(x: 560, y: 420), over: 0.9)
         s.wait(0.9)
         s.click()
         s.hide(.panel)
         s.camera(to: center, zoom: 1, over: 0.9)
-        s.wait(2.6)
+        s.wait(1.6)
+
+        // The floating orb, up close: it talks to whoever is in focus, and follows a name.
+        s.caption("The orb stays on screen during a call: click to talk")
+        s.camera(to: floatingOrb, zoom: 2.6, over: 1.0)
+        // On the orb's lower edge, so the pointer doesn't hide it.
+        s.cursor(to: floatingOrb.applying(.init(translationX: 15, y: 17)), over: 1.2)
+        s.wait(1.4)
+        s.click()
+        try await s.you("How's the review going?", to: 2)
+        s.click()
+        try await s.agent(2, says: "Halfway. One note so far: the refill should use a monotonic clock.", after: 1.1,
+                          then: .thinking)
+        s.wait(0.4)
+        s.caption("Start with a name and the orb follows")
+        s.click()
+        try await s.you("Iris, are the snapshots done?", to: 1)
+        s.click()
+        try await s.agent(1, says: "Almost. I'm running the snapshot tests now.", after: 1.0, then: .thinking)
+        s.wait(0.6)
+        s.camera(to: center, zoom: 1, over: 0.9)
+        s.cursor(to: CGPoint(x: 600, y: 430), over: 0.9)
+        s.wait(1.0)
 
         s.caption("⌥⌘L: Mission Control")
         s.keys("⌥ ⌘ L", for: 1.4)
@@ -142,26 +164,28 @@ import SwiftUI
         try await s.announce(0, "Atlas is done.")
         s.wait(0.8)
 
+        // Iris is in focus since the orb scene, so Sage's request comes as a one-line call-out.
         s.at { room in
-            let iris = room.calls[1]
-            iris.pendingApproval = ApprovalRequest(id: "i9", tool: "Bash", summary: "Record new snapshot images")
-            iris.log(.approval("Bash: Record new snapshot images"))
-            iris.state = .waiting
-            iris.unread = true
+            let sage = room.calls[2]
+            sage.pendingApproval = ApprovalRequest(id: "s9", tool: "bash", summary: "Post the review on the pull request")
+            sage.log(.approval("bash: Post the review on the pull request"))
+            sage.state = .waiting
+            sage.unread = true
         }
         s.earcon(.needsYou)
         s.wait(0.3)
-        try await s.announce(1, "Iris needs your OK.")
+        try await s.announce(2, "Sage needs your OK.")
         s.caption("Approve with a click")
-        s.cursor(to: column(1, y: missionFrame.maxY - 108).applying(.init(translationX: 80, y: 0)), over: 1.0)
+        s.cursor(to: column(2, y: missionFrame.maxY - 108).applying(.init(translationX: 80, y: 0)), over: 1.0)
         s.wait(1.1)
         s.click()
         s.at { room in
-            let iris = room.calls[1]
-            iris.pendingApproval = nil
-            iris.log(.note("Allowed once: Record new snapshot images"))
-            iris.record(.toolStarted(id: "i6", name: "Bash", input: "swift test --filter TripsSnapshots -- record"))
-            iris.state = .thinking
+            let sage = room.calls[2]
+            sage.pendingApproval = nil
+            sage.unread = false
+            sage.log(.note("Allowed once: Post the review on the pull request"))
+            sage.record(.toolStarted(id: "s10", name: "bash", input: "gh pr review 128 --comment --body-file review.md"))
+            sage.state = .thinking
         }
         s.wait(1.4)
 
