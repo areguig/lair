@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lair — talk to your coding agents</title>
+<meta name="description" content="A macOS menu-bar app to talk with your coding agents by voice. Speech stays on your Mac.">
+<meta property="og:title" content="Lair — talk to your coding agents">
+<meta property="og:description" content="Several coding agents, by voice, side by side. Speech-to-text and voices run on your Mac.">
+<meta property="og:image" content="poster.jpg">
+<style>
+  :root {
+    --bg: #0b0c10;
+    --panel: #14161c;
+    --line: rgba(255, 255, 255, 0.08);
+    --text: #f2f2f4;
+    --muted: rgba(242, 242, 244, 0.62);
+    --accent: #d97757;
+    --violet: #c566e0;
+    --green: #3fb68b;
+  }
+  * { box-sizing: border-box; }
+  html { color-scheme: dark; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 17px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+  main { max-width: 1080px; margin: 0 auto; padding: 0 20px 80px; }
+
+  .hero { position: relative; text-align: center; padding: 96px 0 48px; }
+  .hero::before {
+    content: ""; position: absolute; inset: -120px 0 auto; height: 620px; z-index: -1;
+    background:
+      radial-gradient(420px 280px at 30% 40%, rgba(217, 119, 87, 0.30), transparent 70%),
+      radial-gradient(420px 280px at 70% 35%, rgba(197, 102, 224, 0.24), transparent 70%),
+      radial-gradient(360px 240px at 50% 70%, rgba(63, 182, 139, 0.18), transparent 70%);
+    filter: blur(10px);
+  }
+  .orb {
+    width: 112px; height: 112px; margin: 0 auto 28px; border-radius: 50%;
+    background:
+      radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.55), transparent 40%),
+      radial-gradient(circle at 70% 60%, rgba(197, 102, 224, 0.9), transparent 55%),
+      linear-gradient(160deg, #f0a07f, var(--accent) 45%, #8a3e5f);
+    box-shadow: 0 0 80px rgba(217, 119, 87, 0.45);
+    animation: breathe 5s ease-in-out infinite;
+  }
+  @keyframes breathe { 50% { transform: scale(1.04); box-shadow: 0 0 110px rgba(197, 102, 224, 0.45); } }
+  @media (prefers-reduced-motion: reduce) { .orb { animation: none; } }
+  h1 { font-size: clamp(48px, 9vw, 84px); line-height: 1; margin: 0 0 18px; letter-spacing: -0.03em; }
+  .lede { font-size: clamp(19px, 2.6vw, 24px); color: var(--muted); max-width: 640px; margin: 0 auto 32px; }
+  .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .button {
+    display: inline-block; padding: 12px 22px; border-radius: 999px; text-decoration: none; font-weight: 600;
+    border: 1px solid var(--line); background: rgba(255, 255, 255, 0.06);
+  }
+  .button.primary { background: var(--text); color: #111; border-color: transparent; }
+
+  .video {
+    margin: 40px 0 72px; border-radius: 18px; overflow: hidden; border: 1px solid var(--line);
+    box-shadow: 0 40px 100px rgba(0, 0, 0, 0.55); background: #000;
+  }
+  .video video { display: block; width: 100%; height: auto; }
+
+  h2 { font-size: 30px; letter-spacing: -0.02em; margin: 0 0 20px; }
+  section { margin: 0 0 72px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px 22px; }
+  .card h3 { margin: 0 0 6px; font-size: 17px; }
+  .card p { margin: 0; color: var(--muted); font-size: 15px; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px; vertical-align: 1px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  .table { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; overflow-x: auto; }
+
+  pre {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px;
+    overflow-x: auto; font: 14px/1.6 ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.92em; }
+  kbd {
+    font: 600 0.85em ui-monospace, "SF Mono", Menlo, monospace; padding: 2px 7px; border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.2); background: rgba(255, 255, 255, 0.06);
+  }
+  footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); padding-top: 24px; }
+  footer p { margin: 6px 0; }
+</style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <div class="orb" aria-hidden="true"></div>
+    <h1>Lair</h1>
+    <p class="lede">Talk to all your coding agents by voice, side by side, from the menu bar. Speech-to-text and voices run on your Mac.</p>
+    <div class="actions">
+      <a class="button primary" href="https://github.com/areguig/lair">Get it on GitHub</a>
+      <a class="button" href="#build">Build it</a>
+    </div>
+  </header>
+
+  <div class="video">
+    <video src="demo.mp4" poster="poster.jpg" controls playsinline preload="metadata"
+           aria-label="Demo: three agents working at once in Lair's panel and Mission Control"></video>
+  </div>
+
+  <section>
+    <h2>What it does</h2>
+    <div class="grid">
+      <div class="card"><h3>Hold <kbd>⌥ Space</kbd> and talk</h3><p>Ask without leaving what you're doing. The agent answers out loud; talk over it to cut it off.</p></div>
+      <div class="card"><h3>Several agents at once</h3><p>Each works on its own. Only the one in focus speaks; the others say in one line when they're done or need you.</p></div>
+      <div class="card"><h3>Switch the natural way</h3><p>Start a sentence with a name ("Iris, …"), click it in the panel, or click its column in Mission Control.</p></div>
+      <div class="card"><h3>It asks before it acts</h3><p>Approve by voice, in the panel, from the notification or in Mission Control. Nothing is approved for you.</p></div>
+      <div class="card"><h3>Mission Control <kbd>⌥ ⌘ L</kbd></h3><p>Every agent's whole stream side by side: tool calls, diffs, thinking, timings and cost.</p></div>
+      <div class="card"><h3>A floating orb</h3><p>During a call it floats above every window. Click it to talk, click again to send.</p></div>
+      <div class="card"><h3>Model and thinking by voice</h3><p>"Switch to Opus", "think harder", "go fast": or pick from the model line.</p></div>
+      <div class="card"><h3>On your Mac</h3><p>Parakeet hears you and Kokoro speaks, on the Neural Engine. Links and paths show as chips, never read aloud.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Agents</h2>
+    <div class="table">
+      <table>
+        <tr><th>Kind</th><th>Runs</th><th>Needs</th></tr>
+        <tr><td><span class="dot" style="background: var(--accent)"></span>Claude Code</td><td><code>claude -p</code>, one process per call</td><td>Claude Code, signed in</td></tr>
+        <tr><td><span class="dot" style="background: var(--green)"></span>omp</td><td><code>omp --mode rpc</code>, one process per call</td><td>omp, signed in</td></tr>
+        <tr><td><span class="dot" style="background: var(--violet)"></span>Hermes</td><td>Its OpenAI-compatible API server</td><td>Its address and API key</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <section id="build">
+    <h2>Build it</h2>
+    <p>macOS 15 or later on Apple Silicon, with Swift 6.2 (Xcode 26).</p>
+<pre>git clone https://github.com/areguig/lair.git
+cd lair
+scripts/build-app.sh       # builds and installs ~/Applications/Lair.app
+open ~/Applications/Lair.app</pre>
+    <p>The first launch downloads the speech models. Add agents in <strong>Settings…</strong>, or edit <code>~/.config/lair/config.json</code>; secrets go in the Keychain.</p>
+  </section>
+
+  <footer>
+    <p>Built on <a href="https://github.com/FluidInference/FluidAudio">FluidAudio</a>, <a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2">Parakeet</a>, <a href="https://huggingface.co/hexgrad/Kokoro-82M">Kokoro</a> and <a href="https://github.com/sindresorhus/KeyboardShortcuts">KeyboardShortcuts</a>.</p>
+    <p>MIT licence · <a href="https://github.com/areguig/lair">github.com/areguig/lair</a></p>
+  </footer>
+</main>
+</body>
+</html>
