@@ -570,7 +570,7 @@ import os
         let turnID = UUID()
         call.turnID = turnID
         call.unheard = []
-        // The agent spoke to you: listen a few seconds for your reply.
+        // The agent answered what you said aloud: listen a few seconds for your reply. Typed turns don't open the mic.
         var listenAfter = false
         defer {
             if call.inCall, call.turnID == turnID {
@@ -649,7 +649,7 @@ import os
             }
             if call.id == focusedID {
                 await speaker.waitUntilDone()
-                listenAfter = answered
+                listenAfter = answered && speech > 0
             } else if !Task.isCancelled {
                 call.unread = true
                 speaker.play(.done)
