@@ -126,7 +126,8 @@ import os
         guestSettings = config.guests
     }
 
-    var focused: Call? { calls.first { $0.id == focusedID } }
+    /// Never nobody while anyone's in the room: a stale id falls back to the first call.
+    var focused: Call? { calls.first { $0.id == focusedID } ?? calls.first }
 
     /// Takes a new config without dropping calls: an agent in a call keeps it, and its model, folder or address
     /// apply from its next call; removed or turned-off agents are hung up.
@@ -919,7 +920,12 @@ import os
         let draft = AgentConfig(id: "", name: Visitors.agentName(for: folder), kind: kind, voice: call.agent.voice,
                                 color: call.agent.color, directory: Visitors.configPath(folder))
         guard let saved = saveAgent?(draft) else { return }
+        // Its id changes with it: keep pointing at it wherever the old one was used.
+        let old = call.id
         call.agent = saved
+        if focusedID == old { focusedID = saved.id }
+        if answering?.callID == old { answering = Answering(callID: saved.id, since: answering!.since, hearing: answering!.hearing) }
+        if call.questionText != nil { notifier.remove(old) }
         call.lines.append(.init(role: .info, text: "Saved as \(saved.name): its sessions in this folder join as \(saved.name)."))
     }
 
