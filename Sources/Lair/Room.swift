@@ -295,7 +295,12 @@ import os
         call.state = .offline
         call.unread = false
         call.unheard = []
-        if !calls.contains(where: \.inCall) { microphone.close() }
+        closeMicrophoneIfUnused()
+    }
+
+    /// Guests hold no call of their own: the microphone is only needed for a call or a question.
+    private func closeMicrophoneIfUnused() {
+        if !calls.contains(where: { $0.guest ? $0.question != nil : $0.inCall }) { microphone.close() }
     }
 
     func pressTalk() {
@@ -844,6 +849,13 @@ import os
         guard readiness == .ready, call.question == nil else { return nil }
         call.lines.append(.init(role: .agent, text: question))
         call.log(.note("Asked: \(question)"))
+        do {
+            try microphone.open()
+        } catch {
+            report(in: call, .init(role: .problem, text: "Can't listen for your answer: \(error.localizedDescription)"))
+            return nil
+        }
+        Self.log.notice("\(call.id, privacy: .public): asks")
         speaker?.play(.needsYou)
         await waitForTheFloor()
         focus(call)
@@ -882,8 +894,10 @@ import os
         } else {
             call.lines.append(.init(role: .info, text: "No answer given."))
         }
+        Self.log.notice("\(call.id, privacy: .public): \(answer == nil ? "no answer" : "answered", privacy: .public)")
         if call.inCall { call.state = .ready }
         question.resume(returning: answer)
+        closeMicrophoneIfUnused()
     }
 }
 
