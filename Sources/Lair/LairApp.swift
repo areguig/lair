@@ -207,7 +207,7 @@ struct MenuBarIcon: View {
         claude.record(.toolFinished(id: "t2", output: "@@ -1,3 +1,4 @@\n # Changelog\n+- Voice: switch model by voice\n- WIP",
                                  failed: false))
         claude.record(.toolStarted(id: "t3", name: "Bash", input: "swift test"))
-        claude.logText("Two things are left: the changelog needed the voice section, which I just added, and the "
+        claude.logText("Two things are left: <show>CHANGELOG.md</show> needed the voice section, which I just added, and the "
             + "build number. Tests are running now.")
         claude.record(.usage(inputTokens: 18_400, outputTokens: 512, cost: 0.0213))
         claude.log(.timing(heard: 140, firstWord: 1_880, firstSound: 2_410, total: 6_120))

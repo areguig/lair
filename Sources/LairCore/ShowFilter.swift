@@ -97,3 +97,19 @@ public struct ShowFilter: Sendable {
 }
 
 import Foundation
+
+extension ShowFilter {
+    /// A reply to read rather than hear, as Markdown: each `<show>` item is inline code, or a link when it's a URL.
+    public static func markdown(_ text: String) -> String {
+        text.replacing(tag) { match in
+            let item = String(match.output[1].substring ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if item.isEmpty { return "" }
+            if item.hasPrefix("https://") || item.hasPrefix("http://") { return "[\(item)](\(item))" }
+            // A double fence keeps a backtick inside the item from ending the code span.
+            return item.contains("`") ? "`` \(item) ``" : "`\(item)`"
+        }
+    }
+
+    // A tag still streaming in has no close yet; it shows as code until it's done.
+    nonisolated(unsafe) private static let tag = try! Regex("(?is)<show>(.*?)(?:</show>|$)")
+}

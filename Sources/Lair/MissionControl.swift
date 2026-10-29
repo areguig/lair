@@ -228,7 +228,7 @@ private struct EntryView: View {
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .padding(.leading, 40)
         case .agent(let text):
-            Text(text)
+            Text(Self.reading(text))
                 .textSelection(.enabled)
                 .font(.system(.body))
                 .foregroundStyle(.white.opacity(0.92))
@@ -260,6 +260,12 @@ private struct EntryView: View {
             Stats(items: [heard.map { "heard \(Self.time($0))" }, firstWord.map { "first word \(Self.time($0))" },
                           firstSound.map { "first sound \(Self.time($0))" }, "turn \(Self.time(total))"].compactMap { $0 })
         }
+    }
+
+    /// Links and paths in `<show>` tags read as code and links; the rest as the agent's own Markdown.
+    static func reading(_ text: String) -> AttributedString {
+        let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        return (try? AttributedString(markdown: ShowFilter.markdown(text), options: options)) ?? AttributedString(text)
     }
 
     static func tokens(_ count: Int) -> String {

@@ -81,4 +81,17 @@ struct ShowFilterTests {
         #expect(o.spoken == "hello world.")
         #expect(o.shown.isEmpty)
     }
+
+    @Test func markdownTurnsItemsIntoCodeAndLinks() {
+        #expect(ShowFilter.markdown("Edit <show>~/a.txt</show> or see <SHOW> https://x.dev/a </SHOW>.")
+            == "Edit `~/a.txt` or see [https://x.dev/a](https://x.dev/a).")
+    }
+
+    @Test func markdownKeepsBackticksInsideOneSpan() {
+        #expect(ShowFilter.markdown("run <show>echo `pwd`</show>") == "run `` echo `pwd` ``")
+    }
+
+    @Test func markdownDropsEmptyItemsAndShowsAnUnclosedOne() {
+        #expect(ShowFilter.markdown("a<show> </show>b <show>~/still") == "ab `~/still`")
+    }
 }
