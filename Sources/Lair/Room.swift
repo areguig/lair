@@ -278,6 +278,8 @@ import os
         call.session?.stop()
         call.session = nil
         if call.state == .speaking { speaker?.stop() }
+        // Other calls keep the microphone open; this one's capture must still end.
+        if call.state == .listening { _ = try? microphone.stopCapture() }
         call.state = .offline
         call.unread = false
         call.unheard = []
