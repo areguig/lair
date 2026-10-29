@@ -74,8 +74,16 @@ import os
     private(set) var hint: String?
     private(set) var calls: [Call]
     var focusedID: String
-    /// The call listening for your answer on its own, after a question.
-    private(set) var answering: String?
+    /// Listening for your reply on its own, after the agent spoke.
+    struct Answering: Equatable {
+        let callID: String
+        let since: Date
+        /// You've started talking, so the wait is over.
+        var hearing = false
+    }
+
+    /// Settable so snapshots can stage it.
+    var answering: Answering?
     /// Off in General settings: you always press the key.
     @ObservationIgnored private var listensForAnswers: Bool
 
@@ -687,17 +695,18 @@ import os
             speaker?.play(.listening)
             microphone.startCapture()
             call.state = .listening
-            answering = call.id
+            answering = Answering(callID: call.id, since: .now)
             let start = Self.clock.now
             var turn = FollowUp.Turn()
             while true {
                 try? await Task.sleep(for: .milliseconds(250))
-                guard answering == call.id, call.state == .listening, call.id == focusedID,
+                guard answering?.callID == call.id, call.state == .listening, call.id == focusedID,
                       let samples = try? microphone.captured(),
                       let next = try? await voice.listen(detector, to: samples),
-                      answering == call.id, call.state == .listening
+                      answering?.callID == call.id, call.state == .listening
                 else { break }
                 detector = next
+                if detector.speaking { answering?.hearing = true }
                 switch turn.update(speaking: detector.speaking, elapsed: Self.clock.now - start) {
                 case .listen: continue
                 case .send: return releaseTalk()
@@ -707,7 +716,7 @@ import os
                 }
                 break
             }
-            if answering == call.id { answering = nil }
+            if answering?.callID == call.id { answering = nil }
         }
     }
 

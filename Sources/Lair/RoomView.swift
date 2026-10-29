@@ -174,6 +174,7 @@ struct RoomView: View {
                 .help(call.inCall ? "Hang up" : "Call \(call.agent.name)")
                 .accessibilityLabel(call.inCall ? "Hang up" : "Call \(call.agent.name)")
             HoldToTalk(active: call.state == .listening, tint: Color(hex: call.agent.color),
+                       answering: room.answering?.callID == call.id ? room.answering : nil,
                        onPress: room.pressTalk, onRelease: room.releaseTalk)
                 .disabled(room.readiness != .ready)
             Color.clear.frame(width: 44, height: 44)
@@ -244,7 +245,7 @@ struct RoomView: View {
         switch call.state {
         case .offline: return "Hold \(key) to talk, or tap the orb"
         case .ready: return "Hold \(key) to talk"
-        case .listening where room.answering == call.id: return "Listening for your reply · just talk"
+        case .listening where room.answering?.callID == call.id: return "Listening for your reply · just talk"
         case .listening: return "Listening… let go when you're done"
         case .thinking: return "Thinking… hold \(key) to cut in"
         case .speaking: return "Speaking · hold \(key) to cut in"
@@ -615,6 +616,7 @@ private struct RoundButton: View {
 private struct HoldToTalk: View {
     let active: Bool
     let tint: Color
+    var answering: Room.Answering?
     let onPress: () -> Void
     let onRelease: () -> Void
     @State private var pressed = false
@@ -625,7 +627,13 @@ private struct HoldToTalk: View {
             .foregroundStyle(active ? .black : .white)
             .frame(width: 64, height: 64)
             .background(active ? AnyShapeStyle(.white) : AnyShapeStyle(.white.opacity(0.14)), in: Circle())
-            .overlay(Circle().strokeBorder(tint.opacity(active ? 0.9 : 0), lineWidth: 3).padding(-5))
+            .overlay {
+                if let answering {
+                    ReplyCountdown(answering: answering, tint: tint, lineWidth: 3).padding(-5)
+                } else {
+                    Circle().strokeBorder(tint.opacity(active ? 0.9 : 0), lineWidth: 3).padding(-5)
+                }
+            }
             .scaleEffect(pressed ? 0.94 : 1)
             .animation(.spring(duration: 0.25), value: pressed)
             .animation(.easeOut(duration: 0.2), value: active)
@@ -637,6 +645,29 @@ private struct HoldToTalk: View {
             .accessibilityLabel(active ? "Listening; release to send" : "Hold to talk")
             .accessibilityAddTraits(.isButton)
             .accessibilityAction(named: active ? "Send" : "Start talking") { active ? onRelease() : onPress() }
+    }
+}
+
+/// While Lair waits for your reply, a ring that empties as the wait runs out, and stays full once you talk.
+struct ReplyCountdown: View {
+    let answering: Room.Answering
+    let tint: Color
+    let lineWidth: CGFloat
+    @Environment(\.renderTime) private var renderTime
+
+    var body: some View {
+        TimelineView(.animation(paused: answering.hearing)) { timeline in
+            let patience = Double(FollowUp.Turn.patience.components.seconds)
+            let elapsed = renderTime.map { $0.truncatingRemainder(dividingBy: patience) }
+                ?? timeline.date.timeIntervalSince(answering.since)
+            let left = answering.hearing ? 1 : max(0, 1 - elapsed / patience)
+            Circle()
+                .trim(from: 0, to: left)
+                .stroke(tint.opacity(0.9), style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .padding(lineWidth / 2)
+        }
+        .accessibilityHidden(true)
     }
 }
 

@@ -123,7 +123,7 @@ struct MenuBarIcon: View {
     }
 }
 
-/// `Lair --snapshot out.png [approval|chat|empty|micdenied|crowded]` renders the panel in a demo state,
+/// `Lair --snapshot out.png [approval|chat|reply|empty|micdenied|crowded]` renders the panel in a demo state,
 /// to check the design without clicking around.
 @MainActor enum Snapshot {
     static func write(to url: URL, variant: String = "approval") {
@@ -159,6 +159,9 @@ struct MenuBarIcon: View {
                 ]
                 room.calls[1].lines = [.init(role: .problem, text: "Echo needs an API key. Add it in Settings › Agents.",
                                              action: .openSettings)]
+            case "reply":
+                call.state = .listening
+                room.answering = .init(callID: call.id, since: .now)
             case "crowded":
                 call.state = .ready
                 room.calls[3].state = .thinking

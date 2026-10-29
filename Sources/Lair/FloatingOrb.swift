@@ -75,6 +75,11 @@ private struct FloatingOrbView: View {
         if let call = room.focused {
             Orb(color: Color(hex: call.agent.color), state: call.state, meter: room.meter(for: call))
                 .frame(width: 44, height: 44)
+                .overlay {
+                    if let answering = room.answering, answering.callID == call.id {
+                        ReplyCountdown(answering: answering, tint: .white, lineWidth: 2).padding(-6)
+                    }
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
