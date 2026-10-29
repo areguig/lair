@@ -50,6 +50,8 @@ import os
     @ObservationIgnored var turnID: UUID?
     /// Background work finished while a turn was running; heard once that turn ends.
     @ObservationIgnored var newsWaiting = false
+    /// What other agents answered for this one while you talked to them; sent before its next turn.
+    @ObservationIgnored var context: [String] = []
 
     init(agent: AgentConfig) {
         self.agent = agent
@@ -264,6 +266,7 @@ import os
 
     func hangUp(_ call: Call) {
         if call.pendingApproval != nil { answer(call, decision: .deny) }
+        call.context = []
         call.turn?.cancel()
         call.session?.stop()
         call.session = nil
@@ -390,6 +393,7 @@ import os
             call.state = .ready
             return
         }
+        if pass(prompt, from: call, speech: samples.count, start: start) { return }
         // "Echo, …" while talking to Claude goes to Echo.
         let others = calls.filter { $0.id != call.id }
         if let (name, rest) = Addressing.split(prompt, names: others.map(\.agent.name)),
@@ -429,6 +433,7 @@ import os
         }
         if call.state == .speaking || call.state == .thinking { interrupt(call) }
         guard call.state == .ready else { return }
+        if pass(text, from: call, speech: 0, start: Self.clock.now) { return }
         if let command = VoiceCommand.parse(text) {
             call.lines.append(.init(role: .you, text: text))
             call.log(.you(text))
@@ -437,6 +442,45 @@ import os
         }
         call.state = .thinking
         call.turn = Task { await converse(in: call, prompt: text, speech: 0, start: Self.clock.now) }
+    }
+
+    /// "Ask Echo to check it", or "Nova, ask Claude what it thinks": the target answers, with the source's latest
+    /// exchange as context, and the source hears what it said on its next turn. Returns whether `text` was one.
+    private func pass(_ text: String, from heard: Call, speech: Int, start: ContinuousClock.Instant) -> Bool {
+        guard let relay = Relay.parse(text, names: calls.map(\.agent.name)),
+              let source = relay.source.map(call(named:)) ?? heard, let target = call(named: relay.target),
+              source !== target
+        else { return false }
+        if heard.state == .thinking { heard.state = .ready }
+        let asked = source.lines.last { $0.role == .you }?.text
+        let answered = source.lines.last { $0.role == .agent && !$0.text.isEmpty }?.text
+        source.lines.append(.init(role: .info, text: "Passed on to \(target.agent.name)."))
+        source.log(.note("Passed on to \(target.agent.name): \(relay.words)"))
+        focus(target)
+        if !target.inCall { summon(target) }
+        guard target.inCall else { return true }
+        guard target.state == .ready else {
+            target.lines.append(.init(role: .info, text: "\(target.agent.name) is busy; say it again when it's done."))
+            return true
+        }
+        let from = answered == nil ? "From \(source.agent.name)" : "From \(source.agent.name), with its last answer"
+        target.lines.append(.init(role: .info, text: from))
+        target.log(.note(from))
+        target.state = .thinking
+        let prompt = VoicePrompt.relay(relay.words, from: source.agent.name, asked: asked, answered: answered)
+        let before = target.lines.count
+        target.turn = Task {
+            await converse(in: target, prompt: prompt, speech: speech, start: start,
+                           shown: .init(role: .you, text: relay.words))
+            guard source.inCall, let answer = target.lines.dropFirst(before)
+                .last(where: { $0.role == .agent && !$0.text.isEmpty })?.text else { return }
+            source.context.append(VoicePrompt.relayed(relay.words, to: target.agent.name, answer: answer))
+        }
+        return true
+    }
+
+    private func call(named name: String) -> Call? {
+        calls.first { $0.agent.name.caseInsensitiveCompare(name) == .orderedSame }
     }
 
     /// Changes the call's model or thinking level, from a voice command or the panel, and says what happened.
@@ -541,7 +585,9 @@ import os
         do {
             guard let session = call.session, let speaker else { return }
             call.lines.append(shown ?? .init(role: .you, text: prompt))
-            call.log(shown.map { .note($0.text) } ?? .you(prompt))
+            call.log(shown.map { $0.role == .you ? .you($0.text) : .note($0.text) } ?? .you(prompt))
+            let sent = (call.context + [prompt]).joined(separator: "\n\n")
+            call.context = []
 
             // Text after an approval starts a new line, so the transcript reads in order.
             var answer: Int?
@@ -549,7 +595,7 @@ import os
             var splitter = SentenceSplitter()
             // Links and paths in <show> tags go to the screen, never to the voice.
             var showing = ShowFilter()
-            for try await reply in try session.ask(prompt) {
+            for try await reply in try session.ask(sent) {
                 guard !Task.isCancelled else { return }
                 switch reply {
                 case .activity(let activity):
