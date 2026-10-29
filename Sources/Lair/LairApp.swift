@@ -210,6 +210,7 @@ struct MenuBarIcon: View {
                 if variant == "guest" {
                     let question = "Ship it to production now, or wait for the morning?"
                     guest.questionText = question
+                    guest.questionChoices = ["Ship it now", "Wait for the morning"]
                     guest.questionSince = .now - 34
                     guest.questionDeadline = .now + 86
                     guest.state = .waiting
@@ -259,6 +260,7 @@ struct MenuBarIcon: View {
         let guest = room.call(for: Guest(id: "demo", name: "omp", folder: URL(fileURLWithPath: "/Users/me/dev/landing-page")))
         guest.logText("Added a subtitle under the heading.")
         guest.questionText = "Which colour should the subtitle be?"
+        guest.questionChoices = ["Red", "Green", "Blue"]
         guest.questionSince = .now - 20
         guest.questionDeadline = .now + 100
         guest.state = .waiting

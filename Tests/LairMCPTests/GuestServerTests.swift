@@ -18,8 +18,8 @@ private actor FakeHost: GuestHost {
         heard.append("\(guest.name): \(text)")
     }
 
-    func ask(_ question: String, from guest: Guest) -> String? {
-        heard.append("\(guest.name) asks: \(question)")
+    func ask(_ question: String, choices: [String], from guest: Guest) -> String? {
+        heard.append("\(guest.name) asks: \(question)" + (choices.isEmpty ? "" : " \(choices)"))
         return answer
     }
 
@@ -160,6 +160,17 @@ private actor FakeHost: GuestHost {
         defer { server.cancel() }
         let (content, _) = try await client.callTool(name: "ask", arguments: ["question": "Ship or wait?"])
         #expect(text(content) == "Ship it")
+    }
+
+    @Test func askPassesItsChoices() async throws {
+        let host = FakeHost(answer: "Blue")
+        let (client, _, server) = try await connect(to: host)
+        defer { server.cancel() }
+        let (content, _) = try await client.callTool(name: "ask", arguments: [
+            "question": "Which colour?", "choices": ["Red", " Green ", "", "Blue"],
+        ])
+        #expect(text(content) == "Blue")
+        #expect(await host.heard == ["test asks: Which colour? [\"Red\", \"Green\", \"Blue\"]"])
     }
 
     @Test func askSaysWhenNobodyAnswered() async throws {

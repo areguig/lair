@@ -34,8 +34,9 @@ public struct Guest: Hashable, Sendable {
 /// What a guest can do in the room. It talks to you; you don't start its turns.
 public protocol GuestHost: Sendable {
     func speak(_ text: String, from guest: Guest) async
-    /// Your answer, or nil if you didn't give one. Cancelled when the agent stops waiting.
-    func ask(_ question: String, from guest: Guest) async -> String?
+    /// Your answer, or nil if you didn't give one: one of `choices` when it picks one. Cancelled when the agent stops
+    /// waiting.
+    func ask(_ question: String, choices: [String], from guest: Guest) async -> String?
     func left(_ guest: Guest) async
 }
 
@@ -64,13 +65,20 @@ public actor GuestServer {
         Tool(name: "ask",
              description: """
                  Ask the user a question out loud, through Lair, and get their answer as text, spoken or typed. Use \
-                 it when you need a decision to go on. One short question that can't be answered with a bare yes: \
-                 for a choice, name the options ("before tax or after tax?"). Answers are heard, so read them \
-                 loosely. If they don't answer, carry on with what's safe or ask again later.
+                 it when you need a decision to go on. One short question that can't be answered with a bare yes. \
+                 For a choice, pass the options in `choices` (two to five, a few words each): they're read out and \
+                 shown as buttons, and you get back the one picked, or the user's own words if they said something \
+                 else. If they don't answer, carry on with what's safe or ask again later.
                  """,
              inputSchema: .object([
                  "type": "object",
-                 "properties": .object(["question": .object(["type": "string", "description": "The question."])]),
+                 "properties": .object([
+                     "question": .object(["type": "string", "description": "The question."]),
+                     "choices": .object([
+                         "type": "array", "items": .object(["type": "string"]),
+                         "description": "The options to pick from, if it's a choice.",
+                     ]),
+                 ]),
                  "required": .array(["question"]),
              ])),
     ]
@@ -179,7 +187,9 @@ public actor GuestServer {
                 return .init(content: [.text("Said.")], isError: false)
             case "ask":
                 guard !argument("question").isEmpty else { return .init(content: [.text("No question.")], isError: true) }
-                guard let answer = await host.ask(argument("question"), from: guest) else {
+                let choices = (params.arguments?["choices"]?.arrayValue ?? []).compactMap(\.stringValue)
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+                guard let answer = await host.ask(argument("question"), choices: Array(choices.prefix(6)), from: guest) else {
                     return .init(content: [.text("The user didn't answer.")], isError: false)
                 }
                 return .init(content: [.text(answer)], isError: false)

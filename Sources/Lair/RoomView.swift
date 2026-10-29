@@ -141,7 +141,7 @@ struct RoomView: View {
                     .padding(.top, 10)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             } else if let question = call.questionText {
-                QuestionCard(agent: call.agent.name, question: question, since: call.questionSince,
+                QuestionCard(agent: call.agent.name, question: question, choices: call.questionChoices, since: call.questionSince,
                              deadline: call.questionDeadline, tint: tint,
                              answer: { room.answerQuestion(of: call, with: $0) }, skip: { room.skipQuestion(of: call) })
                     .padding(.top, 10)
@@ -923,10 +923,14 @@ struct GuestBadge: View {
     }
 }
 
-/// A guest's question: say the answer, type it, or skip it. The bar empties as the agent's wait runs out.
+/// A guest's question: pick a choice, say the answer, type it, or skip it. The bar empties as the agent's wait
+/// runs out.
 struct QuestionCard: View {
     let agent: String
     let question: String
+    var choices: [String] = []
+    /// ⌘1, ⌘2… pick a choice; off where several cards share the window.
+    var shortcuts = true
     let since: Date?
     let deadline: Date?
     let tint: Color
@@ -951,8 +955,14 @@ struct QuestionCard: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .help(question)
                 .textSelection(.enabled)
+            if !choices.isEmpty {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 6) { choiceButtons }
+                    VStack(alignment: .leading, spacing: 6) { choiceButtons }
+                }
+            }
             HStack(spacing: 8) {
-                TextField("Type, or just say it", text: $draft)
+                TextField(choices.isEmpty ? "Type, or just say it" : "Or something else…", text: $draft)
                     .textFieldStyle(.plain)
                     .font(.system(.callout, design: .rounded))
                     .padding(.horizontal, 12).padding(.vertical, 7)
@@ -985,6 +995,48 @@ struct QuestionCard: View {
         guard !text.isEmpty else { return }
         draft = ""
         answer(text)
+    }
+
+    @ViewBuilder private var choiceButtons: some View {
+        ForEach(Array(choices.enumerated()), id: \.offset) { index, choice in
+            ChoiceButton(number: index + 1, choice: choice, tint: tint, shortcut: shortcuts && index < 9) { answer(choice) }
+        }
+    }
+}
+
+/// One of a question's choices, numbered, with ⌘ and its number as a shortcut where there's one card.
+private struct ChoiceButton: View {
+    let number: Int
+    let choice: String
+    let tint: Color
+    let shortcut: Bool
+    let pick: () -> Void
+
+    var body: some View {
+        Button(action: pick) { label }
+            .buttonStyle(.plain)
+            .keyboardShortcut(shortcut ? KeyboardShortcut(KeyEquivalent(Character(String(number))), modifiers: .command) : nil)
+            .help(shortcut ? "Answer “\(choice)” (⌘\(number)); or just say it" : "Answer “\(choice)”; or just say it")
+            .accessibilityLabel("Answer \(choice)")
+    }
+
+    private var label: some View {
+        HStack(spacing: 7) {
+            Text(String(number))
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(tint)
+                .frame(width: 17, height: 17)
+                .background(tint.opacity(0.18), in: Circle())
+            Text(choice)
+                .font(.system(.callout, design: .rounded, weight: .semibold))
+                .foregroundStyle(.white)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.leading, 6).padding(.trailing, 12).padding(.vertical, 6)
+        .background(.white.opacity(0.1), in: Capsule())
+        .overlay(Capsule().strokeBorder(tint.opacity(0.35), lineWidth: 1))
+        .contentShape(Capsule())
     }
 }
 

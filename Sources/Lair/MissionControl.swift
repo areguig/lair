@@ -139,7 +139,8 @@ private struct AgentColumn: View {
                 }
                 .padding([.horizontal, .top], 10)
             } else if let question = call.questionText {
-                QuestionCard(agent: call.agent.name, question: question, since: call.questionSince,
+                QuestionCard(agent: call.agent.name, question: question, choices: call.questionChoices, shortcuts: false,
+                             since: call.questionSince,
                              deadline: call.questionDeadline, tint: tint,
                              answer: { room.answerQuestion(of: call, with: $0) }, skip: { room.skipQuestion(of: call) })
                     .padding([.horizontal, .top], 10)

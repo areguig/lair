@@ -65,6 +65,8 @@ import os
     /// A guest's question waiting for your answer, with what it asked and until when it waits.
     @ObservationIgnored var question: CheckedContinuation<String?, Never>?
     var questionText: String?
+    /// The options it offered, shown as buttons; empty for an open question.
+    var questionChoices: [String] = []
     var questionSince: Date?
     var questionDeadline: Date?
 
@@ -951,7 +953,7 @@ import os
 
     /// One question at a time takes the floor once it's free, is asked aloud and listened for; it's also answered
     /// in the panel, Mission Control or the notification. The agent hearing nothing gets nil.
-    func guestAsks(_ question: String, from guest: Guest) async -> String? {
+    func guestAsks(_ question: String, choices: [String] = [], from guest: Guest) async -> String? {
         let call = call(for: guest)
         guard readiness == .ready, call.question == nil else { return nil }
         call.logText(question)
@@ -962,17 +964,19 @@ import os
         }
         let wait = Duration.seconds(guestSettings?.answerSeconds ?? GuestSettings.standard.answerSeconds)
         return await withTaskCancellationHandler {
-            await withCheckedContinuation { continuation in
+            await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
                 call.question = continuation
                 call.questionText = question
+                call.questionChoices = choices
                 call.questionSince = .now
                 call.questionDeadline = .now + TimeInterval(wait / .seconds(1))
                 focus(call)
                 call.state = .waiting
-                notifier.postQuestion(question, id: call.id, from: call.agent.name)
+                notifier.postQuestion(question, choices: choices, id: call.id, from: call.agent.name)
                 speaker?.play(.needsYou)
                 Task {
-                    _ = try? await say(introduce(question, by: call, verb: "asks"), in: call)
+                    let spoken = [question, Choices.spoken(choices, after: question)].compactMap { $0 }.joined(separator: " ")
+                    _ = try? await say(introduce(spoken, by: call, verb: "asks"), in: call)
                     await speaker?.waitUntilDone()
                     if call.question != nil {
                         call.state = .waiting
@@ -1027,13 +1031,14 @@ import os
         let heard = (try? await voice.transcribe(samples)) ?? ""
         guard call.question != nil else { return }
         if heard.isEmpty { return call.state = .waiting }
-        resolveQuestion(of: call, with: heard)
+        resolveQuestion(of: call, with: Choices.pick(heard, from: call.questionChoices) ?? heard)
     }
 
-    /// Typed in the panel's question card or the notification.
-    func answerQuestion(of call: Call, with text: String) {
-        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+    /// Typed or clicked in the question card, or in the notification; "2" picks the second choice.
+    func answerQuestion(of call: Call, with typed: String) {
+        let typed = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !typed.isEmpty else { return }
+        let text = Choices.pick(typed, from: call.questionChoices) ?? typed
         if call.state == .listening { _ = try? microphone.stopCapture() }
         if answering?.callID == call.id { answering = nil }
         resolveQuestion(of: call, with: text)
@@ -1046,6 +1051,7 @@ import os
         if let asked = call.questionText { call.lines.append(.init(role: .agent, text: asked)) }
         call.question = nil
         call.questionText = nil
+        call.questionChoices = []
         call.questionSince = nil
         call.questionDeadline = nil
         notifier.remove(call.id)
@@ -1086,7 +1092,9 @@ struct RoomGuests: GuestHost {
 
     func speak(_ text: String, from guest: Guest) async { await room.guestSpeaks(text, from: guest) }
 
-    func ask(_ question: String, from guest: Guest) async -> String? { await room.guestAsks(question, from: guest) }
+    func ask(_ question: String, choices: [String], from guest: Guest) async -> String? {
+        await room.guestAsks(question, choices: choices, from: guest)
+    }
 
     func left(_ guest: Guest) async { await room.guestLeft(guest) }
 }
