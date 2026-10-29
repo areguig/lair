@@ -51,6 +51,17 @@ struct MissionControl: View {
         HStack(spacing: 12) {
             Image(systemName: "circle.circle.fill").foregroundStyle(.white.opacity(0.8))
             Text("Mission Control").font(.system(.headline, design: .rounded, weight: .semibold))
+            let waiting = room.calls.filter(\.awaitsYou)
+            if !waiting.isEmpty {
+                Label(waiting.count == 1 ? "\(waiting[0].agent.name) needs you" : "\(waiting.count) need you",
+                      systemImage: "exclamationmark.bubble.fill")
+                    .font(.system(.caption, design: .rounded, weight: .semibold))
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 10).padding(.vertical, 4)
+                    .background(.orange.opacity(0.14), in: Capsule())
+                    .onTapGesture { room.focus(waiting[0]) }
+                    .help("Brings the first one into focus")
+            }
             Spacer()
             if let shortcut = TalkKey.shared.label {
                 Text("Hold \(shortcut) to talk · type below to write")

@@ -248,6 +248,12 @@ struct MenuBarIcon: View {
         echo.log(.approval("Delete backups older than 30 days"))
         echo.state = .waiting
         echo.pendingApproval = ApprovalRequest(id: "demo", tool: "terminal", summary: "Delete backups older than 30 days")
+        let guest = room.call(for: Guest(id: "demo", name: "omp", folder: URL(fileURLWithPath: "/Users/me/dev/landing-page")))
+        guest.logText("Added a subtitle under the heading.")
+        guest.questionText = "Which colour should the subtitle be?"
+        guest.questionSince = .now - 20
+        guest.questionDeadline = .now + 100
+        guest.state = .waiting
         let view = NSHostingView(rootView: MissionControl(room: room))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1240, height: 780), styleMask: [.titled],
                               backing: .buffered, defer: false)
