@@ -8,6 +8,9 @@ import SwiftUI
     private let room: Room
     private let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 112, height: 112),
                                 styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+    private var pointer: Timer?
+    /// Clicks farther than this from the center go to the window below: the glow is see-through.
+    private static let reach: CGFloat = 28
 
     init(room: Room) {
         self.room = room
@@ -37,10 +40,31 @@ import SwiftUI
 
     private func follow() {
         withObservationTracking {
-            if room.calls.contains(where: \.inCall) { panel.orderFrontRegardless() } else { panel.orderOut(nil) }
+            if room.calls.contains(where: \.inCall) { show() } else { hide() }
         } onChange: {
             Task { @MainActor in self.follow() }
         }
+    }
+
+    private func show() {
+        panel.orderFrontRegardless()
+        guard pointer == nil else { return }
+        // Windows can't be shaped for clicks, so the panel ignores the mouse unless it's over the orb itself.
+        pointer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.followPointer() }
+        }
+    }
+
+    private func hide() {
+        panel.orderOut(nil)
+        pointer?.invalidate()
+        pointer = nil
+    }
+
+    private func followPointer() {
+        guard NSEvent.pressedMouseButtons == 0 else { return }
+        let mouse = NSEvent.mouseLocation, frame = panel.frame
+        panel.ignoresMouseEvents = hypot(mouse.x - frame.midX, mouse.y - frame.midY) > Self.reach
     }
 }
 
