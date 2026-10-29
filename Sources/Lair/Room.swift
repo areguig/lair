@@ -696,7 +696,7 @@ import os
             guard var detector = await voice.detector(), readiness == .ready, call.id == focusedID,
                   call.state == .ready || call.state == .waiting, !microphone.isCapturing
             else { return }
-            speaker?.play(.listening)
+            speaker?.play(.yourTurn)
             microphone.startCapture()
             call.state = .listening
             answering = Answering(callID: call.id, since: .now)
