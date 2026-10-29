@@ -26,4 +26,11 @@ struct SpeakableTests {
         #expect(Speakable.name("Nova") == "Nova")
         #expect(Speakable.name("zed2") == "zed2")
     }
+
+    @Test func gluedSentencesGetASpace() {
+        #expect(Speakable.gap(after: "Have a good night.", before: "Nothing new.") == " ")
+        #expect(Speakable.gap(after: "It costs 3.", before: "5 euros") == "")
+        #expect(Speakable.gap(after: "Hello ", before: "World") == "")
+        #expect(Speakable.gap(after: "", before: "Hi") == "")
+    }
 }

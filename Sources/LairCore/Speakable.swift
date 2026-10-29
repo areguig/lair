@@ -17,4 +17,11 @@ public enum Speakable {
         guard name.count <= 4, name == name.lowercased(), name.allSatisfy(\.isLetter) else { return name }
         return name.uppercased().map(String.init).joined(separator: " ")
     }
+
+    /// A space between two pieces of an answer that arrive glued, "night." then "Nothing": an agent sends each of its
+    /// messages without one.
+    public static func gap(after text: String, before next: String) -> String {
+        guard let last = text.last, ".!?".contains(last), let first = next.first, first.isUppercase else { return "" }
+        return " "
+    }
 }

@@ -690,10 +690,11 @@ import os
                         answer = call.lines.count - 1
                     }
                     let visible = showing.feed(delta)
-                    call.lines[answer!].text += visible.spoken
+                    let spoken = Speakable.gap(after: call.lines[answer!].text, before: visible.spoken) + visible.spoken
+                    call.lines[answer!].text += spoken
                     call.lines[answer!].shown += visible.shown
                     answered = true
-                    for sentence in splitter.feed(visible.spoken) where try await say(sentence, in: call) && firstAudio == nil {
+                    for sentence in splitter.feed(spoken) where try await say(sentence, in: call) && firstAudio == nil {
                         firstAudio = clock.now - start
                     }
                 case .approval(let request):

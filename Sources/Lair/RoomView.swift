@@ -643,10 +643,14 @@ private struct Transcript: View {
                 .clipped()
             }
         }
-        .frame(height: lines.isEmpty ? (live ? 44 : 0) : 132)
+        .padding(.horizontal, 12)
+        .frame(height: lines.isEmpty ? (live ? 44 : 0) : 150)
+        .frame(maxWidth: .infinity)
+        // A card like a Mission Control column: older lines scroll away under a clean edge, not a fade.
+        .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.white.opacity(0.07), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .opacity(lines.isEmpty && !live ? 0 : 1)
-        .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.18),
-                                     .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom))
         .animation(.smooth, value: lines.isEmpty)
         .animation(.smooth, value: live)
     }
@@ -897,10 +901,11 @@ private struct Backdrop: View {
     var center = 0.5
 
     var body: some View {
+        // Near black like the island and Mission Control, with only a faint glow behind the orb.
         ZStack {
-            Color(red: 0.055, green: 0.06, blue: 0.075)
-            RadialGradient(colors: [tint.opacity(live ? 0.38 : 0.18), .clear], center: UnitPoint(x: center, y: 0.22),
-                           startRadius: 0, endRadius: 260)
+            Color(red: 0.035, green: 0.037, blue: 0.045)
+            RadialGradient(colors: [tint.opacity(live ? 0.2 : 0.1), .clear], center: UnitPoint(x: center, y: 0.2),
+                           startRadius: 0, endRadius: 190)
                 .animation(.easeInOut(duration: 0.6), value: live)
         }
     }
