@@ -165,7 +165,7 @@ struct RoomView: View {
         .padding(.vertical, 2)
     }
 
-    /// The talk button stays centered; the call button sits to its left, balanced by empty space on the right.
+    /// The talk button in the middle, the call button on its left and Mission Control on its right.
     private func controls(_ call: Call) -> some View {
         HStack(spacing: 28) {
             RoundButton(symbol: call.inCall ? "phone.down.fill" : "phone.fill",
@@ -178,7 +178,11 @@ struct RoomView: View {
                        answering: room.answering?.callID == call.id ? room.answering : nil,
                        onPress: room.pressTalk, onRelease: room.releaseTalk)
                 .disabled(room.readiness != .ready)
-            Color.clear.frame(width: 44, height: 44)
+            RoundButton(symbol: "rectangle.split.3x1", fill: .white.opacity(0.1), size: 44) {
+                MissionControl.toggle(room: room)
+            }
+            .help("Mission Control: every agent's whole stream")
+            .accessibilityLabel("Mission Control")
         }
     }
 
