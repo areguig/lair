@@ -942,6 +942,7 @@ struct QuestionCard: View {
     let answer: (String) -> Void
     let skip: () -> Void
     @State private var draft = ""
+    @Environment(\.renderTime) private var renderTime
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -967,12 +968,17 @@ struct QuestionCard: View {
                 }
             }
             HStack(spacing: 8) {
-                TextField(choices.isEmpty ? "Type, or just say it" : "Or something else…", text: $draft)
-                    .textFieldStyle(.plain)
-                    .font(.system(.callout, design: .rounded))
-                    .padding(.horizontal, 12).padding(.vertical, 7)
-                    .background(.white.opacity(0.08), in: Capsule())
-                    .onSubmit(send)
+                Group {
+                    // Text fields don't render offscreen: snapshots get a look-alike.
+                    if renderTime == nil {
+                        TextField(placeholder, text: $draft).textFieldStyle(.plain).onSubmit(send)
+                    } else {
+                        Text(placeholder).foregroundStyle(.white.opacity(0.35)).frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .font(.system(.callout, design: .rounded))
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .background(.white.opacity(0.08), in: Capsule())
                 Button(action: skip) {
                     Text("Skip").padding(.horizontal, 12).padding(.vertical, 7).background(.white.opacity(0.1), in: Capsule())
                 }
@@ -994,6 +1000,8 @@ struct QuestionCard: View {
         .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(tint.opacity(0.5), lineWidth: 1))
     }
+
+    private var placeholder: String { choices.isEmpty ? "Type, or just say it" : "Or something else…" }
 
     private func send() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
