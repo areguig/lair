@@ -1,10 +1,18 @@
 /// Sent with every call so agents know they are heard, not read.
 public enum VoicePrompt {
-    /// The voice rules, plus who the agent is on this call: the name the user calls it and, when it has one,
-    /// its soul.
-    public static func forCall(name: String?, soul: String?) -> String {
+    /// The voice rules, plus who the agent is on this call: the name the user calls it, the other agents the user
+    /// can reach through Lair and, when it has one, its soul.
+    public static func forCall(name: String?, soul: String?, others: [String] = []) -> String {
         var prompt = text
         if let name, !name.isEmpty { prompt += "\n\nOn this call the user calls you \(name)." }
+        if !others.isEmpty {
+            // Without this, an agent asked to "send it to Claude" goes looking for a tool that doesn't exist.
+            prompt += """
+                \n\nThe user can also talk to these agents through Lair: \(others.joined(separator: ", ")). \
+                You can't reach them yourself. When the user says "ask <name> …", Lair passes it on along with your \
+                last answer, and you hear the reply on your next turn. If they want one of them, tell them to say that.
+                """
+        }
         if let soul { prompt += "\n\nYour personality, written by the user:\n\(soul)" }
         return prompt
     }

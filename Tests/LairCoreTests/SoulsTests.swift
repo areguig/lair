@@ -25,6 +25,12 @@ struct SoulsTests {
         #expect(VoicePrompt.forCall(name: nil, soul: nil) == VoicePrompt.text)
     }
 
+    @Test func namesTheOtherAgentsAndHowToReachThem() {
+        let prompt = VoicePrompt.forCall(name: "Sage", soul: nil, others: ["Claude", "Nova"])
+        #expect(prompt.contains("Claude, Nova"))
+        #expect(prompt.contains("\"ask <name> …\""))
+    }
+
     @Test func offersStartersWithText() {
         #expect(Souls.starters.count >= 3)
         #expect(Souls.starters.allSatisfy { !$0.text.isEmpty })

@@ -257,7 +257,8 @@ import os
 
     /// Hermes agents keep the identity they already have; local agents get their name and soul.
     private func callPrompt(for agent: AgentConfig) -> String {
-        VoicePrompt.forCall(name: agent.name, soul: Souls.standard.soul(for: agent.id))
+        VoicePrompt.forCall(name: agent.name, soul: Souls.standard.soul(for: agent.id),
+                            others: calls.map(\.agent.name).filter { $0 != agent.name })
     }
 
     enum SetupError: Error {
