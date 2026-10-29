@@ -2,7 +2,7 @@
 
 A macOS menu-bar app to talk with your coding agents by voice. Speech-to-text and text-to-speech run on your Mac.
 
-**[Website](https://areguig.github.io/lair/)** · [Demo video](docs/demo.mp4)
+**[Website](https://lair-voice.netlify.app)** · [Demo video](site/demo.mp4)
 
 ## What it does
 
