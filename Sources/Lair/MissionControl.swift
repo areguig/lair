@@ -52,8 +52,8 @@ struct MissionControl: View {
             Image(systemName: "circle.circle.fill").foregroundStyle(.white.opacity(0.8))
             Text("Mission Control").font(.system(.headline, design: .rounded, weight: .semibold))
             Spacer()
-            if let shortcut = KeyboardShortcuts.getShortcut(for: .pushToTalk) {
-                Text("Hold \(shortcut.description) to talk · type below to write")
+            if let shortcut = TalkKey.shared.label {
+                Text("Hold \(shortcut) to talk · type below to write")
                     .font(.system(.caption, design: .rounded))
                     .foregroundStyle(.white.opacity(0.5))
             }

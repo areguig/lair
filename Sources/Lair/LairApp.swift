@@ -7,6 +7,22 @@ extension KeyboardShortcuts.Name {
     static let pushToTalk = Self("pushToTalk", initial: .init(.space, modifiers: [.option]))
 }
 
+/// The talk shortcut as shown in the panel and Mission Control, kept current when it's changed in Settings.
+@Observable @MainActor final class TalkKey {
+    static let shared = TalkKey()
+    private(set) var label = TalkKey.current
+
+    private init() {
+        // KeyboardShortcuts posts this on every change; the name isn't public.
+        NotificationCenter.default.addObserver(forName: .init("KeyboardShortcuts_shortcutByNameDidChange"), object: nil,
+                                               queue: .main) { _ in
+            MainActor.assumeIsolated { TalkKey.shared.label = TalkKey.current }
+        }
+    }
+
+    private static var current: String? { KeyboardShortcuts.getShortcut(for: .pushToTalk)?.description }
+}
+
 @main
 struct LairApp: App {
     private let room: Room

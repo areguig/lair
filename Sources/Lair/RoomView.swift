@@ -1,4 +1,3 @@
-import KeyboardShortcuts
 import LairCore
 import LairVoice
 import SwiftUI
@@ -222,10 +221,10 @@ struct RoomView: View {
     }
 
     @ViewBuilder private var footer: some View {
-        if let shortcut = KeyboardShortcuts.getShortcut(for: .pushToTalk) {
+        if let shortcut = TalkKey.shared.label {
             HStack(spacing: 6) {
                 Text("Hold")
-                Text(shortcut.description)
+                Text(shortcut)
                     .font(.system(.caption, design: .rounded, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.85))
                     .padding(.horizontal, 7).padding(.vertical, 2)
@@ -256,7 +255,7 @@ struct RoomView: View {
 
     private func caption(for call: Call) -> String {
         if room.readiness == .loading { return "Getting the voices ready… the first launch downloads them once." }
-        let key = KeyboardShortcuts.getShortcut(for: .pushToTalk)?.description ?? "the talk key"
+        let key = TalkKey.shared.label ?? "the talk key"
         switch call.state {
         case .offline: return "Hold \(key) to talk, or tap the orb"
         case .ready: return "Hold \(key) to talk"
