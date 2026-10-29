@@ -28,14 +28,23 @@ A macOS menu-bar app to talk with your coding agents by voice. Speech-to-text an
 ## Requirements
 
 - macOS 15 or later on Apple Silicon
-- Swift 6.2 (Xcode 26)
+- Swift 6.2 (Xcode 26), only to build it yourself
 
 The first launch downloads the speech models (Parakeet, Kokoro) through [FluidAudio](https://github.com/FluidInference/FluidAudio).
+
+## Install
+
+Download `Lair-vX.Y.Z.dmg` from [Releases](https://github.com/areguig/lair/releases) and drag Lair to Applications. The app isn't notarized yet, so macOS blocks the first launch. Allow it once in System Settings › Privacy & Security › Open Anyway, or run:
+
+```sh
+xattr -d com.apple.quarantine /Applications/Lair.app
+```
 
 ## Build
 
 ```sh
 scripts/build-app.sh      # builds and installs ~/Applications/Lair.app
+scripts/make-dmg.sh       # or wraps it in .build/Lair.dmg
 open ~/Applications/Lair.app
 ```
 

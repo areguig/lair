@@ -1,10 +1,10 @@
 #!/bin/sh
-# Builds the menu-bar app and installs it in ~/Applications. The app's name lives here only.
+# Builds the menu-bar app into the given folder, ~/Applications by default. The app's name lives here only.
 set -eu
 name="Lair"
 bundle_id="dev.lair.app"
 repo=$(cd "$(dirname "$0")/.." && pwd)
-app="$HOME/Applications/$name.app"
+app="${1:-$HOME/Applications}/$name.app"
 
 swift build -c release --package-path "$repo" --product Lair
 bin=$(swift build -c release --package-path "$repo" --show-bin-path)
@@ -36,7 +36,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>CFBundleExecutable</key><string>$name</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.1</string>
+  <key>CFBundleShortVersionString</key><string>${LAIR_VERSION:-0.1}</string>
   <key>CFBundleVersion</key><string>$(git -C "$repo" rev-list --count HEAD 2>/dev/null || echo 0)</string>
   <key>LSMinimumSystemVersion</key><string>15.0</string>
   <key>LSUIElement</key><true/>
@@ -46,4 +46,4 @@ PLIST
 # A stable identity keeps macOS permissions (microphone) across rebuilds; LAIR_SIGN_IDENTITY overrides the pick.
 identity=${LAIR_SIGN_IDENTITY:-$(security find-identity -v -p codesigning | awk '/Apple Development/ { print $2; exit }')}
 codesign --force --deep --sign "${identity:--}" "$app"
-echo "Installed $app"
+echo "Built $app"

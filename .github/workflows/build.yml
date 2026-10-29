@@ -1,0 +1,45 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    # Swift tools 6.2 needs Xcode 26.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The build number is the commit count.
+          fetch-depth: 0
+      - uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+      - run: swift --version
+      - run: swift build
+      - run: swift test
+      - name: Make the disk image
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then export LAIR_VERSION="${GITHUB_REF_NAME#v}"; fi
+          LAIR_SIGN_IDENTITY=- scripts/make-dmg.sh "$RUNNER_TEMP/Lair.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Lair
+          path: ${{ runner.temp }}/Lair.dmg
+      - name: Publish the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp "$RUNNER_TEMP/Lair.dmg" "$RUNNER_TEMP/Lair-$GITHUB_REF_NAME.dmg"
+          gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP/Lair-$GITHUB_REF_NAME.dmg" \
+            --title "Lair $GITHUB_REF_NAME" --generate-notes --prerelease
