@@ -22,7 +22,8 @@ struct RoomView: View {
             if let call {
                 stage(call, tint: tint)
                 if room.calls.count > 1 { roster.padding(.top, 14) }
-                Transcript(lines: call.lines, live: call.inCall, perform: perform).padding(.top, 16)
+                Transcript(lines: call.lines, live: call.inCall, tips: tips(for: call), perform: perform)
+                    .padding(.top, 16)
                 if let request = call.pendingApproval {
                     ApprovalCard(agent: call.agent.name, request: request, tint: tint,
                                  answer: { room.answer(call, decision: $0) })
@@ -179,6 +180,16 @@ struct RoomView: View {
                 .disabled(room.readiness != .ready)
             Color.clear.frame(width: 44, height: 44)
         }
+    }
+
+    /// What you can say, shown while a call has no words yet.
+    private func tips(for call: Call) -> [String] {
+        let other = room.calls.first { $0.id != call.id }?.agent.name
+        return ["Answer right after it speaks: Lair listens for a few seconds.",
+                other.map { "Say “\($0), …” to talk to \($0) instead." },
+                other.map { "Say “ask \($0) what it thinks” to pass this on." },
+                call.agent.kind == .hermes ? nil : "Say “switch to Opus”, “think harder” or “go fast”.",
+                "Talk over it to cut it off."].compactMap { $0 }
     }
 
     private var emptyState: some View {
@@ -371,16 +382,24 @@ private struct Transcript: View {
     let lines: [Call.Line]
     /// In a call, the space stays reserved so the panel doesn't jump at the first words.
     let live: Bool
+    /// Shown in turn while there are no words yet.
+    let tips: [String]
     let perform: (Call.Line.Action) -> Void
     @Environment(\.renderTime) private var renderTime
 
     var body: some View {
         Group {
             if lines.isEmpty {
-                Text("What you and the agent say shows up here.")
-                    .font(.system(.caption, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.35))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                TimelineView(.periodic(from: .now, by: 6)) { timeline in
+                    let tick = Int(renderTime ?? timeline.date.timeIntervalSinceReferenceDate) / 6
+                    Text(tips.isEmpty ? "" : tips[tick % tips.count])
+                        .font(.system(.caption, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.45))
+                        .multilineTextAlignment(.center)
+                        .contentTransition(.opacity)
+                        .animation(.easeInOut(duration: 0.4), value: tick)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if renderTime == nil {
                 ScrollView(showsIndicators: false) {
                     LazyVStack(alignment: .leading, spacing: 10) {
