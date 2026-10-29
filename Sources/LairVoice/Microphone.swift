@@ -42,6 +42,17 @@ import Synchronization
     public func stopCapture() throws -> [Float] {
         let raw = capture.stop()
         meter.set(0)
+        return try resampled(raw)
+    }
+
+    /// The audio so far, as 16 kHz mono, while capture goes on.
+    public func captured() throws -> [Float] {
+        try resampled(capture.samples)
+    }
+
+    public var isCapturing: Bool { capture.recording }
+
+    private func resampled(_ raw: [Float]) throws -> [Float] {
         guard !raw.isEmpty, sampleRate > 0 else { return [] }
         let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)!
         let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(raw.count))!
@@ -63,6 +74,10 @@ import Synchronization
         private let state = Mutex<(recording: Bool, samples: [Float])>((false, []))
 
         func start() { state.withLock { $0 = (true, []) } }
+
+        var samples: [Float] { state.withLock { $0.samples } }
+
+        var recording: Bool { state.withLock { $0.recording } }
 
         @discardableResult
         func stop() -> [Float] { state.withLock { state in defer { state = (false, []) }; return state.samples } }

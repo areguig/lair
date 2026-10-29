@@ -534,10 +534,18 @@ private struct GeneralSettings: View {
         Form {
             Section {
                 KeyboardShortcuts.Recorder("Hold to talk:", name: .pushToTalk)
+                Toggle("Listen for my answer after a question", isOn: Binding(
+                    get: { store.config.listensForAnswers },
+                    set: { on in
+                        var config = store.config
+                        config.listenForAnswers = on ? nil : false
+                        store.save(config)
+                    }))
                 Toggle("Open at login", isOn: Binding(get: { opensAtLogin }, set: setOpensAtLogin))
             } footer: {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Pick a shortcut no other app uses; it works from anywhere.")
+                    Text("When an agent asks you something, the mic opens once it stops talking, and sends when you do.")
                     Text("Allow notifications to answer approvals from anywhere; without them, answer by voice or in the panel.")
                 }
                 .font(.caption)

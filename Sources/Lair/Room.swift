@@ -1,4 +1,5 @@
 import Foundation
+import KeyboardShortcuts
 import LairCore
 import LairVoice
 import Observation
@@ -72,6 +73,10 @@ import os
     private(set) var hint: String?
     private(set) var calls: [Call]
     var focusedID: String
+    /// The call listening for your answer on its own, after a question.
+    private(set) var answering: String?
+    /// Off in General settings: you always press the key.
+    @ObservationIgnored private var listensForAnswers: Bool
 
     @ObservationIgnored private let voice = VoiceModels()
     @ObservationIgnored let microphone = Microphone()
@@ -88,6 +93,7 @@ import os
     init(config: LairConfig) {
         calls = config.enabledAgents.map(Call.init)
         focusedID = config.enabledAgents.first?.id ?? ""
+        listensForAnswers = config.listensForAnswers
     }
 
     var focused: Call? { calls.first { $0.id == focusedID } }
@@ -103,6 +109,7 @@ import os
         for call in calls where !next.contains(where: { $0 === call }) && call.inCall { hangUp(call) }
         calls = next
         if focused == nil { focusedID = calls.first?.id ?? "" }
+        listensForAnswers = config.listensForAnswers
     }
 
     /// Says a short line in `voice`, so a voice can be tried before choosing it.
@@ -273,6 +280,8 @@ import os
         case .loading: return show(hint: "Still getting the voices ready…")
         case .microphoneDenied, .failed: return show(hint: "Lair can't listen yet; see below.")
         }
+        // Already listening for your answer: the key takes over, and letting go sends.
+        if answering != nil, focused?.state == .listening { return answering = nil }
         // An agent waiting on your OK takes the answer, even if another one is in focus.
         if focused?.state != .waiting, let waiting = calls.first(where: { $0.state == .waiting }) { focus(waiting) }
         guard let call = focused else { return show(hint: "Add an agent in Settings first.") }
@@ -295,6 +304,7 @@ import os
 
     func releaseTalk() {
         guard let call = focused, call.state == .listening else { return }
+        answering = nil
         let samples = (try? microphone.stopCapture()) ?? []
         let idle: Call.State = call.pendingApproval == nil ? .ready : .waiting
         guard samples.count >= minimumSpeech else {
@@ -356,6 +366,8 @@ import os
         } else {
             _ = try? await say("Sorry, say" + (call.pendingApproval?.canAlwaysAllow == true ? " yes, always, or no." : " yes or no."), in: call)
             call.state = .waiting
+            await speaker?.waitUntilDone()
+            if call.pendingApproval != nil { listenForAnswer(in: call) }
         }
     }
 
@@ -505,10 +517,12 @@ import os
         let turnID = UUID()
         call.turnID = turnID
         call.unheard = []
+        // The turn ended on a question to you: listen for the answer.
+        var asksBack = false
         defer {
             if call.inCall, call.turnID == turnID {
                 call.state = .ready
-                if call.newsWaiting { hearNews(from: call) }
+                if call.newsWaiting { hearNews(from: call) } else if asksBack { listenForAnswer(in: call) }
             }
         }
         let clock = Self.clock
@@ -580,6 +594,7 @@ import os
             }
             if call.id == focusedID {
                 await speaker.waitUntilDone()
+                asksBack = answer.map { call.lines.indices.contains($0) && FollowUp.expectsAnswer(call.lines[$0].text) } ?? false
             } else if !Task.isCancelled {
                 call.unread = true
                 speaker.play(.done)
@@ -612,6 +627,45 @@ import os
         }
         _ = try await say("\(call.agent.name) needs your OK to \(request.summary.lowercasedFirst). Allow it?" + (request.canAlwaysAllow ? " Say yes, always, or no." : " Say yes or no."), in: call)
         if call.pendingApproval?.id == request.id { call.state = .waiting }
+        await speaker?.waitUntilDone()
+        if call.pendingApproval?.id == request.id { listenForAnswer(in: call) }
+    }
+
+    /// The microphone opens on its own after a question and sends once you've answered; silence closes it.
+    /// Opening only after the voice has finished keeps the agent from hearing itself.
+    private func listenForAnswer(in call: Call) {
+        guard listensForAnswers else { return }
+        Task {
+            guard var detector = await voice.detector(), readiness == .ready, call.id == focusedID,
+                  call.state == .ready || call.state == .waiting, !microphone.isCapturing
+            else { return }
+            speaker?.play(.listening)
+            microphone.startCapture()
+            call.state = .listening
+            answering = call.id
+            let start = Self.clock.now
+            var turn = FollowUp.Turn()
+            while true {
+                try? await Task.sleep(for: .milliseconds(250))
+                guard answering == call.id, call.state == .listening, call.id == focusedID,
+                      let samples = try? microphone.captured(),
+                      let next = try? await voice.listen(detector, to: samples),
+                      answering == call.id, call.state == .listening
+                else { break }
+                detector = next
+                switch turn.update(speaking: detector.speaking, elapsed: Self.clock.now - start) {
+                case .listen: continue
+                case .send: return releaseTalk()
+                case .giveUp:
+                    _ = try? microphone.stopCapture()
+                    call.state = call.pendingApproval == nil ? .ready : .waiting
+                    let key = KeyboardShortcuts.getShortcut(for: .pushToTalk)?.description ?? "the talk key"
+                    show(hint: "Didn't hear an answer. Hold \(key) when you're ready.")
+                }
+                break
+            }
+            if answering == call.id { answering = nil }
+        }
     }
 
     /// One line from a background agent, once the focused one has stopped talking.
@@ -643,6 +697,7 @@ import os
             }
             await speaker?.waitUntilDone()
             if call.id == focusedID, call.state == .speaking { call.state = resume }
+            if FollowUp.expectsAnswer(sentences.last ?? "") { listenForAnswer(in: call) }
         }
     }
 
