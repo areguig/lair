@@ -320,6 +320,18 @@ import os
         closeMicrophoneIfUnused()
     }
 
+    /// Opened whenever Lair starts listening, not when a call or question starts: an answer elsewhere can close it
+    /// in between. Opening an open microphone does nothing.
+    private func openMicrophone(for call: Call) -> Bool {
+        do {
+            try microphone.open()
+            return true
+        } catch {
+            report(in: call, .init(role: .problem, text: "Can't listen: \(error.localizedDescription)"))
+            return false
+        }
+    }
+
     /// Guests hold no call of their own: the microphone is only needed for a call or a question.
     private func closeMicrophoneIfUnused() {
         if !calls.contains(where: { $0.guest ? $0.question != nil : $0.inCall }) { microphone.close() }
@@ -344,6 +356,7 @@ import os
         }
         guard call.state == .ready || call.state == .waiting else { return }
         if call.guest, call.question == nil { return show(hint: "\(call.agent.name) listens only when it asks you something.") }
+        guard openMicrophone(for: call) else { return }
         speaker?.play(.listening)
         microphone.startCapture()
         call.state = .listening
@@ -741,6 +754,7 @@ import os
             guard var detector = await voice.detector(), readiness == .ready, call.id == focusedID,
                   call.state == .ready || call.state == .waiting, !microphone.isCapturing
             else { return }
+            guard openMicrophone(for: call) else { return }
             speaker?.play(.yourTurn)
             microphone.startCapture()
             call.state = .listening
@@ -827,6 +841,16 @@ import os
 
     // MARK: Guests, agents on this Mac that joined over MCP
 
+    /// Who spoke last and when, so a new voice says who it is.
+    @ObservationIgnored private var lastVoice: (id: String, at: Date)?
+
+    /// "omp says, …" when the voice changes or hasn't been heard for a while; just the words otherwise.
+    private func introduce(_ text: String, by call: Call, verb: String) -> String {
+        defer { lastVoice = (call.id, .now) }
+        if let lastVoice, lastVoice.id == call.id, Date.now.timeIntervalSince(lastVoice.at) < 90 { return text }
+        return "\(Speakable.name(call.agent.name)) \(verb), \(text)"
+    }
+
     /// The guest server's settings, from the config; nil while it's off.
     @ObservationIgnored private var guestSettings: GuestSettings?
     @ObservationIgnored private var idleSweep: Task<Void, Never>?
@@ -876,7 +900,9 @@ import os
             return announce(text, for: call)
         }
         var splitter = SentenceSplitter()
-        for sentence in splitter.feed(text) + [splitter.flush()].compactMap(\.self) { _ = try? await say(sentence, in: call) }
+        for sentence in splitter.feed(introduce(text, by: call, verb: "says")) + [splitter.flush()].compactMap(\.self) {
+            _ = try? await say(sentence, in: call)
+        }
         await speaker.waitUntilDone()
         if call.state == .speaking { call.state = call.idle }
     }
@@ -887,12 +913,6 @@ import os
         let call = call(for: guest)
         guard readiness == .ready, call.question == nil else { return nil }
         call.logText(question)
-        do {
-            try microphone.open()
-        } catch {
-            report(in: call, .init(role: .problem, text: "Can't listen for your answer: \(error.localizedDescription)"))
-            return nil
-        }
         while calls.contains(where: { $0.question != nil }) || focused?.state == .speaking || focused?.state == .listening
                 || answering != nil {
             try? await Task.sleep(for: .milliseconds(300))
@@ -910,7 +930,7 @@ import os
                 notifier.postQuestion(question, id: call.id, from: call.agent.name)
                 speaker?.play(.needsYou)
                 Task {
-                    _ = try? await say(question, in: call)
+                    _ = try? await say(introduce(question, by: call, verb: "asks"), in: call)
                     await speaker?.waitUntilDone()
                     if call.question != nil {
                         call.state = .waiting

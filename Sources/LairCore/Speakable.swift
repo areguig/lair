@@ -11,4 +11,10 @@ public enum Speakable {
         text = text.replacingOccurrences(of: #"[*_`~#>|]"#, with: "", options: .regularExpression)
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
+
+    /// A name said the way people say it: short lowercase names like "omp" are initials, spelled out.
+    public static func name(_ name: String) -> String {
+        guard name.count <= 4, name == name.lowercased(), name.allSatisfy(\.isLetter) else { return name }
+        return name.uppercased().map(String.init).joined(separator: " ")
+    }
 }

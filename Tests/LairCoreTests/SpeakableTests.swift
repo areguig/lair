@@ -19,4 +19,11 @@ struct SpeakableTests {
     @Test func leavesPlainSentencesAlone() {
         #expect(Speakable.text("It costs 3.5 euros, I think.") == "It costs 3.5 euros, I think.")
     }
+
+    @Test func shortLowercaseNamesAreSpelledOut() {
+        #expect(Speakable.name("omp") == "O M P")
+        #expect(Speakable.name("Claude Code") == "Claude Code")
+        #expect(Speakable.name("Nova") == "Nova")
+        #expect(Speakable.name("zed2") == "zed2")
+    }
 }
