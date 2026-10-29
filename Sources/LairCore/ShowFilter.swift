@@ -69,6 +69,8 @@ public struct ShowFilter: Sendable {
         return out
     }
 
+    private static func isWord(_ c: Character) -> Bool { c.isLetter || c.isNumber }
+
     private static func match(_ text: ArraySlice<Character>, _ tag: [Character]) -> Match {
         let head = text.prefix(tag.count).map { Character($0.lowercased()) }
         guard head == Array(tag.prefix(head.count)) else { return .none }
@@ -84,6 +86,10 @@ public struct ShowFilter: Sendable {
         var text = text
         if afterTag, lastSpoken == " ", text.first == " " { text = text.dropFirst() }
         guard !text.isEmpty else { return }
+        // "the file<show>x</show>and" would be heard as "fileand".
+        if afterTag, let last = lastSpoken, let first = text.first, Self.isWord(last), Self.isWord(first) {
+            out.spoken += " "
+        }
         out.spoken += String(text)
         lastSpoken = text.last
         afterTag = false

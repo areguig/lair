@@ -20,6 +20,11 @@ struct ShowFilterTests {
         #expect(o.shown == ["~/.config/lair/config.json"])
     }
 
+    @Test func wordsAroundATagWithoutSpacesStayApart() {
+        let o = run(["Open the file<show>~/a.txt</show>and check it, or <show>b</show>, then go."])
+        #expect(o.spoken == "Open the file and check it, or , then go.")
+    }
+
     @Test func everySplitMatchesOneShot() {
         let samples = [
             "I updated <show>~/.config/x</show> and <SHOW> y </Show>pushed a < b <sh no.",
@@ -68,7 +73,7 @@ struct ShowFilterTests {
     @Test func emptyDropped() {
         let o = run(["a<show></show>b <show>  </show>c"])
         #expect(o.shown.isEmpty)
-        #expect(o.spoken == "ab c")
+        #expect(o.spoken == "a b c")
     }
 
     @Test func passthrough() {
