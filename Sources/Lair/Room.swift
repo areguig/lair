@@ -147,7 +147,7 @@ import os
             }
         }
         calls = next + calls.filter(\.stranger)
-        if focused == nil { focusedID = calls.first?.id ?? "" }
+        if !calls.contains(where: { $0.id == focusedID }) { focusedID = calls.first?.id ?? "" }
         listensForAnswers = config.listensForAnswers
         if guestSettings != config.guests {
             guestSettings = config.guests
@@ -1019,7 +1019,7 @@ import os
         call.visitor = nil
         call.state = .offline
         if call.stranger { calls.removeAll { $0 === call } }
-        if focused == nil { focusedID = calls.first?.id ?? "" }
+        if !calls.contains(where: { $0.id == focusedID }) { focusedID = calls.first?.id ?? "" }
         closeMicrophoneIfUnused()
     }
 
