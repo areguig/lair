@@ -638,6 +638,8 @@ import os
                     try await ask(call, to: request)
                 }
             }
+            // Cutting in ends the stream as if the turn were over; it was stopped, not silent.
+            guard !Task.isCancelled, call.turnID == turnID else { return }
             let visible = showing.flush()
             if let answer {
                 call.lines[answer].text += visible.spoken
