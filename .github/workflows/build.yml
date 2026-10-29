@@ -12,8 +12,8 @@ permissions:
 
 jobs:
   build:
-    # Swift tools 6.2 needs Xcode 26.
-    runs-on: macos-26
+    # Xcode 27: older SwiftPM can't find resource bundles inside an app (see scripts/build-app.sh).
+    runs-on: xcode-27
     steps:
       - uses: actions/checkout@v5
         with:

@@ -28,7 +28,7 @@ A macOS menu-bar app to talk with your coding agents by voice. Speech-to-text an
 ## Requirements
 
 - macOS 15 or later on Apple Silicon
-- Swift 6.2 (Xcode 26), only to build it yourself
+- Swift 6.4 (Xcode 27), only to build it yourself
 
 The first launch downloads the speech models (Parakeet, Kokoro) through [FluidAudio](https://github.com/FluidInference/FluidAudio).
 

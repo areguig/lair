@@ -8,6 +8,12 @@ app="${1:-$HOME/Applications}/$name.app"
 
 swift build -c release --package-path "$repo" --product Lair
 bin=$(swift build -c release --package-path "$repo" --show-bin-path)
+# SwiftPM in Swift 6.3 and older looks for resource bundles beside the .app or in this build folder, never in
+# Contents/Resources, so the app would crash on any other Mac.
+if strings "$bin/Lair" | grep -q "$bin/.*\.bundle"; then
+  echo "error: this Swift finds resources only in $bin; bundle the app with Swift 6.4 (Xcode 27) or later" >&2
+  exit 1
+fi
 
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
