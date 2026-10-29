@@ -52,9 +52,13 @@ import os
     @ObservationIgnored var newsWaiting = false
     /// What other agents answered for this one while you talked to them; sent before its next turn.
     @ObservationIgnored var context: [String] = []
-    /// Joined over MCP: it speaks and asks on its own, you only answer.
-    var guest: Bool { agent.kind == .guest }
-    /// A guest's working folder, as it told Lair.
+    /// The session you started yourself on this Mac that this call is, while it's connected.
+    var visitor: Guest?
+    /// Driven by a session on this Mac: it speaks and asks on its own, you only answer.
+    var guest: Bool { visitor != nil || stranger }
+    /// A session that matches none of your agents: it's in the room only while it's connected.
+    var stranger: Bool { agent.kind == .guest }
+    /// A visitor's working folder, as it told Lair.
     var folder: URL?
     /// When a guest last said anything; quiet ones leave.
     @ObservationIgnored var heard = Date.distantPast
@@ -132,14 +136,22 @@ import os
             call.agent = agent
             return call
         }
-        for call in calls where !call.guest && !next.contains(where: { $0 === call }) && call.inCall { hangUp(call) }
-        calls = next + calls.filter(\.guest)
+        for call in calls where !call.stranger && !next.contains(where: { $0 === call }) {
+            // A removed agent whose session is still connected stays, as that session.
+            if let visitor = call.visitor {
+                call.agent.kind = .guest
+                call.agent.id = "guest-" + visitor.id
+            } else if call.inCall {
+                hangUp(call)
+            }
+        }
+        calls = next + calls.filter(\.stranger)
         if focused == nil { focusedID = calls.first?.id ?? "" }
         listensForAnswers = config.listensForAnswers
         if guestSettings != config.guests {
             guestSettings = config.guests
             sweepIdleGuests()
-            if config.guests == nil { for call in calls where call.guest { dismiss(call) } }
+            if config.guests == nil { for call in calls where call.visitor != nil { dismiss(call) } }
         }
     }
 
@@ -217,12 +229,12 @@ import os
             }
         }
         focusedID = call.id
-        calls.removeAll { $0.guest && !$0.inCall && $0 !== call }
+        calls.removeAll { $0.stranger && !$0.inCall && $0 !== call }
     }
 
     func summon(_ call: Call) {
         guard readiness == .ready, !call.inCall else { return }
-        guard !call.guest else { return call.state = .ready }
+        guard !call.guest else { return }
         // A new attempt replaces the last setup problem instead of stacking another.
         call.lines.removeAll { $0.action == .openSettings }
         do {
@@ -334,7 +346,7 @@ import os
 
     /// Guests hold no call of their own: the microphone is only needed for a call or a question.
     private func closeMicrophoneIfUnused() {
-        if !calls.contains(where: { $0.guest ? $0.question != nil : $0.inCall }) { microphone.close() }
+        if !calls.contains(where: { $0.visitor != nil ? $0.question != nil : $0.inCall }) { microphone.close() }
     }
 
     func pressTalk() {
@@ -855,36 +867,60 @@ import os
     @ObservationIgnored private var guestSettings: GuestSettings?
     @ObservationIgnored private var idleSweep: Task<Void, Never>?
 
-    /// The guest's call, joining the room on its first word with a voice and color no one else has.
-    /// A guest that left comes back to its old call when the same agent returns from the same folder.
-    /// Not private so snapshots can stage a guest.
+    /// Saves a new agent in the config and returns it with its id; set by the app.
+    @ObservationIgnored var saveAgent: ((AgentConfig) -> AgentConfig?)?
+
+    /// The session's call, joining the room on its first word: as your agent with its tool and folder when that
+    /// agent is free, otherwise on its own, numbered after anyone with the same name. Not private so snapshots can
+    /// stage one.
     func call(for guest: Guest) -> Call {
-        let id = "guest-" + guest.id
-        if let call = calls.first(where: { $0.id == id }) {
+        if let call = calls.first(where: { $0.visitor?.id == guest.id }) {
             call.heard = .now
             if call.folder == nil { call.folder = guest.folder }
             return call
         }
-        if let call = calls.first(where: { $0.guest && !$0.inCall && $0.agent.name == guest.name && $0.folder == guest.folder }) {
-            call.agent.id = id
-            call.state = .ready
-            call.heard = .now
-            call.lines.append(.init(role: .info, text: "Back."))
-            return call
-        }
-        let used = Set(calls.map(\.agent.voice)), colors = Set(calls.map(\.agent.color))
-        let twins = calls.filter { $0.guest && $0.agent.name.hasPrefix(guest.name) }.count
-        let agent = AgentConfig(id: id, name: twins == 0 ? guest.name : "\(guest.name) \(twins + 1)", kind: .guest,
-                                voice: VoiceModels.voices.first { !used.contains($0) } ?? "af_heart",
-                                color: AgentConfig.palette.first { !colors.contains($0) }
-                                    ?? AgentConfig.palette[calls.count % AgentConfig.palette.count])
-        let call = Call(agent: agent)
+        let call = arrival(of: guest)
+        call.visitor = guest
         call.folder = guest.folder
         call.state = .ready
         call.heard = .now
-        calls.append(call)
-        Self.log.notice("\(call.id, privacy: .public): \(agent.name, privacy: .public) joined from \(guest.folder?.path ?? "no folder", privacy: .public)")
+        Self.log.notice("\(call.id, privacy: .public): \(guest.name, privacy: .public) joined as \(call.agent.name, privacy: .public) from \(guest.folder?.path ?? "no folder", privacy: .public)")
         return call
+    }
+
+    private func arrival(of guest: Guest) -> Call {
+        let match = Visitors.agent(client: guest.client, folder: guest.folder, in: calls.filter { !$0.stranger }.map(\.agent))
+        if let match, let call = calls.first(where: { $0.id == match.id }), call.visitor == nil, !call.inCall {
+            call.lines.append(.init(role: .info, text: "Joined from your terminal."))
+            return call
+        }
+        let used = Set(calls.map(\.agent.voice)), colors = Set(calls.map(\.agent.color))
+        let agent = AgentConfig(id: "guest-" + guest.id, name: Visitors.name(match?.name ?? guest.name, taken: Set(calls.map(\.agent.name))),
+                                kind: .guest,
+                                voice: match?.voice ?? VoiceModels.voices.first { !used.contains($0) } ?? "af_heart",
+                                color: match?.color ?? AgentConfig.palette.first { !colors.contains($0) }
+                                    ?? AgentConfig.palette[calls.count % AgentConfig.palette.count])
+        let call = Call(agent: agent)
+        calls.append(call)
+        return call
+    }
+
+    /// A session of a tool Lair knows, in a folder none of your agents has, can become one.
+    func canAdopt(_ call: Call) -> Bool {
+        guard call.stranger, let visitor = call.visitor, Visitors.kind(ofClient: visitor.client) != nil, call.folder != nil
+        else { return false }
+        return Visitors.agent(client: visitor.client, folder: call.folder, in: calls.filter { !$0.stranger }.map(\.agent)) == nil
+    }
+
+    /// Saves the session's tool and folder as an agent named after the folder, with the voice and color it has now;
+    /// its next sessions there join as that agent.
+    func adopt(_ call: Call) {
+        guard canAdopt(call), let kind = Visitors.kind(ofClient: call.visitor?.client), let folder = call.folder else { return }
+        let draft = AgentConfig(id: "", name: Visitors.agentName(for: folder), kind: kind, voice: call.agent.voice,
+                                color: call.agent.color, directory: Visitors.configPath(folder))
+        guard let saved = saveAgent?(draft) else { return }
+        call.agent = saved
+        call.lines.append(.init(role: .info, text: "Saved as \(saved.name): its sessions in this folder join as \(saved.name)."))
     }
 
     /// Takes the floor only from someone who isn't on a call; otherwise heard once the floor is free.
@@ -916,7 +952,7 @@ import os
         while calls.contains(where: { $0.question != nil }) || focused?.state == .speaking || focused?.state == .listening
                 || answering != nil {
             try? await Task.sleep(for: .milliseconds(300))
-            guard !Task.isCancelled, call.guest, calls.contains(where: { $0 === call }) else { return nil }
+            guard !Task.isCancelled, call.visitor?.id == guest.id, calls.contains(where: { $0 === call }) else { return nil }
         }
         let wait = Duration.seconds(guestSettings?.answerSeconds ?? GuestSettings.standard.answerSeconds)
         return await withTaskCancellationHandler {
@@ -953,7 +989,7 @@ import os
     }
 
     func guestLeft(_ guest: Guest) {
-        guard let call = calls.first(where: { $0.id == "guest-" + guest.id }) else { return }
+        guard let call = calls.first(where: { $0.visitor?.id == guest.id }) else { return }
         leave(call, note: "Left.")
     }
 
@@ -961,17 +997,22 @@ import os
         resolveQuestion(of: call, with: nil, note: "\(call.agent.name) left before you answered.")
         if call.state == .speaking { speaker?.stop() }
         if call.state == .listening { _ = try? microphone.stopCapture() }
+        call.visitor = nil
         call.state = .offline
         call.lines.append(.init(role: .info, text: note))
-        // Kept while you're looking at it, so its last words don't vanish under you.
-        if call.id != focusedID { calls.removeAll { $0 === call } }
+        // Your agent stays in the room; a stranger goes, but not while you're looking at its last words.
+        if call.stranger, call.id != focusedID { calls.removeAll { $0 === call } }
+        closeMicrophoneIfUnused()
     }
 
-    /// Dismissed from the panel: gone now, and back on its next word.
+    /// Dismissed from the panel: out of the room now, and back on its next word.
     private func dismiss(_ call: Call) {
         resolveQuestion(of: call, with: nil, note: "Dismissed.")
         if call.state == .speaking { speaker?.stop() }
-        calls.removeAll { $0 === call }
+        if call.state == .listening { _ = try? microphone.stopCapture() }
+        call.visitor = nil
+        call.state = .offline
+        if call.stranger { calls.removeAll { $0 === call } }
         if focused == nil { focusedID = calls.first?.id ?? "" }
         closeMicrophoneIfUnused()
     }
@@ -1025,7 +1066,7 @@ import os
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(30))
                 let cutoff = Date.now - TimeInterval(minutes * 60)
-                for call in calls where call.guest && call.inCall && !call.awaitsYou && call.heard < cutoff {
+                for call in calls where call.visitor != nil && !call.awaitsYou && call.heard < cutoff {
                     leave(call, note: "Quiet for \(minutes) minutes, so it left. It's back on its next word.")
                 }
             }

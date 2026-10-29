@@ -82,6 +82,14 @@ struct LairApp: App {
         }
         let store = ConfigStore()
         let room = Room(config: store.config)
+        room.saveAgent = { draft in
+            var config = store.config
+            var agent = draft
+            agent.id = config.newAgentID(for: agent.name)
+            config.agents.append(agent)
+            store.save(config)
+            return agent
+        }
         let link = GuestLink(room: room)
         link.apply(store.config.guests)
         store.onChange = {
@@ -196,7 +204,7 @@ struct MenuBarIcon: View {
                     room.calls[1].state = .waiting
                     room.calls[1].pendingApproval = ApprovalRequest(id: "echo", tool: "Bash", summary: "Restart the staging server")
                 }
-                let guest = room.call(for: Guest(id: "demo", name: "Claude Code",
+                let guest = room.call(for: Guest(id: "demo", name: "Claude Code", client: "claude-code",
                                                  folder: URL(fileURLWithPath: "/Users/me/dev/lair")))
                 guest.lines = [.init(role: .agent, text: "The migration ran on staging; all 412 tests pass.")]
                 if variant == "guest" {

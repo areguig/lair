@@ -7,12 +7,15 @@ import Synchronization
 public struct Guest: Hashable, Sendable {
     public let id: String
     public let name: String
+    /// The client as it names itself, such as `claude-code`: which tool this is.
+    public let client: String?
     /// The agent's working folder, from its MCP roots, once it said.
     public let folder: URL?
 
-    public init(id: String, name: String, folder: URL? = nil) {
+    public init(id: String, name: String, client: String? = nil, folder: URL? = nil) {
         self.id = id
         self.name = name
+        self.client = client
         self.folder = folder
     }
 
@@ -141,7 +144,7 @@ public actor GuestServer {
     }
 
     private func named(_ id: String, path: String?, client: Client.Info) {
-        sessions[id]?.guest = Guest(id: id, name: Guest.name(path: path, client: client))
+        sessions[id]?.guest = Guest(id: id, name: Guest.name(path: path, client: client), client: client.name)
     }
 
     private func end(_ id: String) async {
@@ -156,7 +159,8 @@ public actor GuestServer {
         guard session.streamOpen, !session.askedFolder else { return session.guest }
         sessions[id]?.askedFolder = true
         let roots = await Self.within(.seconds(2)) { try await session.server.listRoots() }
-        sessions[id]?.guest = Guest(id: id, name: session.guest.name, folder: roots.flatMap(Self.folder))
+        sessions[id]?.guest = Guest(id: id, name: session.guest.name, client: session.guest.client,
+                                    folder: roots.flatMap(Self.folder))
         return sessions[id]?.guest
     }
 

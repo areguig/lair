@@ -14,20 +14,23 @@ struct MissionControl: View {
 
     let room: Room
 
+    /// Your agents only: a session that isn't one of them lives in the panel while it's connected.
+    private var agents: [Call] { room.calls.filter { !$0.stranger } }
+
     var body: some View {
         VStack(spacing: 0) {
             topBar
                 .padding(.top, 20)
-            if room.calls.isEmpty {
+            if agents.isEmpty {
                 Text("No agents yet. Add one in Settings.")
                     .foregroundStyle(.white.opacity(0.6))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 14) {
-                        ForEach(room.calls) { call in
+                        ForEach(agents) { call in
                             AgentColumn(call: call, room: room)
-                                .containerRelativeFrame(.horizontal, count: min(room.calls.count, 3), spacing: 14)
+                                .containerRelativeFrame(.horizontal, count: min(agents.count, 3), spacing: 14)
                         }
                     }
                     .padding(.vertical, 14)

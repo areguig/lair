@@ -276,8 +276,10 @@ private struct AgentForm: View {
 
     private var footer: String {
         switch agent.kind {
-        case .claudeCode: "These apply from the next call. During a call, say “switch to Opus” or “go fast”."
-        case .omp: "These apply from the next call. During a call, say “think harder”, “go fast” or “switch to <model>”."
+        case .claudeCode: "These apply from the next call. During a call, say “switch to Opus” or “go fast”. "
+            + "Start Claude Code yourself in this folder and it talks to you as \(agent.name), once it's connected in On this Mac."
+        case .omp: "These apply from the next call. During a call, say “think harder”, “go fast” or “switch to <model>”. "
+            + "Start omp yourself in this folder and it talks to you as \(agent.name), once it's connected in On this Mac."
         case .hermes: "Address and model apply from the next call. Keys stay in your Keychain, never in the config file."
         case .guest: ""
         }

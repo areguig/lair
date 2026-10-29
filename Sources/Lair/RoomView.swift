@@ -74,8 +74,8 @@ struct RoomView: View {
 
     /// "2 on a call · 1 on this Mac", or nothing while the room is quiet.
     private var presence: String? {
-        let live = room.calls.filter { !$0.guest && $0.inCall }.count
-        let guests = room.calls.filter { $0.guest && $0.inCall }.count
+        let live = room.calls.filter { $0.visitor == nil && $0.inCall }.count
+        let guests = room.calls.filter { $0.visitor != nil }.count
         let parts = [live > 0 ? "\(live) on a call" : nil, guests > 0 ? "\(guests) on this Mac" : nil].compactMap { $0 }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
@@ -84,7 +84,7 @@ struct RoomView: View {
 
     /// Everyone in the room: the agents you call, then the ones that came to you from this Mac.
     private var rail: some View {
-        let agents = room.calls.filter { !$0.guest }, guests = room.calls.filter(\.guest)
+        let agents = room.calls.filter { !$0.stranger }, guests = room.calls.filter(\.stranger)
         return VStack(spacing: 6) {
             ForEach(agents) { avatar($0) }
             if !guests.isEmpty {
@@ -97,7 +97,7 @@ struct RoomView: View {
                         .foregroundStyle(.white.opacity(0.38))
                 }
                 .padding(.vertical, 4)
-                .help("Agents running on this Mac that came to talk to you")
+                .help("Sessions on this Mac that aren't one of your agents")
                 ForEach(guests) { avatar($0) }
             }
             Button { openSettings(agents.isEmpty ? .mac : .agents) } label: {
@@ -171,6 +171,18 @@ struct RoomView: View {
                     .lineLimit(1)
                 if call.guest {
                     GuestBadge(folder: call.folder)
+                    if room.canAdopt(call) {
+                        Button { room.adopt(call) } label: {
+                            Label("Make it an agent", systemImage: "person.crop.circle.badge.plus")
+                                .font(.system(.caption, design: .rounded, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.9))
+                                .padding(.horizontal, 10).padding(.vertical, 4)
+                                .background(.white.opacity(0.1), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 2)
+                        .help("Save this tool and folder as an agent: give it a voice, a soul and a purpose in Settings")
+                    }
                 } else if call.inCall && call.agent.kind != .hermes {
                     ModelSwitcher(call: call, room: room)
                 } else if let details = call.details {
