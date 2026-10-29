@@ -25,13 +25,12 @@ struct SettingsView: View {
     let link: GuestLink
     /// The agent shown first; snapshots use it to show a given form.
     var selectedAgent: String?
-    /// The tab shown first; snapshots use it.
-    @State var tab = Tab.agents
+    @Bindable private var route = SettingsRoute.shared
 
     enum Tab: Hashable { case agents, mac, general }
 
     var body: some View {
-        TabView(selection: $tab) {
+        TabView(selection: $route.tab) {
             AgentsSettings(store: store, room: room, selection: selectedAgent)
                 .tabItem { Label("Agents", systemImage: "person.2") }
                 .tag(Tab.agents)
@@ -44,6 +43,12 @@ struct SettingsView: View {
         }
         .frame(width: 660, height: 500)
     }
+}
+
+/// The tab Settings opens on, so the panel can open it on the right one.
+@Observable @MainActor final class SettingsRoute {
+    static let shared = SettingsRoute()
+    var tab = SettingsView.Tab.agents
 }
 
 // MARK: - Agents

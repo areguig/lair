@@ -192,6 +192,10 @@ struct MenuBarIcon: View {
                 room.calls[4].state = .waiting
             case "guest", "guestspeaks":
                 call.state = .thinking
+                if variant == "guest" {
+                    room.calls[1].state = .waiting
+                    room.calls[1].pendingApproval = ApprovalRequest(id: "echo", tool: "Bash", summary: "Restart the staging server")
+                }
                 let guest = room.call(for: Guest(id: "demo", name: "Claude Code",
                                                  folder: URL(fileURLWithPath: "/Users/me/dev/lair")))
                 guest.lines = [.init(role: .agent, text: "The migration ran on staging; all 412 tests pass.")]
@@ -266,8 +270,8 @@ struct MenuBarIcon: View {
         let room = Room(config: store.config)
         let link = GuestLink(room: room)
         link.status = config.guests.map { .on($0.url) } ?? .off
-        let view = NSHostingView(rootView: SettingsView(store: store, room: room, link: link,
-                                                        selectedAgent: agent, tab: agent == "mac" ? .mac : .agents))
+        SettingsRoute.shared.tab = agent == "mac" ? .mac : .agents
+        let view = NSHostingView(rootView: SettingsView(store: store, room: room, link: link, selectedAgent: agent))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 660, height: 500), styleMask: [.titled],
                               backing: .buffered, defer: false)
         window.contentView = view

@@ -2,7 +2,8 @@ import LairCore
 import LairVoice
 import SwiftUI
 
-/// The menu-bar panel: the focused agent's orb, what was said, and the call controls.
+/// The menu-bar panel: everyone in the room down the side, the one you're talking to in the middle,
+/// and whoever else needs you right above it.
 struct RoomView: View {
     let room: Room
     /// The config file has an error; Lair keeps running with the last good version until it's fixed.
@@ -19,45 +20,41 @@ struct RoomView: View {
                     .padding(.top, 10)
             }
             if let call {
-                stage(call, tint: tint)
-                if room.calls.count > 1 { roster.padding(.top, 14) }
-                Transcript(lines: call.lines, live: call.inCall, tips: tips(for: call), perform: perform)
-                    .padding(.top, 16)
-                if let request = call.pendingApproval {
-                    ApprovalCard(agent: call.agent.name, request: request, tint: tint,
-                                 answer: { room.answer(call, decision: $0) })
-                        .padding(.top, 12)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                } else if let question = call.questionText {
-                    QuestionCard(agent: call.agent.name, question: question, since: call.questionSince,
-                                 deadline: call.questionDeadline, tint: tint,
-                                 answer: { room.answerQuestion(of: call, with: $0) }, skip: { room.skipQuestion(of: call) })
-                        .padding(.top, 12)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                HStack(alignment: .top, spacing: 14) {
+                    rail
+                    main(call, tint: tint)
                 }
-                controls(call).padding(.top, 14)
+                .padding(.top, 14)
             } else {
                 emptyState
             }
             footer.padding(.top, 14)
         }
         .padding(18)
-        .frame(width: 340)
+        .frame(width: call == nil ? 340 : 424)
         .animation(.smooth(duration: 0.3), value: call?.pendingApproval)
         .animation(.smooth(duration: 0.3), value: call?.questionText)
         .animation(.smooth(duration: 0.3), value: room.focusedID)
-        .background(Backdrop(tint: tint, live: call?.inCall == true))
+        .animation(.smooth(duration: 0.3), value: room.calls.map(\.id))
+        .background(Backdrop(tint: tint, live: call?.inCall == true, center: call == nil ? 0.5 : 0.6))
         .environment(\.colorScheme, .dark)
     }
 
     private var header: some View {
-        HStack {
+        HStack(spacing: 8) {
             Text("Lair")
                 .font(.system(.headline, design: .rounded, weight: .semibold))
+            if let presence {
+                Text(presence)
+                    .font(.system(.caption, design: .rounded, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.45))
+                    .contentTransition(.numericText())
+            }
             Spacer()
             Menu {
                 Button("Mission Control…") { MissionControl.toggle(room: room) }
-                Button("Settings…", action: openSettings)
+                Button("Settings…") { openSettings(.agents) }
+                Button("Connect agents on this Mac…") { openSettings(.mac) }
                 Divider()
                 Button("Quit Lair") { NSApp.terminate(nil) }
             } label: {
@@ -75,18 +72,99 @@ struct RoomView: View {
         .foregroundStyle(.white.opacity(0.9))
     }
 
+    /// "2 on a call · 1 on this Mac", or nothing while the room is quiet.
+    private var presence: String? {
+        let live = room.calls.filter { !$0.guest && $0.inCall }.count
+        let guests = room.calls.filter { $0.guest && $0.inCall }.count
+        let parts = [live > 0 ? "\(live) on a call" : nil, guests > 0 ? "\(guests) on this Mac" : nil].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    // MARK: The rail
+
+    /// Everyone in the room: the agents you call, then the ones that came to you from this Mac.
+    private var rail: some View {
+        let agents = room.calls.filter { !$0.guest }, guests = room.calls.filter(\.guest)
+        return VStack(spacing: 6) {
+            ForEach(agents) { avatar($0) }
+            if !guests.isEmpty {
+                VStack(spacing: 4) {
+                    Capsule().fill(.white.opacity(0.12)).frame(width: 28, height: 1)
+                    Text("This Mac")
+                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                        .textCase(.uppercase)
+                        .kerning(0.6)
+                        .foregroundStyle(.white.opacity(0.38))
+                }
+                .padding(.vertical, 4)
+                .help("Agents running on this Mac that came to talk to you")
+                ForEach(guests) { avatar($0) }
+            }
+            Button { openSettings(agents.isEmpty ? .mac : .agents) } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .frame(width: 34, height: 34)
+                    .overlay(Circle().strokeBorder(.white.opacity(0.18), style: StrokeStyle(lineWidth: 1, dash: [3, 3])))
+            }
+            .buttonStyle(.plain)
+            .help("Add an agent, or connect the ones you run on this Mac")
+            .accessibilityLabel("Add an agent")
+            .padding(.top, 4)
+        }
+        .padding(.vertical, 10)
+        .frame(width: 68)
+        .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(.white.opacity(0.06), lineWidth: 1))
+    }
+
+    private func avatar(_ call: Call) -> some View {
+        RailAvatar(call: call, focused: call.id == room.focusedID) { room.focus(call) }
+    }
+
+    // MARK: The one you're talking to
+
+    private func main(_ call: Call, tint: Color) -> some View {
+        VStack(spacing: 0) {
+            let waiting = room.calls.filter { $0.id != call.id && $0.awaitsYou }
+            if let other = waiting.first {
+                ElsewhereBar(call: other, more: waiting.count - 1) { room.focus(other) }
+                    .padding(.bottom, 12)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            stage(call, tint: tint)
+            Transcript(lines: call.lines, live: call.inCall, tips: tips(for: call), perform: perform)
+                .padding(.top, 12)
+            if let request = call.pendingApproval {
+                ApprovalCard(agent: call.agent.name, request: request, tint: tint,
+                             answer: { room.answer(call, decision: $0) })
+                    .padding(.top, 10)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else if let question = call.questionText {
+                QuestionCard(agent: call.agent.name, question: question, since: call.questionSince,
+                             deadline: call.questionDeadline, tint: tint,
+                             answer: { room.answerQuestion(of: call, with: $0) }, skip: { room.skipQuestion(of: call) })
+                    .padding(.top, 10)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+            controls(call).padding(.top, 14)
+        }
+        .frame(maxWidth: .infinity)
+        .animation(.smooth(duration: 0.3), value: room.calls.contains { $0.id != call.id && $0.awaitsYou })
+    }
+
     private func stage(_ call: Call, tint: Color) -> some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 12) {
             Orb(color: tint, state: call.state, meter: room.meter(for: call))
-                .frame(width: 112, height: 112)
-                .frame(height: 150)
+                .frame(width: 96, height: 96)
+                .frame(height: 124)
                 .contentShape(Circle())
                 // Starts a call; hanging up stays on the red button, so a stray click can't end one.
                 .onTapGesture { if !call.inCall, !call.guest { room.summon(call) } }
                 .accessibilityElement()
                 .accessibilityLabel("\(call.agent.name), \(spoken(call.state))")
-                .accessibilityAddTraits(call.inCall ? [] : .isButton)
-                .accessibilityAction { if !call.inCall { room.summon(call) } }
+                .accessibilityAddTraits(call.inCall || call.guest ? [] : .isButton)
+                .accessibilityAction { if !call.inCall, !call.guest { room.summon(call) } }
             VStack(spacing: 4) {
                 Text(call.agent.name)
                     .font(.system(.title3, design: .rounded, weight: .semibold))
@@ -105,7 +183,6 @@ struct RoomView: View {
                 status(for: call)
             }
         }
-        .padding(.top, 4)
     }
 
     /// The caption under the name, or what's in the way and how to fix it.
@@ -133,73 +210,30 @@ struct RoomView: View {
         }
     }
 
-    private var roster: some View {
-        // Centered while the chips fit, scrolling sideways once there are more agents than room.
-        ViewThatFits(in: .horizontal) {
-            chips
-            ScrollView(.horizontal, showsIndicators: false) { chips }
-        }
-    }
-
-    private var chips: some View {
-        HStack(spacing: 8) {
-            ForEach(room.calls) { call in
-                Button { room.focus(call) } label: {
-                    HStack(spacing: 6) {
-                        StatusDot(color: Color(hex: call.agent.color), state: call.state)
-                        Text(call.agent.name)
-                            .font(.system(.caption, design: .rounded, weight: .medium))
-                            .lineLimit(1)
-                            .frame(maxWidth: 96)
-                            .fixedSize()
-                        if call.questionText != nil {
-                            Image(systemName: "questionmark.bubble.fill").font(.system(size: 9)).foregroundStyle(.orange)
-                        } else if call.state == .waiting {
-                            Image(systemName: "hand.raised.fill").font(.system(size: 9)).foregroundStyle(.orange)
-                        } else if call.guest {
-                            Image(systemName: "laptopcomputer").font(.system(size: 9)).foregroundStyle(.white.opacity(0.5))
-                        }
-                    }
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(.white.opacity(call.id == room.focusedID ? 0.14 : 0.05), in: Capsule())
-                    .overlay(alignment: .topTrailing) {
-                        if call.unread && call.id != room.focusedID {
-                            Circle().fill(.white).frame(width: 7, height: 7).offset(x: 1, y: -1)
-                        }
-                    }
-                }
-                .buttonStyle(.plain)
-                .help(call.unread ? "\(call.agent.name) has news" : call.guest ? "\(call.agent.name), on this Mac" : call.agent.name)
-                .accessibilityLabel([call.agent.name, call.guest ? "on this Mac" : nil, spoken(call.state),
-                                     call.unread ? "has news" : nil]
-                    .compactMap { $0 }.joined(separator: ", "))
-            }
-        }
-        .padding(.vertical, 2)
-    }
-
-    /// The talk button in the middle, the call button on its left and Mission Control on its right.
+    /// The talk button in the middle; on its left the call button, or Dismiss for a guest; Mission Control on its right.
     private func controls(_ call: Call) -> some View {
-        HStack(spacing: 28) {
+        HStack(spacing: 26) {
             if call.guest {
                 // A guest isn't called or hung up: it comes and goes on its own, and can be sent away.
-                RoundButton(symbol: "xmark", fill: .white.opacity(0.1), size: 44) { room.toggle(call) }
+                RoundButton(symbol: "xmark", fill: .white.opacity(0.1), size: 42) { room.toggle(call) }
                     .help("Dismiss \(call.agent.name); it comes back when it next talks to you")
                     .accessibilityLabel("Dismiss \(call.agent.name)")
             } else {
                 RoundButton(symbol: call.inCall ? "phone.down.fill" : "phone.fill",
                             fill: call.inCall ? Color(red: 0.92, green: 0.3, blue: 0.3) : Color(red: 0.25, green: 0.75, blue: 0.45),
-                            size: 44) { room.toggle(call) }
+                            size: 42) { room.toggle(call) }
                     .disabled(room.readiness != .ready)
                     .help(call.inCall ? "Hang up" : "Call \(call.agent.name)")
                     .accessibilityLabel(call.inCall ? "Hang up" : "Call \(call.agent.name)")
             }
+            let deaf = call.guest && call.questionText == nil
             HoldToTalk(active: call.state == .listening, tint: Color(hex: call.agent.color),
                        answering: room.answering?.callID == call.id ? room.answering : nil,
                        onPress: room.pressTalk, onRelease: room.releaseTalk)
-                .disabled(room.readiness != .ready || (call.guest && call.questionText == nil))
-                .opacity(call.guest && call.questionText == nil ? 0.4 : 1)
-            RoundButton(symbol: "rectangle.split.3x1", fill: .white.opacity(0.1), size: 44) {
+                .disabled(room.readiness != .ready || deaf)
+                .opacity(deaf ? 0.35 : 1)
+                .help(deaf ? "\(call.agent.name) listens when it asks you something" : "Hold to talk")
+            RoundButton(symbol: "rectangle.split.3x1", fill: .white.opacity(0.1), size: 42) {
                 MissionControl.toggle(room: room)
             }
             .help("Mission Control: every agent's whole stream")
@@ -223,18 +257,27 @@ struct RoomView: View {
             Image(systemName: "person.2.wave.2")
                 .font(.system(size: 34, weight: .light))
                 .foregroundStyle(.white.opacity(0.7))
-            Text("No agents yet")
+            Text("No one here yet")
                 .font(.system(.title3, design: .rounded, weight: .semibold))
-            Text("Add Claude Code, omp or a Hermes agent to call, or let the agents you run on this Mac talk to you.")
+            Text("Add an agent to call by voice, or let the agents you run in a terminal talk to you.")
                 .font(.system(.subheadline, design: .rounded))
                 .foregroundStyle(.white.opacity(0.62))
                 .multilineTextAlignment(.center)
-            Button(action: openSettings) {
-                Text("Add an agent…")
-                    .font(.system(.callout, design: .rounded, weight: .semibold))
-                    .foregroundStyle(.black)
-                    .padding(.horizontal, 18).padding(.vertical, 8)
-                    .background(.white, in: Capsule())
+            VStack(spacing: 8) {
+                Button { openSettings(.agents) } label: {
+                    Text("Add an agent…")
+                        .font(.system(.callout, design: .rounded, weight: .semibold))
+                        .foregroundStyle(.black)
+                        .frame(maxWidth: 220).padding(.vertical, 8)
+                        .background(.white, in: Capsule())
+                }
+                Button { openSettings(.mac) } label: {
+                    Label("Connect agents on this Mac…", systemImage: "laptopcomputer")
+                        .font(.system(.callout, design: .rounded, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: 220).padding(.vertical, 8)
+                        .background(.white.opacity(0.12), in: Capsule())
+                }
             }
             .buttonStyle(.plain)
             .padding(.top, 4)
@@ -257,21 +300,22 @@ struct RoomView: View {
             .font(.system(.caption, design: .rounded))
             .foregroundStyle(.white.opacity(0.6))
         } else {
-            Button("Set a talk shortcut in Settings…", action: openSettings)
+            Button("Set a talk shortcut in Settings…") { openSettings(.general) }
                 .buttonStyle(.plain)
                 .font(.system(.caption, design: .rounded, weight: .medium))
                 .foregroundStyle(.white.opacity(0.75))
         }
     }
 
-    private func openSettings() {
+    private func openSettings(_ tab: SettingsView.Tab) {
+        SettingsRoute.shared.tab = tab
         openWindow(id: SettingsView.id)
         SettingsView.bringForward()
     }
 
     private func perform(_ action: Call.Line.Action) {
         switch action {
-        case .openSettings: openSettings()
+        case .openSettings: openSettings(.agents)
         case .showLog(let agentID): NSWorkspace.shared.open(AgentLog.url(for: agentID))
         }
     }
@@ -308,8 +352,136 @@ struct RoomView: View {
         case .listening: "listening"
         case .thinking: "thinking"
         case .speaking: "speaking"
-        case .waiting: "waiting for your OK"
+        case .waiting: "waiting for you"
         }
+    }
+}
+
+/// One agent in the rail: its orb, alive with its state; a ring while it speaks; a badge when it needs you.
+private struct RailAvatar: View {
+    let call: Call
+    let focused: Bool
+    let select: () -> Void
+
+    var body: some View {
+        let tint = Color(hex: call.agent.color)
+        Button(action: select) {
+            VStack(spacing: 5) {
+                ZStack {
+                    Circle().fill(.white.opacity(focused ? 0.09 : 0))
+                    Orb(color: tint, state: call.state).frame(width: 32, height: 32)
+                    if call.state == .speaking { SpeakingRing(tint: tint) }
+                    Circle().strokeBorder(tint.opacity(focused ? 0.85 : 0), lineWidth: 1.5)
+                }
+                .frame(width: 46, height: 46)
+                .overlay(alignment: .topTrailing) { badge }
+                .overlay(alignment: .bottomTrailing) {
+                    if call.guest {
+                        Image(systemName: "laptopcomputer")
+                            .font(.system(size: 7, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.8))
+                            .frame(width: 15, height: 15)
+                            .background(Color(red: 0.12, green: 0.13, blue: 0.15), in: Circle())
+                            .overlay(Circle().strokeBorder(.white.opacity(0.15), lineWidth: 0.5))
+                    }
+                }
+                Text(call.agent.name)
+                    .font(.system(size: 10, weight: focused ? .semibold : .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(focused ? 0.95 : call.inCall ? 0.7 : 0.45))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .truncationMode(.tail)
+                    .frame(width: 60)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityLabel(help)
+    }
+
+    @ViewBuilder private var badge: some View {
+        if call.questionText != nil || call.pendingApproval != nil {
+            Image(systemName: call.questionText != nil ? "questionmark" : "hand.raised.fill")
+                .font(.system(size: 8, weight: .heavy))
+                .foregroundStyle(.black)
+                .frame(width: 16, height: 16)
+                .background(.orange, in: Circle())
+                .overlay(Circle().strokeBorder(.black.opacity(0.4), lineWidth: 1))
+                .transition(.scale.combined(with: .opacity))
+        } else if call.unread && !focused {
+            Circle().fill(.white).frame(width: 9, height: 9).padding(3)
+        }
+    }
+
+    private var help: String {
+        let what = call.questionText != nil ? "asks you something"
+            : call.pendingApproval != nil ? "needs your OK"
+            : call.unread ? "has news"
+            : call.guest ? "on this Mac" : call.inCall ? "on a call" : "not on a call"
+        return "\(call.agent.name), \(what)"
+    }
+}
+
+/// Rings rippling out of an avatar while that agent is the voice you hear.
+private struct SpeakingRing: View {
+    let tint: Color
+    @Environment(\.renderTime) private var renderTime
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            let time = renderTime ?? timeline.date.timeIntervalSinceReferenceDate
+            ZStack {
+                ForEach(0..<2) { i in
+                    let phase = (time * 0.9 + Double(i) * 0.5).truncatingRemainder(dividingBy: 1)
+                    Circle()
+                        .strokeBorder(tint.opacity(0.7 * (1 - phase)), lineWidth: 1.5)
+                        .scaleEffect(0.7 + phase * 0.42)
+                }
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Someone other than the agent in front of you is waiting on you: who, and one click to get there.
+private struct ElsewhereBar: View {
+    let call: Call
+    /// Others waiting behind this one.
+    let more: Int
+    let go: () -> Void
+
+    var body: some View {
+        Button(action: go) {
+            HStack(spacing: 8) {
+                Circle().fill(Color(hex: call.agent.color)).frame(width: 8, height: 8)
+                Text(call.questionText != nil ? "\(call.agent.name) asks you something" : "\(call.agent.name) needs your OK")
+                    .font(.system(.caption, design: .rounded, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.92))
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                if more > 0 {
+                    Text("+\(more)")
+                        .font(.system(.caption2, design: .rounded, weight: .bold))
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(.orange.opacity(0.18), in: Capsule())
+                        .help("\(more) more waiting on you")
+                }
+                Text("Answer")
+                    .font(.system(.caption, design: .rounded, weight: .semibold))
+                    .foregroundStyle(.orange)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.orange)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(.orange.opacity(0.13), in: Capsule())
+            .overlay(Capsule().strokeBorder(.orange.opacity(0.35), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(call.questionText != nil ? "\(call.agent.name) asks you something; answer" : "\(call.agent.name) needs your OK; answer")
     }
 }
 
@@ -459,7 +631,7 @@ private struct Transcript: View {
                 .clipped()
             }
         }
-        .frame(height: lines.isEmpty ? (live ? 44 : 0) : 150)
+        .frame(height: lines.isEmpty ? (live ? 44 : 0) : 132)
         .opacity(lines.isEmpty && !live ? 0 : 1)
         .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.18),
                                      .init(color: .black, location: 1)], startPoint: .top, endPoint: .bottom))
@@ -627,27 +799,6 @@ struct ApprovalCard: View {
     }
 }
 
-/// The agent's color, dim when offline and breathing while it works.
-private struct StatusDot: View {
-    let color: Color
-    let state: Call.State
-    @Environment(\.renderTime) private var renderTime
-
-    var body: some View {
-        let working = state == .thinking || state == .speaking
-        TimelineView(.animation(paused: !working)) { timeline in
-            let time = renderTime ?? timeline.date.timeIntervalSinceReferenceDate
-            let pulse = working ? (sin(time * 5) + 1) / 2 : 0
-            Circle().fill(color)
-                .frame(width: 8, height: 8)
-                .opacity(state == .offline ? 0.4 : 1)
-                .shadow(color: color.opacity(working ? 0.9 : 0), radius: 2 + pulse * 3)
-                .scaleEffect(1 + pulse * 0.25)
-        }
-        .frame(width: 10, height: 10)
-    }
-}
-
 /// Round control with a symbol.
 private struct RoundButton: View {
     let symbol: String
@@ -730,11 +881,13 @@ struct ReplyCountdown: View {
 private struct Backdrop: View {
     let tint: Color
     let live: Bool
+    /// Where the glow sits across the panel: over the stage.
+    var center = 0.5
 
     var body: some View {
         ZStack {
             Color(red: 0.055, green: 0.06, blue: 0.075)
-            RadialGradient(colors: [tint.opacity(live ? 0.38 : 0.18), .clear], center: UnitPoint(x: 0.5, y: 0.22),
+            RadialGradient(colors: [tint.opacity(live ? 0.38 : 0.18), .clear], center: UnitPoint(x: center, y: 0.22),
                            startRadius: 0, endRadius: 260)
                 .animation(.easeInOut(duration: 0.6), value: live)
         }
