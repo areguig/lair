@@ -53,12 +53,19 @@ import os
     /// What other agents answered for this one while you talked to them; sent before its next turn.
     @ObservationIgnored var context: [String] = []
     /// Joined over MCP: it speaks and asks on its own, you only answer.
-    var guest = false
-    /// A guest's question waiting for your answer.
+    var guest: Bool { agent.kind == .guest }
+    /// A guest's working folder, as it told Lair.
+    var folder: URL?
+    /// When a guest last said anything; quiet ones leave.
+    @ObservationIgnored var heard = Date.distantPast
+    /// A guest's question waiting for your answer, with what it asked and until when it waits.
     @ObservationIgnored var question: CheckedContinuation<String?, Never>?
+    var questionText: String?
+    var questionSince: Date?
+    var questionDeadline: Date?
 
     /// Paused on something only you can give: an OK, or a guest's answer.
-    var awaitsYou: Bool { pendingApproval != nil || question != nil }
+    var awaitsYou: Bool { pendingApproval != nil || questionText != nil }
     var idle: State { awaitsYou ? .waiting : .ready }
 
     init(agent: AgentConfig) {
@@ -112,6 +119,7 @@ import os
         calls = config.enabledAgents.map(Call.init)
         focusedID = config.enabledAgents.first?.id ?? ""
         listensForAnswers = config.listensForAnswers
+        guestSettings = config.guests
     }
 
     var focused: Call? { calls.first { $0.id == focusedID } }
@@ -128,6 +136,11 @@ import os
         calls = next + calls.filter(\.guest)
         if focused == nil { focusedID = calls.first?.id ?? "" }
         listensForAnswers = config.listensForAnswers
+        if guestSettings != config.guests {
+            guestSettings = config.guests
+            sweepIdleGuests()
+            if config.guests == nil { for call in calls where call.guest { dismiss(call) } }
+        }
     }
 
     /// Says a short line in `voice`, so a voice can be tried before choosing it.
@@ -145,8 +158,12 @@ import os
             self?.answer(call, decision: decision)
         }
         notifier.onOpen = { [weak self] id in
-            guard let call = self?.calls.first(where: { $0.pendingApproval?.id == id }) else { return }
+            guard let call = self?.calls.first(where: { $0.pendingApproval?.id == id || $0.id == id }) else { return }
             self?.focus(call)
+        }
+        notifier.onReply = { [weak self] id, text in
+            guard let call = self?.calls.first(where: { $0.id == id && $0.questionText != nil }) else { return }
+            self?.answerQuestion(of: call, with: text)
         }
         await notifier.setUp()
         environment = await LoginShell.environment()
@@ -179,6 +196,7 @@ import os
     }
 
     func toggle(_ call: Call) {
+        if call.guest { return dismiss(call) }
         focus(call)
         if call.inCall { hangUp(call) } else { summon(call) }
     }
@@ -199,6 +217,7 @@ import os
             }
         }
         focusedID = call.id
+        calls.removeAll { $0.guest && !$0.inCall && $0 !== call }
     }
 
     func summon(_ call: Call) {
@@ -254,6 +273,8 @@ import os
             var headers: [String: String] = [:]
             for name in agent.headers ?? [] { headers[name] = secret(AgentConfig.headerAccount(name)) }
             return HermesSession(baseURL: url, credentials: .init(apiKey: apiKey, headers: headers), model: agent.model)
+        case .guest:
+            throw SetupError.guest
         }
     }
 
@@ -268,16 +289,17 @@ import os
     /// Hermes agents keep the identity they already have; local agents get their name and soul.
     private func callPrompt(for agent: AgentConfig) -> String {
         VoicePrompt.forCall(name: agent.name, soul: Souls.standard.soul(for: agent.id),
-                            others: calls.map(\.agent.name).filter { $0 != agent.name })
+                            others: calls.filter { !$0.guest }.map(\.agent.name).filter { $0 != agent.name })
     }
 
     enum SetupError: Error {
-        case missingAddress, missingKey
+        case missingAddress, missingKey, guest
 
         func message(for name: String) -> String {
             switch self {
             case .missingAddress: "\(name) needs an address. Add it in Settings › Agents."
             case .missingKey: "\(name) needs an API key. Add it in Settings › Agents."
+            case .guest: "\(name) runs on its own; it talks to you when it needs you."
             }
         }
     }
@@ -423,7 +445,7 @@ import os
         }
         if pass(prompt, from: call, speech: samples.count, start: start) { return }
         // "Echo, …" while talking to Claude goes to Echo.
-        let others = calls.filter { $0.id != call.id }
+        let others = calls.filter { $0.id != call.id && !$0.guest }
         if let (name, rest) = Addressing.split(prompt, names: others.map(\.agent.name)),
            let target = others.first(where: { $0.agent.name == name }) {
             call.state = .ready
@@ -459,7 +481,7 @@ import os
             }
             return answer(call, decision: decision)
         }
-        if call.question != nil { return resolveQuestion(of: call, with: text) }
+        if call.questionText != nil { return answerQuestion(of: call, with: text) }
         if call.guest { return show(hint: "\(call.agent.name) listens only when it asks you something.") }
         if call.state == .speaking || call.state == .thinking { interrupt(call) }
         guard call.state == .ready else { return }
@@ -477,7 +499,7 @@ import os
     /// "Ask Echo to check it", or "Nova, ask Claude what it thinks": the target answers, with the source's latest
     /// exchange as context, and the source hears what it said on its next turn. Returns whether `text` was one.
     private func pass(_ text: String, from heard: Call, speech: Int, start: ContinuousClock.Instant) -> Bool {
-        guard let relay = Relay.parse(text, names: calls.map(\.agent.name)),
+        guard let relay = Relay.parse(text, names: calls.filter { !$0.guest }.map(\.agent.name)),
               let source = relay.source.map(call(named:)) ?? heard, let target = call(named: relay.target),
               source !== target
         else { return false }
@@ -512,7 +534,7 @@ import os
     }
 
     private func call(named name: String) -> Call? {
-        calls.first { $0.agent.name.caseInsensitiveCompare(name) == .orderedSame }
+        calls.first { !$0.guest && $0.agent.name.caseInsensitiveCompare(name) == .orderedSame }
     }
 
     /// Changes the call's model or thinking level, from a voice command or the panel, and says what happened.
@@ -803,78 +825,135 @@ import os
         }
     }
 
-    // MARK: Guests, agents that joined over MCP
+    // MARK: Guests, agents on this Mac that joined over MCP
 
-    /// How long a guest's question waits for you before it hears there's no answer.
-    private let questionWait = Duration.seconds(120)
+    /// The guest server's settings, from the config; nil while it's off.
+    @ObservationIgnored private var guestSettings: GuestSettings?
+    @ObservationIgnored private var idleSweep: Task<Void, Never>?
 
-    /// The guest `name`, joining the room on its first word, with a voice no agent uses yet.
-    private func guest(named name: String) -> Call {
-        let id = "guest-" + name.lowercased()
+    /// The guest's call, joining the room on its first word with a voice and color no one else has.
+    /// A guest that left comes back to its old call when the same agent returns from the same folder.
+    /// Not private so snapshots can stage a guest.
+    func call(for guest: Guest) -> Call {
+        let id = "guest-" + guest.id
         if let call = calls.first(where: { $0.id == id }) {
-            if !call.inCall { call.state = .ready }
+            call.heard = .now
+            if call.folder == nil { call.folder = guest.folder }
             return call
         }
-        let used = Set(calls.map(\.agent.voice))
-        let agent = AgentConfig(id: id, name: name, kind: .hermes,
+        if let call = calls.first(where: { $0.guest && !$0.inCall && $0.agent.name == guest.name && $0.folder == guest.folder }) {
+            call.agent.id = id
+            call.state = .ready
+            call.heard = .now
+            call.lines.append(.init(role: .info, text: "Back."))
+            return call
+        }
+        let used = Set(calls.map(\.agent.voice)), colors = Set(calls.map(\.agent.color))
+        let twins = calls.filter { $0.guest && $0.agent.name.hasPrefix(guest.name) }.count
+        let agent = AgentConfig(id: id, name: twins == 0 ? guest.name : "\(guest.name) \(twins + 1)", kind: .guest,
                                 voice: VoiceModels.voices.first { !used.contains($0) } ?? "af_heart",
-                                color: AgentConfig.palette[calls.count % AgentConfig.palette.count])
+                                color: AgentConfig.palette.first { !colors.contains($0) }
+                                    ?? AgentConfig.palette[calls.count % AgentConfig.palette.count])
         let call = Call(agent: agent)
-        call.guest = true
+        call.folder = guest.folder
         call.state = .ready
+        call.heard = .now
         calls.append(call)
-        call.lines.append(.init(role: .info, text: "\(name) joined."))
+        Self.log.notice("\(call.id, privacy: .public): \(agent.name, privacy: .public) joined")
         return call
     }
 
-    /// Heard in its own voice once the floor is free, without taking it from whoever you're talking to.
-    func guestSpeaks(_ text: String, from name: String) async {
-        let call = guest(named: name)
+    /// Takes the floor only from someone who isn't on a call; otherwise heard once the floor is free.
+    func guestSpeaks(_ text: String, from guest: Guest) async {
+        let call = call(for: guest)
         call.lines.append(.init(role: .agent, text: text))
-        call.log(.note("Said: \(text)"))
-        if call.id != focusedID { call.unread = true }
-        guard readiness == .ready, let speaker else { return }
+        call.logText(text)
+        guard readiness == .ready, let speaker else { return call.unread = call.id != focusedID }
         await waitForTheFloor()
-        var splitter = SentenceSplitter()
-        for sentence in splitter.feed(text) + [splitter.flush()].compactMap(\.self) {
-            let spoken = Speakable.text(sentence)
-            guard !spoken.isEmpty, let samples = try? await voice.speech(for: spoken, voice: call.agent.voice) else { continue }
-            speaker.enqueue(samples)
+        if focused.map({ !$0.inCall || ($0.guest && !$0.awaitsYou) }) ?? true { focus(call) }
+        guard call.id == focusedID else {
+            call.unread = true
+            return announce(text, for: call)
         }
+        var splitter = SentenceSplitter()
+        for sentence in splitter.feed(text) + [splitter.flush()].compactMap(\.self) { _ = try? await say(sentence, in: call) }
+        await speaker.waitUntilDone()
+        if call.state == .speaking { call.state = call.idle }
     }
 
-    /// Takes the floor once it's free, asks aloud and listens; typing in Mission Control answers too.
-    func guestAsks(_ question: String, from name: String) async -> String? {
-        let call = guest(named: name)
+    /// One question at a time takes the floor once it's free, is asked aloud and listened for; it's also answered
+    /// in the panel, Mission Control or the notification. The agent hearing nothing gets nil.
+    func guestAsks(_ question: String, from guest: Guest) async -> String? {
+        let call = call(for: guest)
         guard readiness == .ready, call.question == nil else { return nil }
-        call.lines.append(.init(role: .agent, text: question))
-        call.log(.note("Asked: \(question)"))
+        call.logText(question)
         do {
             try microphone.open()
         } catch {
             report(in: call, .init(role: .problem, text: "Can't listen for your answer: \(error.localizedDescription)"))
             return nil
         }
-        Self.log.notice("\(call.id, privacy: .public): asks")
-        speaker?.play(.needsYou)
-        await waitForTheFloor()
-        focus(call)
-        return await withCheckedContinuation { continuation in
-            call.question = continuation
-            call.state = .waiting
-            Task {
-                _ = try? await say(question, in: call)
-                await speaker?.waitUntilDone()
-                if call.question != nil {
-                    call.state = .waiting
-                    listenForAnswer(in: call)
+        while calls.contains(where: { $0.question != nil }) || focused?.state == .speaking || focused?.state == .listening
+                || answering != nil {
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled, call.guest, calls.contains(where: { $0 === call }) else { return nil }
+        }
+        let wait = Duration.seconds(guestSettings?.answerSeconds ?? GuestSettings.standard.answerSeconds)
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                call.question = continuation
+                call.questionText = question
+                call.questionSince = .now
+                call.questionDeadline = .now + TimeInterval(wait / .seconds(1))
+                focus(call)
+                call.state = .waiting
+                notifier.postQuestion(question, id: call.id, from: call.agent.name)
+                speaker?.play(.needsYou)
+                Task {
+                    _ = try? await say(question, in: call)
+                    await speaker?.waitUntilDone()
+                    if call.question != nil {
+                        call.state = .waiting
+                        listenForAnswer(in: call)
+                    }
+                }
+                Task {
+                    try? await Task.sleep(for: wait)
+                    if call.questionText == question { resolveQuestion(of: call, with: nil, note: "No answer in time.") }
                 }
             }
-            Task {
-                try? await Task.sleep(for: questionWait)
-                resolveQuestion(of: call, with: nil)
-            }
+        } onCancel: {
+            Task { @MainActor in self.resolveQuestion(of: call, with: nil, note: "\(call.agent.name) stopped waiting.") }
         }
+    }
+
+    /// You'd rather not answer: the agent hears that and carries on.
+    func skipQuestion(of call: Call) {
+        resolveQuestion(of: call, with: nil, note: "Skipped.")
+    }
+
+    func guestLeft(_ guest: Guest) {
+        guard let call = calls.first(where: { $0.id == "guest-" + guest.id }) else { return }
+        leave(call, note: "Left.")
+    }
+
+    private func leave(_ call: Call, note: String) {
+        resolveQuestion(of: call, with: nil, note: "\(call.agent.name) left before you answered.")
+        if call.state == .speaking { speaker?.stop() }
+        if call.state == .listening { _ = try? microphone.stopCapture() }
+        call.state = .offline
+        call.lines.append(.init(role: .info, text: note))
+        // Kept while you're looking at it, so its last words don't vanish under you.
+        if call.id != focusedID { calls.removeAll { $0 === call } }
+    }
+
+    /// Dismissed from the panel: gone now, and back on its next word.
+    private func dismiss(_ call: Call) {
+        resolveQuestion(of: call, with: nil, note: "Dismissed.")
+        if call.state == .speaking { speaker?.stop() }
+        calls.removeAll { $0 === call }
+        if focused == nil { focusedID = calls.first?.id ?? "" }
+        closeMicrophoneIfUnused()
     }
 
     private func hearReply(in call: Call, from samples: [Float]) async {
@@ -884,20 +963,53 @@ import os
         resolveQuestion(of: call, with: heard)
     }
 
-    /// The first answer wins; nil tells the guest you didn't answer.
-    private func resolveQuestion(of call: Call, with answer: String?) {
+    /// Typed in the panel's question card or the notification.
+    func answerQuestion(of call: Call, with text: String) {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        if call.state == .listening { _ = try? microphone.stopCapture() }
+        if answering?.callID == call.id { answering = nil }
+        resolveQuestion(of: call, with: text)
+    }
+
+    /// The first answer wins; nil tells the guest you didn't answer, and `note` tells you why.
+    private func resolveQuestion(of call: Call, with answer: String?, note: String = "No answer given.") {
         guard let question = call.question else { return }
+        // Shown in its card while it waits; the transcript gets it once it's answered.
+        if let asked = call.questionText { call.lines.append(.init(role: .agent, text: asked)) }
         call.question = nil
+        call.questionText = nil
+        call.questionSince = nil
+        call.questionDeadline = nil
+        notifier.remove(call.id)
         if let answer {
             call.lines.append(.init(role: .you, text: answer))
             call.log(.you(answer))
         } else {
-            call.lines.append(.init(role: .info, text: "No answer given."))
+            call.lines.append(.init(role: .info, text: note))
+            call.log(.note(note))
         }
         Self.log.notice("\(call.id, privacy: .public): \(answer == nil ? "no answer" : "answered", privacy: .public)")
+        if call.state == .listening { _ = try? microphone.stopCapture() }
+        if answering?.callID == call.id { answering = nil }
         if call.inCall { call.state = .ready }
         question.resume(returning: answer)
         closeMicrophoneIfUnused()
+    }
+
+    /// Claude Code never says it's gone, so a guest quiet for long enough leaves on its own.
+    private func sweepIdleGuests() {
+        idleSweep?.cancel()
+        guard let minutes = guestSettings?.idleMinutes else { return }
+        idleSweep = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(30))
+                let cutoff = Date.now - TimeInterval(minutes * 60)
+                for call in calls where call.guest && call.inCall && !call.awaitsYou && call.heard < cutoff {
+                    leave(call, note: "Quiet for \(minutes) minutes, so it left. It's back on its next word.")
+                }
+            }
+        }
     }
 }
 
@@ -905,9 +1017,11 @@ import os
 struct RoomGuests: GuestHost {
     let room: Room
 
-    func speak(_ text: String, from guest: String) async { await room.guestSpeaks(text, from: guest) }
+    func speak(_ text: String, from guest: Guest) async { await room.guestSpeaks(text, from: guest) }
 
-    func ask(_ question: String, from guest: String) async -> String? { await room.guestAsks(question, from: guest) }
+    func ask(_ question: String, from guest: Guest) async -> String? { await room.guestAsks(question, from: guest) }
+
+    func left(_ guest: Guest) async { await room.guestLeft(guest) }
 }
 
 private extension String {

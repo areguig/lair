@@ -22,15 +22,25 @@ struct SettingsView: View {
     }
     let store: ConfigStore
     let room: Room
+    let link: GuestLink
     /// The agent shown first; snapshots use it to show a given form.
     var selectedAgent: String?
+    /// The tab shown first; snapshots use it.
+    @State var tab = Tab.agents
+
+    enum Tab: Hashable { case agents, mac, general }
 
     var body: some View {
-        TabView {
+        TabView(selection: $tab) {
             AgentsSettings(store: store, room: room, selection: selectedAgent)
                 .tabItem { Label("Agents", systemImage: "person.2") }
+                .tag(Tab.agents)
+            GuestSettingsView(store: store, link: link)
+                .tabItem { Label("On this Mac", systemImage: "laptopcomputer") }
+                .tag(Tab.mac)
             GeneralSettings(store: store)
                 .tabItem { Label("General", systemImage: "gearshape") }
+                .tag(Tab.general)
         }
         .frame(width: 660, height: 500)
     }
@@ -221,6 +231,8 @@ private struct AgentForm: View {
                     }
                     TextField("Model", text: optional($agent.model), prompt: Text("hermes-agent"))
                     SecretField(title: "API key", service: agent.keychainService, account: "api-key")
+                case .guest:
+                    EmptyView()
                 }
             } footer: {
                 Text(footer)
@@ -256,6 +268,7 @@ private struct AgentForm: View {
         case .claudeCode: "These apply from the next call. During a call, say “switch to Opus” or “go fast”."
         case .omp: "These apply from the next call. During a call, say “think harder”, “go fast” or “switch to <model>”."
         case .hermes: "Address and model apply from the next call. Keys stay in your Keychain, never in the config file."
+        case .guest: ""
         }
     }
 
@@ -602,6 +615,7 @@ extension AgentConfig.Kind: CaseIterable {
         case .claudeCode: "Claude Code"
         case .omp: "omp"
         case .hermes: "Hermes"
+        case .guest: "On this Mac"
         }
     }
 }

@@ -28,6 +28,12 @@ struct RoomView: View {
                                  answer: { room.answer(call, decision: $0) })
                         .padding(.top, 12)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
+                } else if let question = call.questionText {
+                    QuestionCard(agent: call.agent.name, question: question, since: call.questionSince,
+                                 deadline: call.questionDeadline, tint: tint,
+                                 answer: { room.answerQuestion(of: call, with: $0) }, skip: { room.skipQuestion(of: call) })
+                        .padding(.top, 12)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
                 controls(call).padding(.top, 14)
             } else {
@@ -38,6 +44,7 @@ struct RoomView: View {
         .padding(18)
         .frame(width: 340)
         .animation(.smooth(duration: 0.3), value: call?.pendingApproval)
+        .animation(.smooth(duration: 0.3), value: call?.questionText)
         .animation(.smooth(duration: 0.3), value: room.focusedID)
         .background(Backdrop(tint: tint, live: call?.inCall == true))
         .environment(\.colorScheme, .dark)
@@ -75,7 +82,7 @@ struct RoomView: View {
                 .frame(height: 150)
                 .contentShape(Circle())
                 // Starts a call; hanging up stays on the red button, so a stray click can't end one.
-                .onTapGesture { if !call.inCall { room.summon(call) } }
+                .onTapGesture { if !call.inCall, !call.guest { room.summon(call) } }
                 .accessibilityElement()
                 .accessibilityLabel("\(call.agent.name), \(spoken(call.state))")
                 .accessibilityAddTraits(call.inCall ? [] : .isButton)
@@ -84,7 +91,9 @@ struct RoomView: View {
                 Text(call.agent.name)
                     .font(.system(.title3, design: .rounded, weight: .semibold))
                     .lineLimit(1)
-                if call.inCall && call.agent.kind != .hermes {
+                if call.guest {
+                    GuestBadge(folder: call.folder)
+                } else if call.inCall && call.agent.kind != .hermes {
                     ModelSwitcher(call: call, room: room)
                 } else if let details = call.details {
                     Text(details)
@@ -143,8 +152,12 @@ struct RoomView: View {
                             .lineLimit(1)
                             .frame(maxWidth: 96)
                             .fixedSize()
-                        if call.state == .waiting {
+                        if call.questionText != nil {
+                            Image(systemName: "questionmark.bubble.fill").font(.system(size: 9)).foregroundStyle(.orange)
+                        } else if call.state == .waiting {
                             Image(systemName: "hand.raised.fill").font(.system(size: 9)).foregroundStyle(.orange)
+                        } else if call.guest {
+                            Image(systemName: "laptopcomputer").font(.system(size: 9)).foregroundStyle(.white.opacity(0.5))
                         }
                     }
                     .padding(.horizontal, 10).padding(.vertical, 5)
@@ -156,8 +169,9 @@ struct RoomView: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .help(call.unread ? "\(call.agent.name) has news" : call.agent.name)
-                .accessibilityLabel([call.agent.name, spoken(call.state), call.unread ? "has news" : nil]
+                .help(call.unread ? "\(call.agent.name) has news" : call.guest ? "\(call.agent.name), on this Mac" : call.agent.name)
+                .accessibilityLabel([call.agent.name, call.guest ? "on this Mac" : nil, spoken(call.state),
+                                     call.unread ? "has news" : nil]
                     .compactMap { $0 }.joined(separator: ", "))
             }
         }
@@ -167,16 +181,24 @@ struct RoomView: View {
     /// The talk button in the middle, the call button on its left and Mission Control on its right.
     private func controls(_ call: Call) -> some View {
         HStack(spacing: 28) {
-            RoundButton(symbol: call.inCall ? "phone.down.fill" : "phone.fill",
-                        fill: call.inCall ? Color(red: 0.92, green: 0.3, blue: 0.3) : Color(red: 0.25, green: 0.75, blue: 0.45),
-                        size: 44) { room.toggle(call) }
-                .disabled(room.readiness != .ready)
-                .help(call.inCall ? "Hang up" : "Call \(call.agent.name)")
-                .accessibilityLabel(call.inCall ? "Hang up" : "Call \(call.agent.name)")
+            if call.guest {
+                // A guest isn't called or hung up: it comes and goes on its own, and can be sent away.
+                RoundButton(symbol: "xmark", fill: .white.opacity(0.1), size: 44) { room.toggle(call) }
+                    .help("Dismiss \(call.agent.name); it comes back when it next talks to you")
+                    .accessibilityLabel("Dismiss \(call.agent.name)")
+            } else {
+                RoundButton(symbol: call.inCall ? "phone.down.fill" : "phone.fill",
+                            fill: call.inCall ? Color(red: 0.92, green: 0.3, blue: 0.3) : Color(red: 0.25, green: 0.75, blue: 0.45),
+                            size: 44) { room.toggle(call) }
+                    .disabled(room.readiness != .ready)
+                    .help(call.inCall ? "Hang up" : "Call \(call.agent.name)")
+                    .accessibilityLabel(call.inCall ? "Hang up" : "Call \(call.agent.name)")
+            }
             HoldToTalk(active: call.state == .listening, tint: Color(hex: call.agent.color),
                        answering: room.answering?.callID == call.id ? room.answering : nil,
                        onPress: room.pressTalk, onRelease: room.releaseTalk)
-                .disabled(room.readiness != .ready)
+                .disabled(room.readiness != .ready || (call.guest && call.questionText == nil))
+                .opacity(call.guest && call.questionText == nil ? 0.4 : 1)
             RoundButton(symbol: "rectangle.split.3x1", fill: .white.opacity(0.1), size: 44) {
                 MissionControl.toggle(room: room)
             }
@@ -187,7 +209,8 @@ struct RoomView: View {
 
     /// What you can say, shown while a call has no words yet.
     private func tips(for call: Call) -> [String] {
-        let other = room.calls.first { $0.id != call.id }?.agent.name
+        guard !call.guest else { return [] }
+        let other = room.calls.first { $0.id != call.id && !$0.guest }?.agent.name
         return ["Answer right after it speaks: Lair listens for a few seconds.",
                 other.map { "Say “\($0), …” to talk to \($0) instead." },
                 other.map { "Say “ask \($0) what it thinks” to pass this on." },
@@ -202,7 +225,7 @@ struct RoomView: View {
                 .foregroundStyle(.white.opacity(0.7))
             Text("No agents yet")
                 .font(.system(.title3, design: .rounded, weight: .semibold))
-            Text("Add Claude Code, omp or a Hermes agent, then hold the talk key to call it.")
+            Text("Add Claude Code, omp or a Hermes agent to call, or let the agents you run on this Mac talk to you.")
                 .font(.system(.subheadline, design: .rounded))
                 .foregroundStyle(.white.opacity(0.62))
                 .multilineTextAlignment(.center)
@@ -256,6 +279,16 @@ struct RoomView: View {
     private func caption(for call: Call) -> String {
         if room.readiness == .loading { return "Getting the voices ready… the first launch downloads them once." }
         let key = TalkKey.shared.label ?? "the talk key"
+        if call.guest {
+            switch call.state {
+            case .offline: return "Left · it's back when it talks to you again"
+            case .listening where room.answering?.callID == call.id: return "Listening for your answer · just talk"
+            case .listening: return "Listening… let go when you're done"
+            case .speaking: return "Speaking"
+            case .waiting where call.questionText != nil: return "Asks you · say it, type it, or hold \(key)"
+            default: return "Working on its own · talks to you when it needs you"
+            }
+        }
         switch call.state {
         case .offline: return "Hold \(key) to talk, or tap the orb"
         case .ready: return "Hold \(key) to talk"
@@ -705,5 +738,113 @@ private struct Backdrop: View {
                            startRadius: 0, endRadius: 260)
                 .animation(.easeInOut(duration: 0.6), value: live)
         }
+    }
+}
+
+/// Where a guest runs: on this Mac, in its folder.
+struct GuestBadge: View {
+    let folder: URL?
+    var monospaced = false
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "laptopcomputer").font(.system(size: 10, weight: .semibold))
+            Text(["On this Mac", folder?.lastPathComponent].compactMap { $0 }.joined(separator: " · "))
+                .font(monospaced ? .system(.caption, design: .monospaced) : .system(.caption, design: .rounded, weight: .medium))
+                .lineLimit(1)
+        }
+        .foregroundStyle(.white.opacity(0.6))
+        .help(folder?.path ?? "An agent running on this Mac")
+    }
+}
+
+/// A guest's question: say the answer, type it, or skip it. The bar empties as the agent's wait runs out.
+struct QuestionCard: View {
+    let agent: String
+    let question: String
+    let since: Date?
+    let deadline: Date?
+    let tint: Color
+    let answer: (String) -> Void
+    let skip: () -> Void
+    @State private var draft = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "questionmark.bubble.fill").foregroundStyle(tint)
+                Text("\(agent) asks").font(.system(.subheadline, design: .rounded, weight: .semibold)).lineLimit(1)
+                Spacer(minLength: 6)
+                if let since, let deadline {
+                    TimeLeft(since: since, deadline: deadline, tint: tint)
+                }
+            }
+            Text(question)
+                .font(.system(.body, design: .rounded, weight: .medium))
+                .foregroundStyle(.white.opacity(0.95))
+                .lineLimit(6)
+                .fixedSize(horizontal: false, vertical: true)
+                .help(question)
+                .textSelection(.enabled)
+            HStack(spacing: 8) {
+                TextField("Type, or just say it", text: $draft)
+                    .textFieldStyle(.plain)
+                    .font(.system(.callout, design: .rounded))
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background(.white.opacity(0.08), in: Capsule())
+                    .onSubmit(send)
+                Button(action: skip) {
+                    Text("Skip").padding(.horizontal, 12).padding(.vertical, 7).background(.white.opacity(0.1), in: Capsule())
+                }
+                .help("Tell \(agent) you won't answer; it carries on")
+                Button(action: send) {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.black)
+                        .frame(width: 30, height: 30)
+                        .background(draft.trimmingCharacters(in: .whitespaces).isEmpty ? .white.opacity(0.3) : .white, in: Circle())
+                }
+                .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
+                .accessibilityLabel("Send your answer to \(agent)")
+            }
+            .buttonStyle(.plain)
+            .font(.system(.callout, design: .rounded))
+        }
+        .padding(14)
+        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(tint.opacity(0.5), lineWidth: 1))
+    }
+
+    private func send() {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        draft = ""
+        answer(text)
+    }
+}
+
+/// How long a question still waits, as a shrinking bar and the minutes and seconds left.
+private struct TimeLeft: View {
+    let since: Date
+    let deadline: Date
+    let tint: Color
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { timeline in
+            let total = max(1, deadline.timeIntervalSince(since))
+            let left = max(0, deadline.timeIntervalSince(timeline.date))
+            HStack(spacing: 6) {
+                Capsule().fill(.white.opacity(0.12))
+                    .frame(width: 44, height: 4)
+                    .overlay(alignment: .leading) {
+                        Capsule().fill(tint).frame(width: 44 * left / total, height: 4)
+                    }
+                Text(Duration.seconds(left.rounded(.up)).formatted(.time(pattern: .minuteSecond)))
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.6))
+            }
+            .animation(.linear(duration: 1), value: left)
+        }
+        .accessibilityLabel("Waits for your answer")
     }
 }

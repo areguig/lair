@@ -105,7 +105,8 @@ private struct AgentColumn: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
                     if call.entries.isEmpty {
-                        Text("Nothing yet. Talk or type to \(call.agent.name).")
+                        Text(call.guest ? "Nothing yet. \(call.agent.name) talks to you when it needs you."
+                                        : "Nothing yet. Talk or type to \(call.agent.name).")
                             .font(.system(.callout, design: .rounded))
                             .foregroundStyle(.white.opacity(0.4))
                             .padding(.top, 30)
@@ -123,8 +124,13 @@ private struct AgentColumn: View {
                     room.answer(call, decision: $0)
                 }
                 .padding([.horizontal, .top], 10)
+            } else if let question = call.questionText {
+                QuestionCard(agent: call.agent.name, question: question, since: call.questionSince,
+                             deadline: call.questionDeadline, tint: tint,
+                             answer: { room.answerQuestion(of: call, with: $0) }, skip: { room.skipQuestion(of: call) })
+                    .padding([.horizontal, .top], 10)
             }
-            composer(tint: tint)
+            if !call.guest { composer(tint: tint) }
         }
         .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -140,29 +146,50 @@ private struct AgentColumn: View {
                 .frame(width: 34, height: 34)
             VStack(alignment: .leading, spacing: 2) {
                 Text(call.agent.name).font(.system(.headline, design: .rounded, weight: .semibold))
-                Text([call.details, stateText].compactMap { $0 }.joined(separator: " · "))
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.55))
-                    .lineLimit(1)
+                if call.guest {
+                    GuestBadge(folder: call.folder, monospaced: true)
+                } else {
+                    Text([call.details, stateText].compactMap { $0 }.joined(separator: " · "))
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.55))
+                        .lineLimit(1)
+                }
             }
             Spacer()
-            if call.state == .waiting {
+            if call.questionText != nil {
+                Label("Asks you", systemImage: "questionmark.bubble.fill")
+                    .font(.system(.caption, design: .rounded, weight: .semibold))
+                    .foregroundStyle(.orange)
+            } else if call.state == .waiting {
                 Label("Needs your OK", systemImage: "hand.raised.fill")
                     .font(.system(.caption, design: .rounded, weight: .semibold))
                     .foregroundStyle(.orange)
             }
-            Button { room.toggle(call) } label: {
-                Image(systemName: call.inCall ? "phone.down.fill" : "phone.fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 28, height: 28)
-                    .background(call.inCall ? Color(red: 0.92, green: 0.3, blue: 0.3) : Color(red: 0.25, green: 0.75, blue: 0.45),
-                                in: Circle())
+            if call.guest {
+                Button { room.toggle(call) } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 28, height: 28)
+                        .background(.white.opacity(0.12), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .help("Dismiss \(call.agent.name); it comes back when it next talks to you")
+                .accessibilityLabel("Dismiss \(call.agent.name)")
+            } else {
+                Button { room.toggle(call) } label: {
+                    Image(systemName: call.inCall ? "phone.down.fill" : "phone.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 28, height: 28)
+                        .background(call.inCall ? Color(red: 0.92, green: 0.3, blue: 0.3) : Color(red: 0.25, green: 0.75, blue: 0.45),
+                                    in: Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(room.readiness != .ready)
+                .help(call.inCall ? "Hang up" : "Call \(call.agent.name)")
+                .accessibilityLabel(call.inCall ? "Hang up \(call.agent.name)" : "Call \(call.agent.name)")
             }
-            .buttonStyle(.plain)
-            .disabled(room.readiness != .ready)
-            .help(call.inCall ? "Hang up" : "Call \(call.agent.name)")
-            .accessibilityLabel(call.inCall ? "Hang up \(call.agent.name)" : "Call \(call.agent.name)")
         }
         .foregroundStyle(.white)
         .padding(12)

@@ -2,7 +2,6 @@
 import KeyboardShortcuts
 import LairCore
 import LairMCP
-import os
 import SwiftUI
 
 extension KeyboardShortcuts.Name {
@@ -28,6 +27,7 @@ extension KeyboardShortcuts.Name {
 @main
 struct LairApp: App {
     private let room: Room
+    private let link: GuestLink
     private let store: ConfigStore
     private let orb: FloatingOrb
 
@@ -82,23 +82,21 @@ struct LairApp: App {
         }
         let store = ConfigStore()
         let room = Room(config: store.config)
-        store.onChange = { room.apply($0) }
+        let link = GuestLink(room: room)
+        link.apply(store.config.guests)
+        store.onChange = {
+            room.apply($0)
+            link.apply($0.guests)
+        }
         store.watch()
         self.store = store
         self.room = room
+        self.link = link
         orb = FloatingOrb(room: room)
         KeyboardShortcuts.onKeyDown(for: .pushToTalk) { room.pressTalk() }
         KeyboardShortcuts.onKeyUp(for: .pushToTalk) { room.releaseTalk() }
         KeyboardShortcuts.onKeyDown(for: .missionControl) { MissionControl.toggle(room: room) }
         Task { await room.start() }
-        // Agents on this Mac join the room as guests: http://127.0.0.1:7477/mcp/<name>.
-        Task {
-            do {
-                try await GuestServer(host: RoomGuests(room: room)).run(port: 7477)
-            } catch {
-                Logger(subsystem: "dev.lair.app", category: "mcp").error("Guest server stopped: \(error, privacy: .public)")
-            }
-        }
     }
 
     var body: some Scene {
@@ -110,7 +108,7 @@ struct LairApp: App {
         .menuBarExtraStyle(.window)
 
         Window(SettingsView.title, id: SettingsView.id) {
-            SettingsView(store: store, room: room)
+            SettingsView(store: store, room: room, link: link)
         }
         .windowResizability(.contentSize)
     }
@@ -192,6 +190,21 @@ struct MenuBarIcon: View {
                 call.state = .ready
                 room.calls[3].state = .thinking
                 room.calls[4].state = .waiting
+            case "guest", "guestspeaks":
+                call.state = .thinking
+                let guest = room.call(for: Guest(id: "demo", name: "Claude Code",
+                                                 folder: URL(fileURLWithPath: "/Users/me/dev/lair")))
+                guest.lines = [.init(role: .agent, text: "The migration ran on staging; all 412 tests pass.")]
+                if variant == "guest" {
+                    let question = "Ship it to production now, or wait for the morning?"
+                    guest.questionText = question
+                    guest.questionSince = .now - 34
+                    guest.questionDeadline = .now + 86
+                    guest.state = .waiting
+                } else {
+                    guest.state = .speaking
+                }
+                room.focus(guest)
             default:
                 break
             }
@@ -246,10 +259,15 @@ struct MenuBarIcon: View {
     static func writeSettings(to url: URL, agent: String? = nil) {
         let file = FileManager.default.temporaryDirectory.appending(path: "lair-settings-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: file) }
-        try? LairConfig(agents: Demo.agents).save(to: file)
+        var config = LairConfig(agents: Demo.agents)
+        if agent == "mac" { config.guests = .standard }
+        try? config.save(to: file)
         let store = ConfigStore(url: file)
-        let view = NSHostingView(rootView: SettingsView(store: store, room: Room(config: store.config),
-                                                        selectedAgent: agent))
+        let room = Room(config: store.config)
+        let link = GuestLink(room: room)
+        link.status = config.guests.map { .on($0.url) } ?? .off
+        let view = NSHostingView(rootView: SettingsView(store: store, room: room, link: link,
+                                                        selectedAgent: agent, tab: agent == "mac" ? .mac : .agents))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 660, height: 500), styleMask: [.titled],
                               backing: .buffered, defer: false)
         window.contentView = view
