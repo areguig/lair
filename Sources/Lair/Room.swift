@@ -859,7 +859,7 @@ import os
         call.state = .ready
         call.heard = .now
         calls.append(call)
-        Self.log.notice("\(call.id, privacy: .public): \(agent.name, privacy: .public) joined")
+        Self.log.notice("\(call.id, privacy: .public): \(agent.name, privacy: .public) joined from \(guest.folder?.path ?? "no folder", privacy: .public)")
         return call
     }
 
