@@ -7,9 +7,11 @@ A macOS menu-bar app to talk with your coding agents by voice. Speech-to-text an
 ## What it does
 
 - **Talk:** hold <kbd>⌥ Space</kbd>, speak, let go. The agent answers out loud. Talking over it cuts it off.
+- **Just reply:** after the agent answers, Lair listens for a few seconds (a ring empties on the talk button and the orb). Talk, and it sends when you stop. Turn it off in Settings › General.
 - **Floating orb:** during a call, the agent's orb floats above every window. Click it to talk, click again to send, drag to move it.
 - **Several agents:** each call is a new session. Several can run at once; only the one in focus speaks, and the others tell you in one line when they're done or need you.
 - **Switch agents:** start a sentence with an agent's name ("Iris, …"), click its name in the panel, or click its column in Mission Control.
+- **Pass it on:** "Nova, ask Claude what it thinks", or "ask Echo to do it" to the agent you're talking to. The other agent gets your words and the last exchange, answers out loud, and the first one hears its answer on its next turn.
 - **Approvals:** when an agent asks before acting, answer by voice, in the panel or from the notification. The first answer wins. Nothing is approved automatically.
 - **Model and thinking:** pick them from the model line, or say "switch to Opus", "think harder", "go fast", "go deep".
 - **Mission Control** (<kbd>⌥ ⌘ L</kbd>): each agent's whole stream side by side, with tool calls, diffs, thinking, timings and cost, a line to type in, and Allow/Deny on approvals.
@@ -67,6 +69,8 @@ Use **Settings…** in the panel, or edit `~/.config/lair/config.json`, which La
 | `permissionMode` | Claude Code's `--permission-mode`; unset keeps your Claude Code settings |
 | `url`, `headers` | Hermes: API address, and names of extra headers such as a proxy token |
 | `disabled` | `true` turns the agent off: it keeps its settings but leaves the panel and Mission Control (the **On** switch in Settings) |
+
+At the top level, `"listenForAnswers": false` stops Lair listening for your reply after each answer.
 
 Secrets (API keys, header values) live in the Keychain, never in the file. A soul, which is extra instructions for one Claude Code or omp agent, is a Markdown file at `~/.config/lair/souls/<id>.md`.
 
