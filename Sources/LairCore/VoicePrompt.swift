@@ -15,6 +15,33 @@ public enum VoicePrompt {
         Tell me what it found, briefly.
         """
 
+    /// Your words to one agent, passed on to another along with the first one's latest exchange.
+    public static func relay(_ words: String, from source: String, asked: String?, answered: String?) -> String {
+        var prompt = """
+            The user is also on a call with \(source), another agent. Talking to \(source), they just said: \
+            "\(words)". That's for you: answer the user directly, as yourself.
+            """
+        if asked != nil || answered != nil {
+            prompt += "\n\nTheir latest exchange with \(source), for context:"
+            if let asked { prompt += "\nThe user: \"\(clipped(asked))\"" }
+            if let answered { prompt += "\n\(source): \"\(clipped(answered))\"" }
+        }
+        return prompt
+    }
+
+    /// What another agent answered for you, put before your next turn so you know.
+    public static func relayed(_ words: String, to target: String, answer: String) -> String {
+        """
+        While you were away: the user said "\(words)", so Lair passed it to \(target), another agent, \
+        who answered: "\(clipped(answer))"
+        """
+    }
+
+    /// Context is a reminder, not the whole call; long answers keep their start.
+    static func clipped(_ text: String, limit: Int = 1_500) -> String {
+        text.count > limit ? text.prefix(limit) + "…" : text
+    }
+
     public static let text = """
         This conversation is a live voice call through Lair: the user speaks, a speech-to-text model writes it down, \
         and everything you write is read aloud by a text-to-speech voice. Talk like a person on the phone.
