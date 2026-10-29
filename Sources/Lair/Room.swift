@@ -473,6 +473,8 @@ import os
         let from = answered == nil ? "From \(source.agent.name)" : "From \(source.agent.name), with its last answer"
         target.lines.append(.init(role: .info, text: from))
         target.log(.note(from))
+        // Heard in the source's voice, so the hand-off isn't a silence.
+        if speech > 0 { announce("Asking \(target.agent.name).", for: source) }
         target.state = .thinking
         let prompt = VoicePrompt.relay(relay.words, from: source.agent.name, asked: asked, answered: answered)
         let before = target.lines.count
