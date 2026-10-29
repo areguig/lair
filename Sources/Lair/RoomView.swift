@@ -1005,7 +1005,7 @@ struct QuestionCard: View {
 }
 
 /// One of a question's choices, numbered, with ⌘ and its number as a shortcut where there's one card.
-private struct ChoiceButton: View {
+struct ChoiceButton: View {
     let number: Int
     let choice: String
     let tint: Color
@@ -1041,7 +1041,7 @@ private struct ChoiceButton: View {
 }
 
 /// How long a question still waits, as a shrinking bar and the minutes and seconds left.
-private struct TimeLeft: View {
+struct TimeLeft: View {
     let since: Date
     let deadline: Date
     let tint: Color

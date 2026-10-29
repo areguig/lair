@@ -29,7 +29,7 @@ struct LairApp: App {
     private let room: Room
     private let link: GuestLink
     private let store: ConfigStore
-    private let orb: FloatingOrb
+    private let island: Island
 
     init() {
         // An agent process that exits must not take Lair down with it: writing to it then just throws.
@@ -67,6 +67,11 @@ struct LairApp: App {
             Snapshot.write(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]), variant: variant)
             exit(0)
         }
+        if let i = CommandLine.arguments.firstIndex(of: "--island-snapshot"), i + 1 < CommandLine.arguments.count {
+            let variant = i + 2 < CommandLine.arguments.count ? CommandLine.arguments[i + 2] : "asking"
+            Snapshot.writeIsland(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]), variant: variant)
+            exit(0)
+        }
         if let i = CommandLine.arguments.firstIndex(of: "--mission-snapshot"), i + 1 < CommandLine.arguments.count {
             Snapshot.writeMissionControl(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]))
             exit(0)
@@ -92,15 +97,18 @@ struct LairApp: App {
         }
         let link = GuestLink(room: room)
         link.apply(store.config.guests)
+        let island = Island(room: room)
+        island.isOn = store.config.showsIsland
         store.onChange = {
             room.apply($0)
             link.apply($0.guests)
+            island.isOn = $0.showsIsland
         }
         store.watch()
         self.store = store
         self.room = room
         self.link = link
-        orb = FloatingOrb(room: room)
+        self.island = island
         KeyboardShortcuts.onKeyDown(for: .pushToTalk) { room.pressTalk() }
         KeyboardShortcuts.onKeyUp(for: .pushToTalk) { room.releaseTalk() }
         KeyboardShortcuts.onKeyDown(for: .missionControl) { MissionControl.toggle(room: room) }
@@ -296,6 +304,50 @@ struct MenuBarIcon: View {
         guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
         view.cacheDisplay(in: view.bounds, to: rep)
         try? rep.representation(using: .png, properties: [:])?.write(to: url)
+    }
+
+    /// The island under a strip of menu bar, in one of its states: resting, live, listening, asking, approving, or any
+    /// of them followed by "-flat" for a screen without a notch.
+    static func writeIsland(to url: URL, variant: String) {
+        let room = Room(config: LairConfig(agents: Array(Demo.agents.prefix(2))))
+        room.readiness = .ready
+        let claude = room.calls[0]
+        claude.state = .ready
+        let model = IslandModel()
+        model.metrics = variant.hasSuffix("-flat") ? .init(notch: false, width: 0, height: 0, top: 30)
+            : .init(notch: true, width: 186, height: 32, top: 0)
+        switch variant.replacingOccurrences(of: "-flat", with: "") {
+        case "live":
+            claude.state = .speaking
+            claude.lines = [.init(role: .agent, text: "Done. The changelog has the new voice section and the build number is bumped.")]
+        case "listening":
+            claude.state = .listening
+        case "asking":
+            let guest = room.call(for: Guest(id: "demo", name: "omp", client: "omp-coding-agent",
+                                             folder: URL(fileURLWithPath: "/Users/me/dev/landing-page")))
+            guest.questionText = "Which colour should the subtitle be?"
+            guest.questionChoices = ["Red", "Green", "Blue"]
+            guest.questionSince = .now - 20
+            guest.questionDeadline = .now + 100
+            guest.state = .waiting
+            room.focus(guest)
+        case "approving":
+            claude.state = .waiting
+            claude.pendingApproval = ApprovalRequest(id: "demo", tool: "Bash", summary: "Bump the build number in Info.plist and commit it",
+                suggestions: Data(#"[{"type":"addRules","rules":[{"toolName":"Bash"}],"behavior":"allow","destination":"localSettings"}]"#.utf8))
+        default:
+            room.calls[1].state = .thinking
+        }
+        let view = ZStack(alignment: .top) {
+            LinearGradient(colors: [Color(red: 0.32, green: 0.36, blue: 0.5), Color(red: 0.16, green: 0.17, blue: 0.24)],
+                           startPoint: .top, endPoint: .bottom)
+            Rectangle().fill(.black.opacity(0.25)).frame(height: 32)
+            if model.metrics.notch { UnevenRoundedRectangle(bottomLeadingRadius: 10, bottomTrailingRadius: 10).fill(.black).frame(width: 186, height: 32) }
+            IslandView(room: room, model: model)
+        }
+        .frame(width: Island.canvas.width, height: Island.canvas.height)
+        .environment(\.renderTime, 0)
+        writePNG(view, scale: 2, to: url)
     }
 
     /// `Lair --icon out.png`: the 1024px app icon, drawn from the orb.

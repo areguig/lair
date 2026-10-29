@@ -567,11 +567,19 @@ private struct GeneralSettings: View {
                         config.listenForAnswers = on ? nil : false
                         store.save(config)
                     }))
+                Toggle("Show Lair at the top of the screen", isOn: Binding(
+                    get: { store.config.showsIsland },
+                    set: { on in
+                        var config = store.config
+                        config.island = on ? nil : false
+                        store.save(config)
+                    }))
                 Toggle("Open at login", isOn: Binding(get: { opensAtLogin }, set: { setOpensAtLogin($0) }))
             } footer: {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Pick a shortcut no other app uses; it works from anywhere.")
                     Text("The mic opens for a few seconds once the agent stops talking, and sends when you stop.")
+                    Text("At the top, Lair grows out of the notch when someone talks or needs you; click its orb to talk.")
                     Text("Allow notifications to answer approvals from anywhere; without them, answer by voice or in the panel.")
                 }
                 .font(.caption)
