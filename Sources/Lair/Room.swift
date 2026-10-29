@@ -1,5 +1,4 @@
 import Foundation
-import KeyboardShortcuts
 import LairCore
 import LairVoice
 import Observation
@@ -561,12 +560,12 @@ import os
         let turnID = UUID()
         call.turnID = turnID
         call.unheard = []
-        // The turn ended on a question to you: listen for the answer.
-        var asksBack = false
+        // The agent spoke to you: listen a few seconds for your reply.
+        var listenAfter = false
         defer {
             if call.inCall, call.turnID == turnID {
                 call.state = .ready
-                if call.newsWaiting { hearNews(from: call) } else if asksBack { listenForAnswer(in: call) }
+                if call.newsWaiting { hearNews(from: call) } else if listenAfter { listenForAnswer(in: call) }
             }
         }
         let clock = Self.clock
@@ -640,7 +639,7 @@ import os
             }
             if call.id == focusedID {
                 await speaker.waitUntilDone()
-                asksBack = answer.map { call.lines.indices.contains($0) && FollowUp.expectsAnswer(call.lines[$0].text) } ?? false
+                listenAfter = answered
             } else if !Task.isCancelled {
                 call.unread = true
                 speaker.play(.done)
@@ -677,7 +676,7 @@ import os
         if call.pendingApproval?.id == request.id { listenForAnswer(in: call) }
     }
 
-    /// The microphone opens on its own after a question and sends once you've answered; silence closes it.
+    /// The microphone opens on its own after the agent speaks and sends once you've answered; silence closes it.
     /// Opening only after the voice has finished keeps the agent from hearing itself.
     private func listenForAnswer(in call: Call) {
         guard listensForAnswers else { return }
@@ -705,8 +704,6 @@ import os
                 case .giveUp:
                     _ = try? microphone.stopCapture()
                     call.state = call.pendingApproval == nil ? .ready : .waiting
-                    let key = KeyboardShortcuts.getShortcut(for: .pushToTalk)?.description ?? "the talk key"
-                    show(hint: "Didn't hear an answer. Hold \(key) when you're ready.")
                 }
                 break
             }
@@ -743,7 +740,7 @@ import os
             }
             await speaker?.waitUntilDone()
             if call.id == focusedID, call.state == .speaking { call.state = resume }
-            if FollowUp.expectsAnswer(sentences.last ?? "") { listenForAnswer(in: call) }
+            listenForAnswer(in: call)
         }
     }
 

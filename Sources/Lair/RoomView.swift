@@ -244,7 +244,7 @@ struct RoomView: View {
         switch call.state {
         case .offline: return "Hold \(key) to talk, or tap the orb"
         case .ready: return "Hold \(key) to talk"
-        case .listening where room.answering == call.id: return "Your turn: just answer, I'm listening"
+        case .listening where room.answering == call.id: return "Listening for your reply · just talk"
         case .listening: return "Listening… let go when you're done"
         case .thinking: return "Thinking… hold \(key) to cut in"
         case .speaking: return "Speaking · hold \(key) to cut in"

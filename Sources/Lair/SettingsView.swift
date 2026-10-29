@@ -534,7 +534,7 @@ private struct GeneralSettings: View {
         Form {
             Section {
                 KeyboardShortcuts.Recorder("Hold to talk:", name: .pushToTalk)
-                Toggle("Listen for my answer after a question", isOn: Binding(
+                Toggle("Listen for my reply after the agent speaks", isOn: Binding(
                     get: { store.config.listensForAnswers },
                     set: { on in
                         var config = store.config
@@ -545,7 +545,7 @@ private struct GeneralSettings: View {
             } footer: {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Pick a shortcut no other app uses; it works from anywhere.")
-                    Text("When an agent asks you something, the mic opens once it stops talking, and sends when you do.")
+                    Text("The mic opens for a few seconds once the agent stops talking, and sends when you stop.")
                     Text("Allow notifications to answer approvals from anywhere; without them, answer by voice or in the panel.")
                 }
                 .font(.caption)

@@ -30,16 +30,6 @@ struct RelayTests {
 }
 
 struct FollowUpTests {
-    @Test(arguments: ["Want me to do both?", "Should I push it?\"", "Which one? ", "Okay (or not?)"])
-    func hearsAQuestion(_ words: String) {
-        #expect(FollowUp.expectsAnswer(words))
-    }
-
-    @Test(arguments: ["Done.", "I asked why? Because it failed.", ""])
-    func hearsNoQuestion(_ words: String) {
-        #expect(!FollowUp.expectsAnswer(words))
-    }
-
     @Test func sendsOnceYouStopTalking() {
         var turn = FollowUp.Turn()
         #expect(turn.update(speaking: false, elapsed: .seconds(1)) == .listen)
@@ -50,21 +40,21 @@ struct FollowUpTests {
 
     @Test func givesUpWhenYouSayNothing() {
         var turn = FollowUp.Turn()
-        #expect(turn.update(speaking: false, elapsed: .seconds(7)) == .listen)
-        #expect(turn.update(speaking: false, elapsed: .seconds(8)) == .giveUp)
+        #expect(turn.update(speaking: false, elapsed: .seconds(4)) == .listen)
+        #expect(turn.update(speaking: false, elapsed: .seconds(5)) == .giveUp)
     }
 
     @Test func aShortNoiseIsNotAnAnswer() {
         var turn = FollowUp.Turn()
         #expect(turn.update(speaking: true, elapsed: .milliseconds(1_000)) == .listen)
         #expect(turn.update(speaking: false, elapsed: .milliseconds(1_200)) == .listen)
-        #expect(turn.update(speaking: false, elapsed: .seconds(8)) == .giveUp)
+        #expect(turn.update(speaking: false, elapsed: .seconds(5)) == .giveUp)
     }
 
     @Test func waitsForYouWhileYouTalkPastThePatience() {
         var turn = FollowUp.Turn()
-        #expect(turn.update(speaking: true, elapsed: .milliseconds(7_800)) == .listen)
-        #expect(turn.update(speaking: true, elapsed: .seconds(9)) == .listen)
+        #expect(turn.update(speaking: true, elapsed: .milliseconds(4_800)) == .listen)
+        #expect(turn.update(speaking: true, elapsed: .seconds(6)) == .listen)
         #expect(turn.update(speaking: true, elapsed: .seconds(30)) == .send)
     }
 }

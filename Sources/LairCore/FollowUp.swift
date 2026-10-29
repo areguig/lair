@@ -1,18 +1,13 @@
 import Foundation
 
-/// Listening for your answer without a key press, after the agent asks you something.
+/// Listening for your reply without a key press, for a few seconds after the agent speaks.
 public enum FollowUp {
-    /// Whether the agent's last words wait for an answer.
-    public static func expectsAnswer(_ lastWords: String) -> Bool {
-        lastWords.trimmingCharacters(in: CharacterSet(charactersIn: " \n\t\"'”’)»")).hasSuffix("?")
-    }
-
     /// Decides, as the microphone hears speech or silence, when you've said your piece.
     public struct Turn: Sendable {
         public enum Decision: Equatable, Sendable { case listen, send, giveUp }
 
         /// How long Lair waits for you to start.
-        public static let patience: Duration = .seconds(8)
+        public static let patience: Duration = .seconds(5)
         /// The longest answer before it's sent anyway.
         public static let longest: Duration = .seconds(30)
         /// Shorter bursts (a cough, a click) don't count as an answer.

@@ -3,7 +3,7 @@ import Foundation
 /// `~/.config/lair/config.json`: the agents you can call. Written with defaults on first launch.
 public struct LairConfig: Codable, Equatable, Sendable {
     public var agents: [AgentConfig]
-    /// After an agent asks you something, listen for the answer without a key press; unset means on.
+    /// After the agent speaks, listen a few seconds for your reply without a key press; unset means on.
     public var listenForAnswers: Bool?
 
     public init(agents: [AgentConfig]) {
