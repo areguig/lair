@@ -541,7 +541,7 @@ private struct GeneralSettings: View {
                         config.listenForAnswers = on ? nil : false
                         store.save(config)
                     }))
-                Toggle("Open at login", isOn: Binding(get: { opensAtLogin }, set: setOpensAtLogin))
+                Toggle("Open at login", isOn: Binding(get: { opensAtLogin }, set: { setOpensAtLogin($0) }))
             } footer: {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Pick a shortcut no other app uses; it works from anywhere.")
