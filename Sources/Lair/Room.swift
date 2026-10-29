@@ -1,5 +1,6 @@
 import Foundation
 import LairCore
+import LairMCP
 import LairVoice
 import Observation
 import os
@@ -51,6 +52,14 @@ import os
     @ObservationIgnored var newsWaiting = false
     /// What other agents answered for this one while you talked to them; sent before its next turn.
     @ObservationIgnored var context: [String] = []
+    /// Joined over MCP: it speaks and asks on its own, you only answer.
+    var guest = false
+    /// A guest's question waiting for your answer.
+    @ObservationIgnored var question: CheckedContinuation<String?, Never>?
+
+    /// Paused on something only you can give: an OK, or a guest's answer.
+    var awaitsYou: Bool { pendingApproval != nil || question != nil }
+    var idle: State { awaitsYou ? .waiting : .ready }
 
     init(agent: AgentConfig) {
         self.agent = agent
@@ -115,8 +124,8 @@ import os
             call.agent = agent
             return call
         }
-        for call in calls where !next.contains(where: { $0 === call }) && call.inCall { hangUp(call) }
-        calls = next
+        for call in calls where !call.guest && !next.contains(where: { $0 === call }) && call.inCall { hangUp(call) }
+        calls = next + calls.filter(\.guest)
         if focused == nil { focusedID = calls.first?.id ?? "" }
         listensForAnswers = config.listensForAnswers
     }
@@ -182,7 +191,7 @@ import os
         if let previous = focused {
             if previous.state == .listening {
                 _ = try? microphone.stopCapture()
-                previous.state = previous.pendingApproval == nil ? .ready : .waiting
+                previous.state = previous.idle
             }
             if previous.state == .speaking {
                 speaker?.stop()
@@ -194,6 +203,7 @@ import os
 
     func summon(_ call: Call) {
         guard readiness == .ready, !call.inCall else { return }
+        guard !call.guest else { return call.state = .ready }
         // A new attempt replaces the last setup problem instead of stacking another.
         call.lines.removeAll { $0.action == .openSettings }
         do {
@@ -274,6 +284,7 @@ import os
 
     func hangUp(_ call: Call) {
         if call.pendingApproval != nil { answer(call, decision: .deny) }
+        resolveQuestion(of: call, with: nil)
         call.context = []
         call.turn?.cancel()
         call.session?.stop()
@@ -305,6 +316,7 @@ import os
             call.lines.append(.init(role: .info, text: "You cut in."))
         }
         guard call.state == .ready || call.state == .waiting else { return }
+        if call.guest, call.question == nil { return show(hint: "\(call.agent.name) listens only when it asks you something.") }
         speaker?.play(.listening)
         microphone.startCapture()
         call.state = .listening
@@ -319,14 +331,15 @@ import os
         guard let call = focused, call.state == .listening else { return }
         answering = nil
         let samples = (try? microphone.stopCapture()) ?? []
-        let idle: Call.State = call.pendingApproval == nil ? .ready : .waiting
         guard samples.count >= minimumSpeech else {
-            call.state = idle
+            call.state = call.idle
             return
         }
         call.state = .thinking
         speaker?.play(.sent)
-        if call.pendingApproval != nil {
+        if call.question != nil {
+            Task { await hearReply(in: call, from: samples) }
+        } else if call.pendingApproval != nil {
             Task { await hearAnswer(in: call, from: samples) }
         } else {
             call.turn = Task { await reply(in: call, to: samples) }
@@ -441,6 +454,8 @@ import os
             }
             return answer(call, decision: decision)
         }
+        if call.question != nil { return resolveQuestion(of: call, with: text) }
+        if call.guest { return show(hint: "\(call.agent.name) listens only when it asks you something.") }
         if call.state == .speaking || call.state == .thinking { interrupt(call) }
         guard call.state == .ready else { return }
         if pass(text, from: call, speech: 0, start: Self.clock.now) { return }
@@ -719,7 +734,7 @@ import os
                 case .send: return releaseTalk()
                 case .giveUp:
                     _ = try? microphone.stopCapture()
-                    call.state = call.pendingApproval == nil ? .ready : .waiting
+                    call.state = call.idle
                 }
                 break
             }
@@ -730,9 +745,7 @@ import os
     /// One line from a background agent, once the focused one has stopped talking.
     private func announce(_ text: String, for call: Call) {
         Task {
-            while let current = focused, current.state == .speaking || current.state == .listening {
-                try? await Task.sleep(for: .milliseconds(300))
-            }
+            await waitForTheFloor()
             guard let speaker, let samples = try? await voice.speech(for: text, voice: call.agent.voice) else { return }
             speaker.enqueue(samples)
         }
@@ -777,6 +790,110 @@ import os
         call.state = .speaking
         return true
     }
+
+    /// Until the focused agent has stopped talking and you've stopped answering.
+    private func waitForTheFloor() async {
+        while let current = focused, current.state == .speaking || current.state == .listening || answering != nil {
+            try? await Task.sleep(for: .milliseconds(300))
+        }
+    }
+
+    // MARK: Guests, agents that joined over MCP
+
+    /// How long a guest's question waits for you before it hears there's no answer.
+    private let questionWait = Duration.seconds(120)
+
+    /// The guest `name`, joining the room on its first word, with a voice no agent uses yet.
+    private func guest(named name: String) -> Call {
+        let id = "guest-" + name.lowercased()
+        if let call = calls.first(where: { $0.id == id }) {
+            if !call.inCall { call.state = .ready }
+            return call
+        }
+        let used = Set(calls.map(\.agent.voice))
+        let agent = AgentConfig(id: id, name: name, kind: .hermes,
+                                voice: VoiceModels.voices.first { !used.contains($0) } ?? "af_heart",
+                                color: AgentConfig.palette[calls.count % AgentConfig.palette.count])
+        let call = Call(agent: agent)
+        call.guest = true
+        call.state = .ready
+        calls.append(call)
+        call.lines.append(.init(role: .info, text: "\(name) joined."))
+        return call
+    }
+
+    /// Heard in its own voice once the floor is free, without taking it from whoever you're talking to.
+    func guestSpeaks(_ text: String, from name: String) async {
+        let call = guest(named: name)
+        call.lines.append(.init(role: .agent, text: text))
+        call.log(.note("Said: \(text)"))
+        if call.id != focusedID { call.unread = true }
+        guard readiness == .ready, let speaker else { return }
+        await waitForTheFloor()
+        var splitter = SentenceSplitter()
+        for sentence in splitter.feed(text) + [splitter.flush()].compactMap(\.self) {
+            let spoken = Speakable.text(sentence)
+            guard !spoken.isEmpty, let samples = try? await voice.speech(for: spoken, voice: call.agent.voice) else { continue }
+            speaker.enqueue(samples)
+        }
+    }
+
+    /// Takes the floor once it's free, asks aloud and listens; typing in Mission Control answers too.
+    func guestAsks(_ question: String, from name: String) async -> String? {
+        let call = guest(named: name)
+        guard readiness == .ready, call.question == nil else { return nil }
+        call.lines.append(.init(role: .agent, text: question))
+        call.log(.note("Asked: \(question)"))
+        speaker?.play(.needsYou)
+        await waitForTheFloor()
+        focus(call)
+        return await withCheckedContinuation { continuation in
+            call.question = continuation
+            call.state = .waiting
+            Task {
+                _ = try? await say(question, in: call)
+                await speaker?.waitUntilDone()
+                if call.question != nil {
+                    call.state = .waiting
+                    listenForAnswer(in: call)
+                }
+            }
+            Task {
+                try? await Task.sleep(for: questionWait)
+                resolveQuestion(of: call, with: nil)
+            }
+        }
+    }
+
+    private func hearReply(in call: Call, from samples: [Float]) async {
+        let heard = (try? await voice.transcribe(samples)) ?? ""
+        guard call.question != nil else { return }
+        if heard.isEmpty { return call.state = .waiting }
+        resolveQuestion(of: call, with: heard)
+    }
+
+    /// The first answer wins; nil tells the guest you didn't answer.
+    private func resolveQuestion(of call: Call, with answer: String?) {
+        guard let question = call.question else { return }
+        call.question = nil
+        if let answer {
+            call.lines.append(.init(role: .you, text: answer))
+            call.log(.you(answer))
+        } else {
+            call.lines.append(.init(role: .info, text: "No answer given."))
+        }
+        if call.inCall { call.state = .ready }
+        question.resume(returning: answer)
+    }
+}
+
+/// Hands MCP guests to the room on the main actor.
+struct RoomGuests: GuestHost {
+    let room: Room
+
+    func speak(_ text: String, from guest: String) async { await room.guestSpeaks(text, from: guest) }
+
+    func ask(_ question: String, from guest: String) async -> String? { await room.guestAsks(question, from: guest) }
 }
 
 private extension String {

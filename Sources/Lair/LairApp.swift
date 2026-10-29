@@ -1,6 +1,8 @@
 // Lair: a menu-bar room where you call your agents and talk to them by voice.
 import KeyboardShortcuts
 import LairCore
+import LairMCP
+import os
 import SwiftUI
 
 extension KeyboardShortcuts.Name {
@@ -89,6 +91,14 @@ struct LairApp: App {
         KeyboardShortcuts.onKeyUp(for: .pushToTalk) { room.releaseTalk() }
         KeyboardShortcuts.onKeyDown(for: .missionControl) { MissionControl.toggle(room: room) }
         Task { await room.start() }
+        // Agents on this Mac join the room as guests: http://127.0.0.1:7477/mcp/<name>.
+        Task {
+            do {
+                try await GuestServer(host: RoomGuests(room: room)).run(port: 7477)
+            } catch {
+                Logger(subsystem: "dev.lair.app", category: "mcp").error("Guest server stopped: \(error, privacy: .public)")
+            }
+        }
     }
 
     var body: some Scene {
