@@ -151,6 +151,18 @@ private struct AgentColumn: View {
                     .font(.system(.caption, design: .rounded, weight: .semibold))
                     .foregroundStyle(.orange)
             }
+            Button { room.toggle(call) } label: {
+                Image(systemName: call.inCall ? "phone.down.fill" : "phone.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 28, height: 28)
+                    .background(call.inCall ? Color(red: 0.92, green: 0.3, blue: 0.3) : Color(red: 0.25, green: 0.75, blue: 0.45),
+                                in: Circle())
+            }
+            .buttonStyle(.plain)
+            .disabled(room.readiness != .ready)
+            .help(call.inCall ? "Hang up" : "Call \(call.agent.name)")
+            .accessibilityLabel(call.inCall ? "Hang up \(call.agent.name)" : "Call \(call.agent.name)")
         }
         .foregroundStyle(.white)
         .padding(12)
@@ -160,6 +172,7 @@ private struct AgentColumn: View {
         switch call.state {
         case .offline: "not in a call"
         case .ready: "in a call"
+        case .listening where room.answering?.callID == call.id: "listening for your reply"
         case .listening: "listening"
         case .thinking: "working"
         case .speaking: "speaking"
