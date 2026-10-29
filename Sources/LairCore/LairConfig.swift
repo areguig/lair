@@ -5,6 +5,8 @@ public struct LairConfig: Codable, Equatable, Sendable {
     public var agents: [AgentConfig]
     /// After the agent speaks, listen a few seconds for your reply without a key press; unset means on.
     public var listenForAnswers: Bool?
+    /// Agents on this Mac may speak and ask you things through Lair; unset means off.
+    public var guests: GuestSettings?
 
     public init(agents: [AgentConfig]) {
         self.agents = agents
@@ -53,11 +55,30 @@ public struct LairConfig: Codable, Equatable, Sendable {
     }
 }
 
+/// Lair's MCP server, which agents running on this Mac join as guests.
+public struct GuestSettings: Codable, Equatable, Sendable {
+    public var port: Int
+    /// How long a guest's question waits for your answer.
+    public var answerSeconds: Int
+    /// A guest that has said nothing for this long leaves the room.
+    public var idleMinutes: Int
+
+    public static let standard = GuestSettings(port: 7477, answerSeconds: 120, idleMinutes: 30)
+
+    public var url: URL { URL(string: "http://127.0.0.1:\(port)/mcp")! }
+
+    /// Keychain item holding the bearer token agents send.
+    public static let keychainService = "lair.guests"
+    public static let keychainAccount = "token"
+}
+
 public struct AgentConfig: Codable, Equatable, Identifiable, Sendable {
     public enum Kind: String, Codable, Sendable {
         case claudeCode = "claude-code"
         case omp
         case hermes
+        /// An agent on this Mac that joined over MCP; never saved in the config.
+        case guest
     }
 
     public var id: String
