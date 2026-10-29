@@ -61,8 +61,9 @@ public actor GuestServer {
         Tool(name: "ask",
              description: """
                  Ask the user a question out loud, through Lair, and get their answer as text, spoken or typed. Use \
-                 it when you need a decision to go on. One short question; name the choices if there are any. If \
-                 they don't answer, carry on with what's safe or ask again later.
+                 it when you need a decision to go on. One short question that can't be answered with a bare yes: \
+                 for a choice, name the options ("before tax or after tax?"). Answers are heard, so read them \
+                 loosely. If they don't answer, carry on with what's safe or ask again later.
                  """,
              inputSchema: .object([
                  "type": "object",

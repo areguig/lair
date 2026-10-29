@@ -12,12 +12,18 @@ struct SettingsView: View {
 
     /// A menu-bar app isn't the active app when its panel is clicked, so polite activation leaves the window
     /// behind others: raise it explicitly once it exists, then make it key.
+    /// The window may not exist yet right after `openWindow`, so this waits for it, up to a second.
     @MainActor static func bringForward() {
-        NSApp.activate()
-        DispatchQueue.main.async {
-            guard let window = NSApp.windows.first(where: { $0.title == title }) else { return }
-            window.orderFrontRegardless()
-            window.makeKeyAndOrderFront(nil)
+        Task { @MainActor in
+            for _ in 0..<20 {
+                if let window = NSApp.windows.first(where: { $0.title == title && $0.isVisible }) {
+                    NSApp.activate(ignoringOtherApps: true)
+                    window.orderFrontRegardless()
+                    window.makeKeyAndOrderFront(nil)
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
         }
     }
     let store: ConfigStore
