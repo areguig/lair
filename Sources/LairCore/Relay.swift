@@ -25,12 +25,13 @@ public struct Relay: Equatable, Sendable {
         guard let verb = verbs.first(where: { rest.lowercased().hasPrefix($0) }) else { return nil }
         let others = names.filter { $0.caseInsensitiveCompare(source?.name ?? "") != .orderedSame }
         guard let target = Addressing.leadingName(in: Addressing.withoutGreeting(String(rest.dropFirst(verb.count))),
-                                                  names: others),
+                                                  names: others, midSentence: true),
               !target.rest.isEmpty
         else { return nil }
         return Relay(source: source?.name, target: target.name,
                      words: text.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
-    private static let verbs = ["ask ", "tell ", "have ", "get ", "let "]
+    // "asked": how speech recognition often hears "ask" before a name.
+    private static let verbs = ["ask ", "asked ", "tell ", "have ", "get ", "let "]
 }

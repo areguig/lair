@@ -30,4 +30,16 @@ struct AddressingTests {
     @Test func ignoresEmptyNames() {
         #expect(Addressing.split(", hello", names: [""]) == nil)
     }
+
+    @Test func hearsANameSpelledTheWayItSounds() {
+        #expect(Addressing.split("Saige, check the backups", names: ["Sage"])?.name == "Sage")
+        #expect(Addressing.split("Kloud. Run the tests", names: ["Claude"])?.name == "Claude")
+    }
+
+    @Test func aSoundAlikeNeedsACapitalAndAPause() {
+        #expect(Addressing.split("Cloudy today, isn't it", names: ["Claude"]) == nil)
+        #expect(Addressing.split("Cloud storage is cheap", names: ["Claude"]) == nil)
+        #expect(Addressing.split("saige, check it", names: ["Sage"]) == nil)
+    }
 }
+

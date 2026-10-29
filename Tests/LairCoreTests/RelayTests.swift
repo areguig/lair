@@ -27,6 +27,18 @@ struct RelayTests {
     @Test func aRelayIsNotAnAddressedSentence() {
         #expect(Relay.parse("Echo, check the backups", names: names) == nil)
     }
+
+    // Heard on 2026-10-29, when every one of these went to the first agent instead.
+    @Test func passesOnWhatTheRecognizerActuallyHeard() {
+        let names = ["Claude", "Sage", "Nova"]
+        #expect(Relay.parse("Saige. Ask Nova about this.", names: names)?.source == "Sage")
+        #expect(Relay.parse("Sage, asked Claude about this.", names: names)?.target == "Claude")
+        #expect(Relay.parse("Sage, ask Cloud about teeth.", names: names)?.target == "Claude")
+    }
+
+    @Test func aLowercaseWordAfterAskIsNotAName() {
+        #expect(Relay.parse("ask cloud support about it", names: ["Claude"]) == nil)
+    }
 }
 
 struct FollowUpTests {
