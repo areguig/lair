@@ -7,8 +7,10 @@ A macOS menu-bar app to talk with your coding agents by voice. Speech-to-text an
 ## What it does
 
 - **Talk:** hold <kbd>⌥ Space</kbd>, speak, let go. The agent answers out loud. Talking over it cuts it off.
-- **Just reply:** after the agent answers, Lair listens for a few seconds (a ring empties on the talk button and the orb). Talk, and it sends when you stop. Turn it off in Settings › General.
-- **Floating orb:** during a call, the agent's orb floats above every window. Click it to talk, click again to send, drag to move it.
+- **Just reply:** after the agent answers, Lair listens for a few seconds (a ring empties on the talk button). Talk, and it sends when you stop. Turn it off in Settings › General.
+- **The island:** Lair grows out of the notch when an agent talks or needs you, with its choices and OKs right there, and gets out of the way after. It never steals focus.
+- **Agents in your terminal:** connect Claude Code or omp in Settings › On this Mac. Every session you start yourself can then speak to you and ask you out loud. Any other MCP agent can join too: Lair is a local MCP server with two tools, speak and ask.
+- **Choices:** a question can come with choices, read out and shown as numbered buttons. Click one, press <kbd>⌘ 1</kbd>, or say "the blue one".
 - **Several agents:** each call is a new session. Several can run at once; only the one in focus speaks, and the others tell you in one line when they're done or need you.
 - **Switch agents:** start a sentence with an agent's name ("Iris, …"), click its name in the panel, or click its column in Mission Control.
 - **Pass it on:** "Nova, ask Claude what it thinks", or "ask Echo to do it" to the agent you're talking to. The other agent gets your words and the last exchange, answers out loud, and the first one hears its answer on its next turn.
