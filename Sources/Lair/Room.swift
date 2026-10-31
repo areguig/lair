@@ -260,6 +260,11 @@ import os
             }
             Task { for await details in session.details { call.details = details } }
             Task { for await _ in session.news { hearNews(from: call) } }
+            Task {
+                for await problem in session.problems {
+                    report(in: call, .init(role: .problem, text: "\(call.agent.name): \(problem)"))
+                }
+            }
             call.lines = []
             call.state = .ready
         } catch let error as SetupError {
