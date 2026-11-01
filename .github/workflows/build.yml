@@ -30,10 +30,33 @@ jobs:
       - run: swift test
         env:
           LIBDISPATCH_COOPERATIVE_POOL_STRICT: 1
+      # Releases are signed with Developer ID and notarized once these secrets exist; until then, signed ad hoc.
+      - name: Load the Developer ID certificate and the notary key
+        if: github.ref_type == 'tag'
+        env:
+          DEVELOPER_ID_P12: ${{ secrets.DEVELOPER_ID_P12 }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+          NOTARY_KEY: ${{ secrets.NOTARY_KEY }}
+        run: |
+          [ -n "$DEVELOPER_ID_P12" ] || { echo "No Developer ID secrets: this release is signed ad hoc"; exit 0; }
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          security create-keychain -p "" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "" "$keychain"
+          echo "$DEVELOPER_ID_P12" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          security import "$RUNNER_TEMP/developer-id.p12" -k "$keychain" -P "$DEVELOPER_ID_P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -k "" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          echo "$NOTARY_KEY" | base64 --decode > "$RUNNER_TEMP/notary.p8"
+          echo "LAIR_SIGN_IDENTITY=Developer ID Application" >> "$GITHUB_ENV"
+          echo "LAIR_NOTARY_KEY=$RUNNER_TEMP/notary.p8" >> "$GITHUB_ENV"
       - name: Make the disk image
+        env:
+          LAIR_NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          LAIR_NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER }}
         run: |
           if [ "$GITHUB_REF_TYPE" = tag ]; then export LAIR_VERSION="${GITHUB_REF_NAME#v}"; fi
-          LAIR_SIGN_IDENTITY=- scripts/make-dmg.sh "$RUNNER_TEMP/Lair.dmg"
+          LAIR_SIGN_IDENTITY="${LAIR_SIGN_IDENTITY:--}" scripts/make-dmg.sh "$RUNNER_TEMP/Lair.dmg"
       - uses: actions/upload-artifact@v4
         with:
           name: Lair

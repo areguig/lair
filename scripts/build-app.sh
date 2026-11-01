@@ -49,7 +49,14 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>NSMicrophoneUsageDescription</key><string>$name listens while you hold the talk key or after you click the orb, to hear what you say to your agents.</string>
 </dict></plist>
 PLIST
-# A stable identity keeps macOS permissions (microphone) across rebuilds; LAIR_SIGN_IDENTITY overrides the pick.
-identity=${LAIR_SIGN_IDENTITY:-$(security find-identity -v -p codesigning | awk '/Apple Development/ { print $2; exit }')}
-codesign --force --deep --sign "${identity:--}" "$app"
+# A stable identity keeps macOS permissions (microphone) across rebuilds: Developer ID (to share) before Apple Development
+# (this Mac only), else ad hoc. LAIR_SIGN_IDENTITY overrides the pick; "-" signs ad hoc.
+identities=$(security find-identity -v -p codesigning)
+identity=${LAIR_SIGN_IDENTITY:-$(printf '%s\n' "$identities" | awk '/Developer ID Application/ { print $2; exit }')}
+identity=${identity:-$(printf '%s\n' "$identities" | awk '/Apple Development/ { print $2; exit }')}
+identity=${identity:--}
+# The hardened runtime and a secure timestamp are what notarization asks for; ad hoc signatures can't be timestamped.
+timestamp=--timestamp
+[ "$identity" = - ] && timestamp=--timestamp=none
+codesign --force --options runtime "$timestamp" --entitlements "$repo/scripts/Lair.entitlements" --sign "$identity" "$app"
 echo "Built $app"
