@@ -29,7 +29,7 @@ struct RoomView: View {
             } else {
                 emptyState
             }
-            footer.padding(.top, 14)
+            if call.map(statusMentionsTalkKey) != true { footer.padding(.top, 14) }
         }
         .padding(18)
         .frame(width: call == nil ? 340 : 424)
@@ -359,6 +359,12 @@ struct RoomView: View {
         case .waiting:
             return call.pendingApproval?.canAlwaysAllow == true ? "Your OK? Say yes, always or no" : "Your OK? Say yes or no"
         }
+    }
+
+    /// The state line already tells how to talk, so the footer's hint would say it twice.
+    private func statusMentionsTalkKey(_ call: Call) -> Bool {
+        guard let key = TalkKey.shared.label else { return false }
+        return (room.hint ?? caption(for: call)).contains(key)
     }
 
     private func spoken(_ state: Call.State) -> String {
