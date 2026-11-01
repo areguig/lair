@@ -286,7 +286,11 @@ struct MenuBarIcon: View {
     static func writeSettings(to url: URL, agent: String? = nil) {
         let file = FileManager.default.temporaryDirectory.appending(path: "lair-settings-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: file) }
-        var config = LairConfig(agents: Demo.agents)
+        var hermes = AgentConfig(id: "hermes", name: "Hermes", kind: .hermes, voice: "am_adam", color: "#4BA3E3")
+        hermes.url = "http://hermes.local:8642"
+        hermes.model = "hermes-agent"
+        hermes.headers = ["X-Access-Token"]
+        var config = LairConfig(agents: Demo.agents + [hermes])
         if agent == "mac" { config.guests = .standard }
         try? config.save(to: file)
         let store = ConfigStore(url: file)
