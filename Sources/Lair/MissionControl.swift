@@ -126,7 +126,7 @@ private struct AgentColumn: View {
                             .padding(.top, 30)
                             .frame(maxWidth: .infinity)
                     }
-                    ForEach(call.entries) { entry in
+                    ForEach(call.entries.filter(Self.isShown)) { entry in
                         EntryView(entry: entry, tint: tint)
                     }
                 }
@@ -153,6 +153,12 @@ private struct AgentColumn: View {
         .shadow(color: focused ? tint.opacity(0.25) : .clear, radius: 18)
         .contentShape(Rectangle())
         .onTapGesture { room.focus(call) }
+    }
+
+    /// The approval line repeats the card while it asks, and the note of the answer says the rest afterwards.
+    private static func isShown(_ entry: LogEntry) -> Bool {
+        if case .approval = entry.kind { return false }
+        return true
     }
 
     private func header(tint: Color) -> some View {
@@ -288,13 +294,8 @@ private struct EntryView: View {
                 .font(.system(.caption, design: .rounded))
                 .foregroundStyle(.orange)
                 .textSelection(.enabled)
-        case .approval(let text):
-            Label(text, systemImage: "hand.raised.fill")
-                .font(.system(.callout, design: .rounded))
-                .foregroundStyle(.white.opacity(0.9))
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        case .approval:
+            EmptyView()
         case .usage(let input, let output, let cost):
             Stats(items: ["\(Self.tokens(input)) in", "\(Self.tokens(output)) out"]
                 + (cost.map { [String(format: "$%.3f", $0)] } ?? []))
