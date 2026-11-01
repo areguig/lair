@@ -101,6 +101,35 @@ struct MissionControl: View {
     }
 }
 
+/// A round button of the control layer: Liquid Glass where the system has it, a flat disc before.
+private struct RoundButton: View {
+    let symbol: String
+    let size: CGFloat
+    let weight: Font.Weight
+    let fill: Color
+    let ink: Color
+    let action: () -> Void
+
+    var body: some View {
+        if #available(macOS 26, *) {
+            Button(action: action) { icon }
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.circle)
+                .tint(fill)
+        } else {
+            Button(action: action) { icon.background(fill, in: Circle()) }
+                .buttonStyle(.plain)
+        }
+    }
+
+    private var icon: some View {
+        Image(systemName: symbol)
+            .font(.system(size: size * 0.42, weight: weight))
+            .foregroundStyle(ink)
+            .frame(width: size, height: size)
+    }
+}
+
 private struct StreamItem: Identifiable {
     enum Content {
         case entry(LogEntry)
@@ -221,15 +250,8 @@ private struct AgentColumn: View {
                 .help("Dismiss \(call.agent.name); it comes back when it next talks to you")
                 .accessibilityLabel("Dismiss \(call.agent.name)")
             } else {
-                Button { room.toggle(call) } label: {
-                    Image(systemName: call.inCall ? "phone.down.fill" : "phone.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 28, height: 28)
-                        .background(call.inCall ? LairColors.hangUp : LairColors.call,
-                                    in: Circle())
-                }
-                .buttonStyle(.plain)
+                RoundButton(symbol: call.inCall ? "phone.down.fill" : "phone.fill", size: 28, weight: .semibold,
+                            fill: call.inCall ? LairColors.hangUp : LairColors.call, ink: .white) { room.toggle(call) }
                 .disabled(room.readiness != .ready)
                 .help(call.inCall ? "Hang up" : "Call \(call.agent.name)")
                 .accessibilityLabel(call.inCall ? "Hang up \(call.agent.name)" : "Call \(call.agent.name)")
@@ -249,14 +271,8 @@ private struct AgentColumn: View {
                 .lineLimit(1...5)
                 .font(.system(.body, design: .rounded))
                 .onSubmit(send)
-            Button(action: send) {
-                Image(systemName: "arrow.up")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(.black)
-                    .frame(width: 26, height: 26)
-                    .background(draft.isEmpty ? .primary.opacity(0.25) : tint, in: Circle())
-            }
-            .buttonStyle(.plain)
+            RoundButton(symbol: "arrow.up", size: 26, weight: .bold,
+                        fill: draft.isEmpty ? .primary.opacity(0.25) : tint, ink: .black, action: send)
             .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .keyboardShortcut(.return, modifiers: .command)
             .accessibilityLabel("Send to \(call.agent.name)")
