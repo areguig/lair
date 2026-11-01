@@ -74,7 +74,8 @@ struct LairApp: App {
             exit(0)
         }
         if let i = CommandLine.arguments.firstIndex(of: "--mission-snapshot"), i + 1 < CommandLine.arguments.count {
-            Snapshot.writeMissionControl(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]))
+            let look = i + 2 < CommandLine.arguments.count ? CommandLine.arguments[i + 2] : nil
+            Snapshot.writeMissionControl(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]), look: look)
             exit(0)
         }
         if let i = CommandLine.arguments.firstIndex(of: "--settings-snapshot"), i + 1 < CommandLine.arguments.count {
@@ -236,12 +237,12 @@ struct MenuBarIcon: View {
     }
 
     /// Mission Control with a demo exchange, drawn in a hidden window so scroll views render.
-    static func writeMissionControl(to url: URL) {
+    static func writeMissionControl(to url: URL, look: String? = nil) {
         let room = Room(config: LairConfig(agents: Array(Demo.agents.prefix(2))))
         room.readiness = .ready
         let claude = room.calls[0]
         claude.state = .speaking
-        claude.details = "claude-haiku-5-5"
+        claude.details = "Haiku 5.5"
         claude.log(.you("What's left before we ship the release?"))
         claude.record(.thinking("The user wants the release status. I should check the changelog and the build number "
             + "before answering, and look at the open TODOs."))
@@ -277,6 +278,8 @@ struct MenuBarIcon: View {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1240, height: 780), styleMask: [.titled],
                               backing: .buffered, defer: false)
         window.contentView = view
+        // "light" or "dark"; anything else follows the system.
+        window.appearance = look.flatMap { NSAppearance(named: $0 == "light" ? .aqua : .darkAqua) }
         view.layoutSubtreeIfNeeded()
         RunLoop.main.run(until: Date().addingTimeInterval(0.8))
         guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }

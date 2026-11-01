@@ -13,6 +13,7 @@ struct MissionControl: View {
     @MainActor private static var window: NSWindow?
 
     let room: Room
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     /// Your agents only: a session that isn't one of them lives in the panel while it's connected.
     private var agents: [Call] { room.calls.filter { !$0.stranger } }
@@ -23,7 +24,7 @@ struct MissionControl: View {
                 .padding(.top, 20)
             if agents.isEmpty {
                 Text("No agents yet. Add one in Settings.")
-                    .foregroundStyle(.white.opacity(0.6))
+                    .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -42,17 +43,18 @@ struct MissionControl: View {
         .frame(minWidth: 900, minHeight: 560)
         .background(
             ZStack {
-                Color(red: 0.045, green: 0.05, blue: 0.065)
-                RadialGradient(colors: [Color(hex: room.focused?.agent.color ?? "#8A8F98").opacity(0.12), .clear],
-                               center: .top, startRadius: 0, endRadius: 700)
+                Color(nsColor: .windowBackgroundColor)
+                if !reduceTransparency {
+                    RadialGradient(colors: [Color(hex: room.focused?.agent.color ?? "#8A8F98").opacity(0.12), .clear],
+                                   center: .top, startRadius: 0, endRadius: 700)
+                }
             }
             .ignoresSafeArea())
-        .environment(\.colorScheme, .dark)
     }
 
     private var topBar: some View {
         HStack(spacing: 12) {
-            Image(systemName: "circle.circle.fill").foregroundStyle(.white.opacity(0.8))
+            Image(systemName: "circle.circle.fill").foregroundStyle(.secondary)
             Text("Mission Control").font(.system(.headline, design: .rounded, weight: .semibold))
             let waiting = room.calls.filter(\.awaitsYou)
             if !waiting.isEmpty {
@@ -69,13 +71,12 @@ struct MissionControl: View {
             if let shortcut = TalkKey.shared.label {
                 Text("Hold \(shortcut) to talk · type below to write")
                     .font(.system(.caption, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(.secondary)
             }
         }
-        .foregroundStyle(.white)
         .padding(.horizontal, 18)
         .padding(.vertical, 12)
-        .overlay(alignment: .bottom) { Divider().opacity(0.4) }
+        .overlay(alignment: .bottom) { Divider() }
     }
 
     /// Opens the window in front, or closes it when it's already in front.
@@ -91,7 +92,6 @@ struct MissionControl: View {
             window.title = title
             window.titlebarAppearsTransparent = true
             window.isReleasedWhenClosed = false
-            window.appearance = NSAppearance(named: .darkAqua)
             window.contentView = NSHostingView(rootView: MissionControl(room: room))
             window.setFrameAutosaveName("LairMissionControl")
             if !window.setFrameUsingName("LairMissionControl") { window.center() }
@@ -101,6 +101,35 @@ struct MissionControl: View {
         NSApp.activate()
         window.orderFrontRegardless()
         window.makeKeyAndOrderFront(nil)
+    }
+}
+
+/// A round button of the control layer: Liquid Glass where the system has it, a flat disc before.
+private struct RoundButton: View {
+    let symbol: String
+    let size: CGFloat
+    let weight: Font.Weight
+    let fill: Color
+    let ink: Color
+    let action: () -> Void
+
+    var body: some View {
+        if #available(macOS 26, *) {
+            Button(action: action) { icon }
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.circle)
+                .tint(fill)
+        } else {
+            Button(action: action) { icon.background(fill, in: Circle()) }
+                .buttonStyle(.plain)
+        }
+    }
+
+    private var icon: some View {
+        Image(systemName: symbol)
+            .font(.system(size: size * 0.42, weight: weight))
+            .foregroundStyle(ink)
+            .frame(width: size, height: size)
     }
 }
 
@@ -118,6 +147,7 @@ private struct StreamItem: Identifiable {
 private struct AgentColumn: View {
     let call: Call
     let room: Room
+    @Environment(\.colorSchemeContrast) private var contrast
     @State private var draft = ""
 
     var body: some View {
@@ -132,7 +162,7 @@ private struct AgentColumn: View {
                         Text(call.guest ? "Nothing yet. \(call.agent.name) talks to you when it needs you."
                                         : "Nothing yet. Talk or type to \(call.agent.name).")
                             .font(.system(.callout, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.4))
+                            .foregroundStyle(contrast == .increased ? .secondary : .tertiary)
                             .padding(.top, 30)
                             .frame(maxWidth: .infinity)
                     }
@@ -147,22 +177,22 @@ private struct AgentColumn: View {
             }
             .defaultScrollAnchor(.bottom)
             if let request = call.pendingApproval {
-                ApprovalCard(agent: call.agent.name, request: request, tint: tint, shortcuts: false) {
+                ApprovalCard(agent: call.agent.name, request: request, tint: LairColors.attention, shortcuts: false) {
                     room.answer(call, decision: $0)
                 }
                 .padding([.horizontal, .top], 10)
             } else if let question = call.questionText {
                 QuestionCard(agent: call.agent.name, question: question, choices: call.questionChoices, shortcuts: false,
                              since: call.questionSince,
-                             deadline: call.questionDeadline, tint: tint,
+                             deadline: call.questionDeadline, tint: LairColors.attention,
                              answer: { room.answerQuestion(of: call, with: $0) }, skip: { room.skipQuestion(of: call) })
                     .padding([.horizontal, .top], 10)
             }
             if !call.guest { composer(tint: tint) }
         }
-        .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .strokeBorder(focused ? tint.opacity(0.7) : .white.opacity(0.08), lineWidth: focused ? 1.5 : 1))
+            .strokeBorder(focused ? tint.opacity(0.7) : .primary.opacity(contrast == .increased ? 0.45 : 0.1), lineWidth: focused ? 1.5 : 1))
         .shadow(color: focused ? tint.opacity(0.25) : .clear, radius: 18)
         .contentShape(Rectangle())
         .onTapGesture { room.focus(call) }
@@ -189,19 +219,23 @@ private struct AgentColumn: View {
 
     private func header(tint: Color) -> some View {
         HStack(spacing: 12) {
-            Orb(color: tint, state: call.state, meter: nil)
-                .frame(width: 34, height: 34)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(call.agent.name).font(.system(.headline, design: .rounded, weight: .semibold))
-                if call.guest {
-                    GuestBadge(folder: call.folder)
-                } else {
-                    Text([call.details, stateText].compactMap { $0 }.joined(separator: " · "))
-                        .font(.system(.caption, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.55))
-                        .lineLimit(1)
+            HStack(spacing: 12) {
+                Orb(color: tint, state: call.state, meter: nil)
+                    .frame(width: 34, height: 34)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(call.agent.name).font(.system(.headline, design: .rounded, weight: .semibold))
+                    if call.guest {
+                        GuestBadge(folder: call.folder)
+                    } else {
+                        Text([call.details, stateText].compactMap { $0 }.joined(separator: " · "))
+                            .font(.system(.caption, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(call.guest ? call.agent.name : "\(call.agent.name), \(stateText)")
             Spacer()
             if call.questionText != nil {
                 Label("Asks you", systemImage: "questionmark.bubble.fill")
@@ -216,29 +250,21 @@ private struct AgentColumn: View {
                 Button { room.toggle(call) } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                         .frame(width: 28, height: 28)
-                        .background(.white.opacity(0.12), in: Circle())
+                        .background(.primary.opacity(0.1), in: Circle())
                 }
                 .buttonStyle(.plain)
                 .help("Dismiss \(call.agent.name); it comes back when it next talks to you")
                 .accessibilityLabel("Dismiss \(call.agent.name)")
             } else {
-                Button { room.toggle(call) } label: {
-                    Image(systemName: call.inCall ? "phone.down.fill" : "phone.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 28, height: 28)
-                        .background(call.inCall ? LairColors.hangUp : LairColors.call,
-                                    in: Circle())
-                }
-                .buttonStyle(.plain)
+                RoundButton(symbol: call.inCall ? "phone.down.fill" : "phone.fill", size: 28, weight: .semibold,
+                            fill: call.inCall ? LairColors.hangUp : LairColors.call, ink: .white) { room.toggle(call) }
                 .disabled(room.readiness != .ready)
                 .help(call.inCall ? "Hang up" : "Call \(call.agent.name)")
                 .accessibilityLabel(call.inCall ? "Hang up \(call.agent.name)" : "Call \(call.agent.name)")
             }
         }
-        .foregroundStyle(.white)
         .padding(12)
     }
 
@@ -253,20 +279,14 @@ private struct AgentColumn: View {
                 .lineLimit(1...5)
                 .font(.system(.body, design: .rounded))
                 .onSubmit(send)
-            Button(action: send) {
-                Image(systemName: "arrow.up")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(.black)
-                    .frame(width: 26, height: 26)
-                    .background(draft.isEmpty ? .white.opacity(0.3) : tint, in: Circle())
-            }
-            .buttonStyle(.plain)
+            RoundButton(symbol: "arrow.up", size: 26, weight: .bold,
+                        fill: draft.isEmpty ? .primary.opacity(0.25) : tint, ink: .black, action: send)
             .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .keyboardShortcut(.return, modifiers: .command)
             .accessibilityLabel("Send to \(call.agent.name)")
         }
         .padding(10)
-        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .padding(10)
     }
 
@@ -290,14 +310,13 @@ private struct EntryView: View {
                 .textSelection(.enabled)
                 .font(.system(.body, design: .rounded))
                 .padding(.horizontal, 12).padding(.vertical, 8)
-                .background(.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .padding(.leading, 40)
         case .agent(let text):
             Text(Self.reading(text))
                 .textSelection(.enabled)
                 .font(.system(.body))
-                .foregroundStyle(.white.opacity(0.92))
                 .fixedSize(horizontal: false, vertical: true)
         case .thinking(let text):
             ThinkingBlock(text: text)
@@ -306,7 +325,7 @@ private struct EntryView: View {
         case .note(let text):
             Label(text, systemImage: "info.circle")
                 .font(.system(.caption, design: .rounded))
-                .foregroundStyle(.white.opacity(0.55))
+                .foregroundStyle(.secondary)
         case .problem(let text):
             Label(text, systemImage: "exclamationmark.triangle.fill")
                 .font(.system(.caption, design: .rounded))
@@ -348,27 +367,28 @@ private struct EntryView: View {
 /// The agent's reasoning, dimmed and folded to its start until you open it.
 private struct ThinkingBlock: View {
     let text: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var open = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Button { withAnimation(.smooth(duration: 0.2)) { open.toggle() } } label: {
+            Button { withAnimation(reduceMotion ? nil : .smooth(duration: 0.2)) { open.toggle() } } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "brain").font(.caption)
                     Text("Thinking").font(.system(.caption, design: .rounded, weight: .semibold))
                     Image(systemName: open ? "chevron.up" : "chevron.down").font(.system(size: 8, weight: .bold))
                 }
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
             Text(text)
                 .font(.system(.callout, design: .serif).italic())
-                .foregroundStyle(.white.opacity(0.48))
+                .foregroundStyle(.secondary)
                 .lineLimit(open ? nil : 2)
                 .textSelection(.enabled)
         }
         .padding(.leading, 10)
-        .overlay(alignment: .leading) { Rectangle().fill(.white.opacity(0.12)).frame(width: 2) }
+        .overlay(alignment: .leading) { Rectangle().fill(.primary.opacity(0.15)).frame(width: 2) }
     }
 }
 
@@ -379,11 +399,13 @@ private struct ToolCard: View {
     let output: String?
     let failed: Bool
     let tint: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
     @State private var open = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Button { if output?.isEmpty == false { withAnimation(.smooth(duration: 0.2)) { open.toggle() } } } label: {
+            Button { if output?.isEmpty == false { withAnimation(reduceMotion ? nil : .smooth(duration: 0.2)) { open.toggle() } } } label: {
                 HStack(spacing: 8) {
                     Image(systemName: symbol)
                         .font(.system(size: 11, weight: .semibold))
@@ -392,7 +414,7 @@ private struct ToolCard: View {
                     Text(name).font(.system(.caption, design: .monospaced, weight: .semibold))
                     Text(input)
                         .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.65))
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Spacer(minLength: 6)
@@ -403,8 +425,9 @@ private struct ToolCard: View {
             }
             .buttonStyle(.plain)
             .help(input)
+            .accessibilityLabel("\(name) \(input), \(result)")
             if open, let output, !output.isEmpty {
-                Divider().opacity(0.3)
+                Divider()
                 ScrollView {
                     Output(text: output)
                         .padding(10)
@@ -413,10 +436,9 @@ private struct ToolCard: View {
                 .frame(maxHeight: 240)
             }
         }
-        .foregroundStyle(.white.opacity(0.9))
-        .background(.black.opacity(0.28), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .strokeBorder(failed ? LairColors.problem.opacity(0.5) : .white.opacity(0.08)))
+            .strokeBorder(failed ? LairColors.problem.opacity(0.5) : .primary.opacity(contrast == .increased ? 0.5 : 0.12)))
     }
 
     @ViewBuilder private var status: some View {
@@ -426,8 +448,12 @@ private struct ToolCard: View {
             Image(systemName: "xmark.circle.fill").foregroundStyle(LairColors.problem)
         } else {
             Image(systemName: open ? "chevron.up" : "checkmark.circle.fill")
-                .foregroundStyle(open ? .white.opacity(0.5) : .green.opacity(0.85))
+                .foregroundStyle(open ? .secondary : LairColors.call)
         }
+    }
+
+    private var result: String {
+        output == nil ? "running" : failed ? "failed" : "done"
     }
 
     private var symbol: String {
@@ -462,10 +488,10 @@ private struct Output: View {
     }
 
     private func color(for line: Substring) -> Color {
-        if line.hasPrefix("+") && !line.hasPrefix("+++") { return Color(red: 0.55, green: 0.9, blue: 0.6) }
-        if line.hasPrefix("-") && !line.hasPrefix("---") { return Color(red: 1, green: 0.55, blue: 0.55) }
-        if line.hasPrefix("@@") { return Color(red: 0.55, green: 0.7, blue: 1) }
-        return .white.opacity(0.78)
+        if line.hasPrefix("+") && !line.hasPrefix("+++") { return .adaptive(light: (0.05, 0.4, 0.15), dark: (0.55, 0.9, 0.6)) }
+        if line.hasPrefix("-") && !line.hasPrefix("---") { return .adaptive(light: (0.7, 0.1, 0.1), dark: (1, 0.55, 0.55)) }
+        if line.hasPrefix("@@") { return .adaptive(light: (0.1, 0.3, 0.75), dark: (0.55, 0.7, 1)) }
+        return .primary
     }
 
     private func background(for line: Substring) -> Color {
@@ -478,24 +504,35 @@ private struct Output: View {
 /// A turn's timings, tokens and cost, folded away until you open them.
 private struct Details: View {
     let facts: [String]
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var open = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Button { withAnimation(.smooth(duration: 0.2)) { open.toggle() } } label: {
+            Button { withAnimation(reduceMotion ? nil : .smooth(duration: 0.2)) { open.toggle() } } label: {
                 HStack(spacing: 4) {
                     Text("Details").font(.system(.caption2, design: .rounded, weight: .semibold))
                     Image(systemName: open ? "chevron.up" : "chevron.down").font(.system(size: 8, weight: .bold))
                 }
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
             if open {
                 Text(facts.joined(separator: " · "))
                     .font(.system(.caption2, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.55))
+                    .foregroundStyle(.secondary)
                     .textSelection(.enabled)
             }
         }
+    }
+}
+
+private extension Color {
+    /// One color per appearance, for text that has to read on both.
+    static func adaptive(light: (Double, Double, Double), dark: (Double, Double, Double)) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let c = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+            return NSColor(red: c.0, green: c.1, blue: c.2, alpha: 1)
+        })
     }
 }
