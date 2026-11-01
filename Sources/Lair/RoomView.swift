@@ -9,6 +9,7 @@ struct RoomView: View {
     /// The config file has an error; Lair keeps running with the last good version until it's fixed.
     var configProblem: String?
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let call = room.focused
@@ -154,10 +155,12 @@ struct RoomView: View {
     }
 
     private func stage(_ call: Call, tint: Color) -> some View {
-        VStack(spacing: 12) {
+        // Once there are words, the orb and name shrink to leave the room to the transcript.
+        let compact = !call.lines.isEmpty
+        return VStack(spacing: compact ? 6 : 12) {
             Orb(color: tint, state: call.state, meter: room.meter(for: call))
-                .frame(width: 96, height: 96)
-                .frame(height: 124)
+                .frame(width: compact ? 56 : 96, height: compact ? 56 : 96)
+                .frame(height: compact ? 64 : 124)
                 .contentShape(Circle())
                 // Starts a call; hanging up stays on the red button, so a stray click can't end one.
                 .onTapGesture { if !call.inCall, !call.guest { room.summon(call) } }
@@ -195,6 +198,7 @@ struct RoomView: View {
                 status(for: call)
             }
         }
+        .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: compact)
     }
 
     /// The caption under the name, or what's in the way and how to fix it.
