@@ -72,6 +72,17 @@ struct HermesSessionTests {
             for try await _ in try HermesSession(baseURL: base, credentials: .init(apiKey: "bad")).ask("Hi") {}
         }
     }
+
+    /// A proxy's login redirect must fail the turn, not quietly answer with the login page.
+    @Test func failsOnARedirectInsteadOfFollowingIt() async throws {
+        StubServer.replies = ["completions": (302, "https://login.test/"), "": (200, "<html>Sign in</html>")]
+        URLProtocol.registerClass(StubServer.self)
+        defer { URLProtocol.unregisterClass(StubServer.self) }
+
+        await #expect(throws: HermesSession.Failure.status(302)) {
+            for try await _ in try HermesSession(baseURL: base, credentials: .init(apiKey: "k")).ask("Hi") {}
+        }
+    }
 }
 
 extension HermesSessionTests {
@@ -108,14 +119,49 @@ extension HermesSessionTests {
         #expect(await news.next() == nil)
     }
 
-    @Test func readsOnlyBackgroundResultsFromTheHistory() {
+    @Test(.timeLimit(.minutes(1))) func saysOnceWhenItCantCheckOnBackgroundWorkThenRecovers() async throws {
+        StubServer.replies = [
+            "completions": (200, """
+                event: hermes.tool.progress
+                data: {"tool": "delegate_task", "status": "running"}
+
+                data: [DONE]
+
+                """),
+            "messages": (302, "https://login.test/"),
+            "": (200, "<html>Sign in</html>"),
+        ]
+        URLProtocol.registerClass(StubServer.self)
+        defer { URLProtocol.unregisterClass(StubServer.self) }
+
+        let session = HermesSession(baseURL: base, credentials: .init(apiKey: "k"), poll: .milliseconds(20))
+        for try await _ in try session.ask("Check the uptime in the background") {}
+        var problems = session.problems.makeAsyncIterator()
+        #expect(await problems.next()?.contains("302") == true)
+
+        StubServer.replies["messages"] = (200, """
+            {"data": [{"id": 3, "role": "user", "content": "[ASYNC DELEGATION BATCH COMPLETE — d] done"}]}
+            """)
+        var news = session.news.makeAsyncIterator()
+        #expect(await news.next()?.hasSuffix("done") == true)
+        session.stop()
+        // One failure streak, one problem: the polls that failed before recovering said nothing more.
+        #expect(await problems.next() == nil)
+    }
+
+    @Test func readsOnlyBackgroundResultsFromTheHistory() throws {
         let page = Data(#"{"data": [{"id": "a", "role": "user", "content": "hello"}, {"id": 7, "role": "user", "content": "[ASYNC DELEGATION BATCH COMPLETE — d]\nok"}, {"id": 8, "role": "tool", "content": "[ASYNC DELEGATION BATCH COMPLETE"}]}"#.utf8)
-        let results = HermesSession.delegationResults(in: page)
+        let results = try HermesSession.delegationResults(in: page)
         #expect(results.map(\.id) == ["7"])
+    }
+
+    @Test func aHistoryThatIsNotHermesJSONIsAnError() {
+        #expect(throws: HermesSession.Failure.self) { try HermesSession.delegationResults(in: Data("<html>Sign in</html>".utf8)) }
     }
 }
 
 /// Answers requests to `hermes.test` with a canned status and body, chosen by the last part of the path.
+/// A 3xx redirects to the URL in its body, as a proxy's login page would.
 final class StubServer: URLProtocol {
     nonisolated(unsafe) static var replies: [String: (status: Int, body: String)] = [:]
 
@@ -123,10 +169,19 @@ final class StubServer: URLProtocol {
         Self.replies[request.url?.lastPathComponent ?? ""] ?? (404, "")
     }
 
-    override class func canInit(with request: URLRequest) -> Bool { request.url?.host == "hermes.test" }
+    override class func canInit(with request: URLRequest) -> Bool { ["hermes.test", "login.test"].contains(request.url?.host) }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
+        if (300..<400).contains(reply.status), let target = URL(string: reply.body) {
+            let response = HTTPURLResponse(url: request.url!, statusCode: reply.status, httpVersion: "HTTP/1.1",
+                                           headerFields: ["Location": target.absoluteString])!
+            client?.urlProtocol(self, wasRedirectedTo: URLRequest(url: target), redirectResponse: response)
+            // A refused redirect ends here, with the 3xx as the response; a followed one loads the target instead.
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocolDidFinishLoading(self)
+            return
+        }
         let response = HTTPURLResponse(url: request.url!, statusCode: reply.status, httpVersion: "HTTP/1.1",
                                        headerFields: ["Content-Type": "text/event-stream"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)

@@ -27,7 +27,11 @@ import os
     }
 
     var agent: AgentConfig
-    var state = State.offline
+    var state = State.offline {
+        didSet { if state == .ready, oldValue != .ready { becameReady?() } }
+    }
+    /// Set by the room, so news that waited for the call to be free is heard however it got free.
+    @ObservationIgnored var becameReady: (@MainActor () -> Void)?
     var lines: [Line] = []
     var pendingApproval: ApprovalRequest?
     /// Finished or needs you while you were talking to someone else.
@@ -48,7 +52,7 @@ import os
     @ObservationIgnored var turn: Task<Void, Never>?
     /// Identifies the running turn, so an interrupted one can't reset the state of the next.
     @ObservationIgnored var turnID: UUID?
-    /// Background work finished while a turn was running; heard once that turn ends.
+    /// Background work finished while the call was busy; heard as soon as it's ready.
     @ObservationIgnored var newsWaiting = false
     /// What other agents answered for this one while you talked to them; sent before its next turn.
     @ObservationIgnored var context: [String] = []
@@ -260,6 +264,17 @@ import os
             }
             Task { for await details in session.details { call.details = details } }
             Task { for await _ in session.news { hearNews(from: call) } }
+            // After the state change that freed the call has run its course.
+            call.becameReady = { [weak self, weak call] in
+                Task { @MainActor in
+                    if let self, let call, call.newsWaiting { self.hearNews(from: call) }
+                }
+            }
+            Task {
+                for await problem in session.problems {
+                    report(in: call, .init(role: .problem, text: "\(call.agent.name): \(problem)"))
+                }
+            }
             call.lines = []
             call.state = .ready
         } catch let error as SetupError {
