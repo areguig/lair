@@ -46,6 +46,8 @@ The first launch downloads the speech models (Parakeet, Kokoro) through [FluidAu
 
 Download `Lair-vX.Y.Z.dmg` from [Releases](https://github.com/areguig/lair/releases) and drag Lair to Applications. It's signed with a Developer ID and notarized by Apple, so it opens like any other app.
 
+From 0.2.1 on, Lair updates itself: when a new version is out, an **Update** button shows in the panel.
+
 ## Build
 
 ```sh

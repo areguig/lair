@@ -12,6 +12,7 @@ let package = Package(
         .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "3.1.0"),
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.9.0"),
         .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.28.0"),
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.10.1"),
     ],
     targets: [
         .target(name: "LairCore"),
@@ -23,7 +24,10 @@ let package = Package(
         ]),
         .executableTarget(
             name: "Lair",
-            dependencies: ["LairCore", "LairACP", "LairVoice", "LairMCP", "KeyboardShortcuts"]
+            dependencies: ["LairCore", "LairACP", "LairVoice", "LairMCP", "KeyboardShortcuts",
+                           .product(name: "Sparkle", package: "Sparkle")],
+            // Sparkle.framework sits in Contents/Frameworks of the app (see scripts/build-app.sh).
+            linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@loader_path/../Frameworks"])]
         ),
         .testTarget(name: "LairCoreTests", dependencies: ["LairCore"]),
         .testTarget(name: "LairACPTests", dependencies: ["LairACP", "LairCore"]),

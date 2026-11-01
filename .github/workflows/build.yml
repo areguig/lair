@@ -57,11 +57,20 @@ jobs:
         with:
           name: Lair
           path: ${{ runner.temp }}/Lair.dmg
+      # The app's update feed: releases/latest/download/appcast.xml, signed with Sparkle's EdDSA key.
+      - name: Sign the update feed
+        if: github.ref_type == 'tag'
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          mkdir "$RUNNER_TEMP/release"
+          cp "$RUNNER_TEMP/Lair.dmg" "$RUNNER_TEMP/release/Lair-$GITHUB_REF_NAME.dmg"
+          printf '%s' "$SPARKLE_PRIVATE_KEY" | .build/artifacts/sparkle/Sparkle/bin/generate_appcast --ed-key-file - \
+            --download-url-prefix "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/" "$RUNNER_TEMP/release"
       - name: Publish the release
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp "$RUNNER_TEMP/Lair.dmg" "$RUNNER_TEMP/Lair-$GITHUB_REF_NAME.dmg"
-          gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP/Lair-$GITHUB_REF_NAME.dmg" \
-            --title "Lair $GITHUB_REF_NAME" --generate-notes --prerelease
+          gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP/release/Lair-$GITHUB_REF_NAME.dmg" "$RUNNER_TEMP/release/appcast.xml" \
+            --title "Lair $GITHUB_REF_NAME" --generate-notes --latest
