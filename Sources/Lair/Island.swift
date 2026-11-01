@@ -289,7 +289,7 @@ struct IslandView: View {
                 Button("Deny") { room.answer(call, decision: .deny) }
                     .buttonStyle(IslandButtonStyle(fill: .white.opacity(0.12)))
                 if request?.canAlwaysAllow == true {
-                    Button("Always") { room.answer(call, decision: .allowAlways) }
+                    Button("Always allow") { room.answer(call, decision: .allowAlways) }
                         .buttonStyle(IslandButtonStyle(fill: tint.opacity(0.3)))
                 }
                 Spacer()
@@ -306,7 +306,7 @@ struct IslandView: View {
             Orb(color: tint, state: call.state, meter: room.meter(for: call)).frame(width: 22, height: 22)
             Text(title).font(.system(.subheadline, design: .rounded, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
             if let folder = call.folder, call.guest {
-                Text(folder.lastPathComponent).font(.system(.caption, design: .monospaced)).foregroundStyle(.white.opacity(0.45))
+                Text(folder.lastPathComponent).font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 6)
             trailing()

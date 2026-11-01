@@ -308,7 +308,9 @@ struct MenuBarIcon: View {
     /// The island under a strip of menu bar, in one of its states: resting, live, listening, asking, approving, or any
     /// of them followed by "-flat" for a screen without a notch.
     static func writeIsland(to url: URL, variant: String) {
-        let room = Room(config: LairConfig(agents: Array(Demo.agents.prefix(2))))
+        var sage = Demo.agents[2]
+        sage.directory = "/Users/me/dev/landing-page"
+        let room = Room(config: LairConfig(agents: Array(Demo.agents.prefix(2)) + [sage]))
         room.readiness = .ready
         let claude = room.calls[0]
         claude.state = .ready
