@@ -13,6 +13,7 @@ struct MissionControl: View {
     @MainActor private static var window: NSWindow?
 
     let room: Room
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     /// Your agents only: a session that isn't one of them lives in the panel while it's connected.
     private var agents: [Call] { room.calls.filter { !$0.stranger } }
@@ -43,8 +44,10 @@ struct MissionControl: View {
         .background(
             ZStack {
                 Color(nsColor: .windowBackgroundColor)
-                RadialGradient(colors: [Color(hex: room.focused?.agent.color ?? "#8A8F98").opacity(0.12), .clear],
-                               center: .top, startRadius: 0, endRadius: 700)
+                if !reduceTransparency {
+                    RadialGradient(colors: [Color(hex: room.focused?.agent.color ?? "#8A8F98").opacity(0.12), .clear],
+                                   center: .top, startRadius: 0, endRadius: 700)
+                }
             }
             .ignoresSafeArea())
     }
@@ -144,6 +147,7 @@ private struct StreamItem: Identifiable {
 private struct AgentColumn: View {
     let call: Call
     let room: Room
+    @Environment(\.colorSchemeContrast) private var contrast
     @State private var draft = ""
 
     var body: some View {
@@ -158,7 +162,7 @@ private struct AgentColumn: View {
                         Text(call.guest ? "Nothing yet. \(call.agent.name) talks to you when it needs you."
                                         : "Nothing yet. Talk or type to \(call.agent.name).")
                             .font(.system(.callout, design: .rounded))
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(contrast == .increased ? .secondary : .tertiary)
                             .padding(.top, 30)
                             .frame(maxWidth: .infinity)
                     }
@@ -188,7 +192,7 @@ private struct AgentColumn: View {
         }
         .background(.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .strokeBorder(focused ? tint.opacity(0.7) : .primary.opacity(0.1), lineWidth: focused ? 1.5 : 1))
+            .strokeBorder(focused ? tint.opacity(0.7) : .primary.opacity(contrast == .increased ? 0.45 : 0.1), lineWidth: focused ? 1.5 : 1))
         .shadow(color: focused ? tint.opacity(0.25) : .clear, radius: 18)
         .contentShape(Rectangle())
         .onTapGesture { room.focus(call) }
@@ -215,19 +219,23 @@ private struct AgentColumn: View {
 
     private func header(tint: Color) -> some View {
         HStack(spacing: 12) {
-            Orb(color: tint, state: call.state, meter: nil)
-                .frame(width: 34, height: 34)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(call.agent.name).font(.system(.headline, design: .rounded, weight: .semibold))
-                if call.guest {
-                    GuestBadge(folder: call.folder)
-                } else {
-                    Text([call.details, stateText].compactMap { $0 }.joined(separator: " · "))
-                        .font(.system(.caption, design: .rounded))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+            HStack(spacing: 12) {
+                Orb(color: tint, state: call.state, meter: nil)
+                    .frame(width: 34, height: 34)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(call.agent.name).font(.system(.headline, design: .rounded, weight: .semibold))
+                    if call.guest {
+                        GuestBadge(folder: call.folder)
+                    } else {
+                        Text([call.details, stateText].compactMap { $0 }.joined(separator: " · "))
+                            .font(.system(.caption, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(call.guest ? call.agent.name : "\(call.agent.name), \(stateText)")
             Spacer()
             if call.questionText != nil {
                 Label("Asks you", systemImage: "questionmark.bubble.fill")
@@ -359,11 +367,12 @@ private struct EntryView: View {
 /// The agent's reasoning, dimmed and folded to its start until you open it.
 private struct ThinkingBlock: View {
     let text: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var open = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Button { withAnimation(.smooth(duration: 0.2)) { open.toggle() } } label: {
+            Button { withAnimation(reduceMotion ? nil : .smooth(duration: 0.2)) { open.toggle() } } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "brain").font(.caption)
                     Text("Thinking").font(.system(.caption, design: .rounded, weight: .semibold))
@@ -390,11 +399,13 @@ private struct ToolCard: View {
     let output: String?
     let failed: Bool
     let tint: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
     @State private var open = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Button { if output?.isEmpty == false { withAnimation(.smooth(duration: 0.2)) { open.toggle() } } } label: {
+            Button { if output?.isEmpty == false { withAnimation(reduceMotion ? nil : .smooth(duration: 0.2)) { open.toggle() } } } label: {
                 HStack(spacing: 8) {
                     Image(systemName: symbol)
                         .font(.system(size: 11, weight: .semibold))
@@ -414,6 +425,7 @@ private struct ToolCard: View {
             }
             .buttonStyle(.plain)
             .help(input)
+            .accessibilityLabel("\(name) \(input), \(result)")
             if open, let output, !output.isEmpty {
                 Divider()
                 ScrollView {
@@ -426,7 +438,7 @@ private struct ToolCard: View {
         }
         .background(.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .strokeBorder(failed ? LairColors.problem.opacity(0.5) : .primary.opacity(0.12)))
+            .strokeBorder(failed ? LairColors.problem.opacity(0.5) : .primary.opacity(contrast == .increased ? 0.5 : 0.12)))
     }
 
     @ViewBuilder private var status: some View {
@@ -438,6 +450,10 @@ private struct ToolCard: View {
             Image(systemName: open ? "chevron.up" : "checkmark.circle.fill")
                 .foregroundStyle(open ? .secondary : LairColors.call)
         }
+    }
+
+    private var result: String {
+        output == nil ? "running" : failed ? "failed" : "done"
     }
 
     private var symbol: String {
@@ -488,11 +504,12 @@ private struct Output: View {
 /// A turn's timings, tokens and cost, folded away until you open them.
 private struct Details: View {
     let facts: [String]
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var open = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Button { withAnimation(.smooth(duration: 0.2)) { open.toggle() } } label: {
+            Button { withAnimation(reduceMotion ? nil : .smooth(duration: 0.2)) { open.toggle() } } label: {
                 HStack(spacing: 4) {
                     Text("Details").font(.system(.caption2, design: .rounded, weight: .semibold))
                     Image(systemName: open ? "chevron.up" : "chevron.down").font(.system(size: 8, weight: .bold))
