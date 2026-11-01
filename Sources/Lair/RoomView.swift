@@ -237,7 +237,7 @@ struct RoomView: View {
                     .accessibilityLabel("Dismiss \(call.agent.name)")
             } else {
                 RoundButton(symbol: call.inCall ? "phone.down.fill" : "phone.fill",
-                            fill: call.inCall ? Color(red: 0.92, green: 0.3, blue: 0.3) : Color(red: 0.25, green: 0.75, blue: 0.45),
+                            fill: call.inCall ? LairColors.hangUp : LairColors.call,
                             size: 42) { room.toggle(call) }
                     .disabled(room.readiness != .ready)
                     .help(call.inCall ? "Hang up" : "Call \(call.agent.name)")
@@ -373,14 +373,7 @@ struct RoomView: View {
     }
 
     private func spoken(_ state: Call.State) -> String {
-        switch state {
-        case .offline: "not in a call"
-        case .ready: "in a call"
-        case .listening: "listening"
-        case .thinking: "thinking"
-        case .speaking: "speaking"
-        case .waiting: "waiting for you"
-        }
+        state.label.lowercased()
     }
 }
 
@@ -433,11 +426,11 @@ private struct RailAvatar: View {
                 .font(.system(size: 8, weight: .heavy))
                 .foregroundStyle(.black)
                 .frame(width: 16, height: 16)
-                .background(.orange, in: Circle())
+                .background(LairColors.attention, in: Circle())
                 .overlay(Circle().strokeBorder(.black.opacity(0.4), lineWidth: 1))
                 .transition(.scale.combined(with: .opacity))
         } else if call.unread && !focused {
-            Circle().fill(.white).frame(width: 9, height: 9).padding(3)
+            Circle().fill(LairColors.unread).frame(width: 9, height: 9).padding(3)
         }
     }
 
@@ -491,21 +484,21 @@ private struct ElsewhereBar: View {
                 if more > 0 {
                     Text("+\(more)")
                         .font(.system(.caption2, design: .rounded, weight: .bold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(LairColors.attention)
                         .padding(.horizontal, 5).padding(.vertical, 1)
-                        .background(.orange.opacity(0.18), in: Capsule())
+                        .background(LairColors.attention.opacity(0.18), in: Capsule())
                         .help("\(more) more waiting on you")
                 }
                 Text("Answer")
                     .font(.system(.caption, design: .rounded, weight: .semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(LairColors.attention)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(LairColors.attention)
             }
             .padding(.horizontal, 12).padding(.vertical, 8)
-            .background(.orange.opacity(0.13), in: Capsule())
-            .overlay(Capsule().strokeBorder(.orange.opacity(0.35), lineWidth: 1))
+            .background(LairColors.attention.opacity(0.13), in: Capsule())
+            .overlay(Capsule().strokeBorder(LairColors.attention.opacity(0.35), lineWidth: 1))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(call.questionText != nil ? "\(call.agent.name) asks you something; answer" : "\(call.agent.name) needs your OK; answer")
@@ -572,7 +565,7 @@ private struct Problem<Actions: View>: View {
         VStack(spacing: 8) {
             Label(text, systemImage: "exclamationmark.triangle.fill")
                 .font(.system(.subheadline, design: .rounded))
-                .foregroundStyle(.orange)
+                .foregroundStyle(LairColors.problem)
                 .multilineTextAlignment(.center)
             HStack(spacing: 8) { actions }
                 .buttonStyle(PillButtonStyle())
@@ -588,7 +581,7 @@ private struct Banner: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(LairColors.problem)
             Text(text)
                 .font(.system(.caption, design: .rounded))
                 .foregroundStyle(.white.opacity(0.85))
@@ -597,7 +590,7 @@ private struct Banner: View {
             Button(action, action: perform).buttonStyle(PillButtonStyle())
         }
         .padding(10)
-        .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(LairColors.problem.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 
@@ -697,7 +690,7 @@ private struct Transcript: View {
             VStack(alignment: .leading, spacing: 6) {
                 Label(line.text, systemImage: "exclamationmark.triangle.fill")
                     .font(.system(.caption, design: .rounded))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(LairColors.problem)
                     .textSelection(.enabled)
                 if let action = line.action {
                     Button(action.title) { perform(action) }.buttonStyle(PillButtonStyle())

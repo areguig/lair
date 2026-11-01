@@ -152,10 +152,10 @@ struct MenuBarIcon: View {
             return ("hand.raised.circle.fill", "\(waiting.agent.name) needs your OK")
         }
         if let active = calls.first(where: { $0.state == .listening || $0.state == .speaking }) {
-            return ("waveform.circle.fill", "\(active.agent.name) is \(active.state == .listening ? "listening" : "speaking")")
+            return ("waveform.circle.fill", "\(active.agent.name) is \(active.state.label.lowercased())")
         }
         if let working = calls.first(where: { $0.state == .thinking }) {
-            return ("ellipsis.circle.fill", "\(working.agent.name) is working")
+            return ("ellipsis.circle.fill", "\(working.agent.name) is \(CallState.thinking.label.lowercased())")
         }
         if let news = calls.first(where: \.unread) { return ("circle.circle.fill", "\(news.agent.name) has news") }
         if calls.contains(where: \.inCall) { return ("circle.circle.fill", "in a call") }

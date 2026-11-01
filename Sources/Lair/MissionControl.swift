@@ -59,9 +59,9 @@ struct MissionControl: View {
                 Label(waiting.count == 1 ? "\(waiting[0].agent.name) needs you" : "\(waiting.count) need you",
                       systemImage: "exclamationmark.bubble.fill")
                     .font(.system(.caption, design: .rounded, weight: .semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(LairColors.attention)
                     .padding(.horizontal, 10).padding(.vertical, 4)
-                    .background(.orange.opacity(0.14), in: Capsule())
+                    .background(LairColors.attention.opacity(0.14), in: Capsule())
                     .onTapGesture { room.focus(waiting[0]) }
                     .help("Brings the first one into focus")
             }
@@ -206,11 +206,11 @@ private struct AgentColumn: View {
             if call.questionText != nil {
                 Label("Asks you", systemImage: "questionmark.bubble.fill")
                     .font(.system(.caption, design: .rounded, weight: .semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(LairColors.attention)
             } else if call.state == .waiting {
                 Label("Needs your OK", systemImage: "hand.raised.fill")
                     .font(.system(.caption, design: .rounded, weight: .semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(LairColors.attention)
             }
             if call.guest {
                 Button { room.toggle(call) } label: {
@@ -229,7 +229,7 @@ private struct AgentColumn: View {
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.white)
                         .frame(width: 28, height: 28)
-                        .background(call.inCall ? Color(red: 0.92, green: 0.3, blue: 0.3) : Color(red: 0.25, green: 0.75, blue: 0.45),
+                        .background(call.inCall ? LairColors.hangUp : LairColors.call,
                                     in: Circle())
                 }
                 .buttonStyle(.plain)
@@ -243,15 +243,7 @@ private struct AgentColumn: View {
     }
 
     private var stateText: String {
-        switch call.state {
-        case .offline: "not in a call"
-        case .ready: "in a call"
-        case .listening where room.answering?.callID == call.id: "listening for your reply"
-        case .listening: "listening"
-        case .thinking: "working"
-        case .speaking: "speaking"
-        case .waiting: "waiting for you"
-        }
+        call.state == .listening && room.answering?.callID == call.id ? "Listening for your reply" : call.state.label
     }
 
     private func composer(tint: Color) -> some View {
@@ -318,7 +310,7 @@ private struct EntryView: View {
         case .problem(let text):
             Label(text, systemImage: "exclamationmark.triangle.fill")
                 .font(.system(.caption, design: .rounded))
-                .foregroundStyle(.orange)
+                .foregroundStyle(LairColors.problem)
                 .textSelection(.enabled)
         case .approval, .usage, .timing:
             EmptyView()
@@ -424,14 +416,14 @@ private struct ToolCard: View {
         .foregroundStyle(.white.opacity(0.9))
         .background(.black.opacity(0.28), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .strokeBorder(failed ? .red.opacity(0.5) : .white.opacity(0.08)))
+            .strokeBorder(failed ? LairColors.problem.opacity(0.5) : .white.opacity(0.08)))
     }
 
     @ViewBuilder private var status: some View {
         if output == nil {
             ProgressView().controlSize(.mini)
         } else if failed {
-            Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
+            Image(systemName: "xmark.circle.fill").foregroundStyle(LairColors.problem)
         } else {
             Image(systemName: open ? "chevron.up" : "checkmark.circle.fill")
                 .foregroundStyle(open ? .white.opacity(0.5) : .green.opacity(0.85))
