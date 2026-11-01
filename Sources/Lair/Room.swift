@@ -722,6 +722,7 @@ import os
                 switch reply {
                 case .activity(let activity):
                     call.record(activity)
+                    logTool(activity, in: call)
                 case .text(let delta):
                     if firstToken == nil { firstToken = clock.now - start }
                     if !answered, let opening {
@@ -785,6 +786,15 @@ import os
             } else {
                 report(in: call, .init(role: .problem, text: error.localizedDescription))
             }
+        }
+    }
+
+    /// A tool's start and end, without its name: with ACP the name is often the command itself.
+    private func logTool(_ activity: Activity, in call: Call) {
+        switch activity {
+        case .toolStarted: Self.log.notice("\(call.id, privacy: .public): tool started")
+        case .toolFinished(_, _, let failed): Self.log.notice("\(call.id, privacy: .public): tool \(failed ? "failed" : "finished", privacy: .public)")
+        default: break
         }
     }
 
