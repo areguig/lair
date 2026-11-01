@@ -144,7 +144,7 @@ private struct AgentColumn: View {
             }
             .defaultScrollAnchor(.bottom)
             if let request = call.pendingApproval {
-                ApprovalCard(agent: call.agent.name, request: request, tint: tint, shortcuts: false) {
+                ApprovalCard(agent: call.agent.name, request: request, tint: LairColors.attention, shortcuts: false) {
                     room.answer(call, decision: $0)
                 }
                 .padding([.horizontal, .top], 10)
