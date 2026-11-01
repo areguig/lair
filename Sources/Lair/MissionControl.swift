@@ -379,6 +379,7 @@ private struct ThinkingBlock: View {
                     Image(systemName: open ? "chevron.up" : "chevron.down").font(.system(size: 8, weight: .bold))
                 }
                 .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             Text(text)
@@ -515,6 +516,7 @@ private struct Details: View {
                     Image(systemName: open ? "chevron.up" : "chevron.down").font(.system(size: 8, weight: .bold))
                 }
                 .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             if open {

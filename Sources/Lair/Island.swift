@@ -236,6 +236,7 @@ struct IslandView: View {
         HStack(alignment: .center, spacing: 12) {
             Orb(color: tint, state: call.state, meter: room.meter(for: call))
                 .frame(width: 34, height: 34)
+                .contentShape(Circle())
                 .onTapGesture { room.toggleTalk() }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
