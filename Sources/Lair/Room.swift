@@ -889,6 +889,8 @@ import os
             return false
         }
         let samples = try await voice.speech(for: text, voice: call.agent.voice)
+        // Hung up while the sentence was being synthesized: setting `.speaking` would bring the call back.
+        guard call.inCall else { return false }
         // Focus may have moved while the sentence was being synthesized.
         guard !Task.isCancelled, call.id == focusedID else {
             call.unheard.append(sentence)
