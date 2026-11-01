@@ -104,6 +104,16 @@ struct MissionControl: View {
     }
 }
 
+private struct StreamItem: Identifiable {
+    enum Content {
+        case entry(LogEntry)
+        case details([String])
+    }
+
+    let id: UUID
+    var content: Content
+}
+
 /// One agent's lane: who it is, everything it did, and a line to type to it.
 private struct AgentColumn: View {
     let call: Call
@@ -126,8 +136,11 @@ private struct AgentColumn: View {
                             .padding(.top, 30)
                             .frame(maxWidth: .infinity)
                     }
-                    ForEach(call.entries) { entry in
-                        EntryView(entry: entry, tint: tint)
+                    ForEach(stream) { item in
+                        switch item.content {
+                        case .entry(let entry): EntryView(entry: entry, tint: tint)
+                        case .details(let facts): Details(facts: facts)
+                        }
                     }
                 }
                 .padding(14)
@@ -155,6 +168,25 @@ private struct AgentColumn: View {
         .onTapGesture { room.focus(call) }
     }
 
+    /// The approval line repeats the card while it asks, and the note of the answer says the rest afterwards.
+    /// A turn's usage and timings fold into one Details row.
+    private var stream: [StreamItem] {
+        var items: [StreamItem] = []
+        for entry in call.entries {
+            if case .approval = entry.kind { continue }
+            if let facts = EntryView.facts(of: entry) {
+                if case .details(let before) = items.last?.content {
+                    items[items.count - 1].content = .details(before + facts)
+                } else {
+                    items.append(StreamItem(id: entry.id, content: .details(facts)))
+                }
+            } else {
+                items.append(StreamItem(id: entry.id, content: .entry(entry)))
+            }
+        }
+        return items
+    }
+
     private func header(tint: Color) -> some View {
         HStack(spacing: 12) {
             Orb(color: tint, state: call.state, meter: nil)
@@ -162,10 +194,10 @@ private struct AgentColumn: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(call.agent.name).font(.system(.headline, design: .rounded, weight: .semibold))
                 if call.guest {
-                    GuestBadge(folder: call.folder, monospaced: true)
+                    GuestBadge(folder: call.folder)
                 } else {
                     Text([call.details, stateText].compactMap { $0 }.joined(separator: " · "))
-                        .font(.system(.caption, design: .monospaced))
+                        .font(.system(.caption, design: .rounded))
                         .foregroundStyle(.white.opacity(0.55))
                         .lineLimit(1)
                 }
@@ -288,19 +320,21 @@ private struct EntryView: View {
                 .font(.system(.caption, design: .rounded))
                 .foregroundStyle(.orange)
                 .textSelection(.enabled)
-        case .approval(let text):
-            Label(text, systemImage: "hand.raised.fill")
-                .font(.system(.callout, design: .rounded))
-                .foregroundStyle(.white.opacity(0.9))
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        case .approval, .usage, .timing:
+            EmptyView()
+        }
+    }
+
+    /// The numbers behind a turn, when the entry is one of them.
+    static func facts(of entry: LogEntry) -> [String]? {
+        switch entry.kind {
         case .usage(let input, let output, let cost):
-            Stats(items: ["\(Self.tokens(input)) in", "\(Self.tokens(output)) out"]
-                + (cost.map { [String(format: "$%.3f", $0)] } ?? []))
+            return ["\(tokens(input)) in", "\(tokens(output)) out"] + (cost.map { [String(format: "$%.3f", $0)] } ?? [])
         case .timing(let heard, let firstWord, let firstSound, let total):
-            Stats(items: [heard.map { "heard \(Self.time($0))" }, firstWord.map { "first word \(Self.time($0))" },
-                          firstSound.map { "first sound \(Self.time($0))" }, "turn \(Self.time(total))"].compactMap { $0 })
+            return [heard.map { "heard \(time($0))" }, firstWord.map { "first word \(time($0))" },
+                    firstSound.map { "first sound \(time($0))" }, "turn \(time(total))"].compactMap { $0 }
+        default:
+            return nil
         }
     }
 
@@ -449,18 +483,26 @@ private struct Output: View {
     }
 }
 
-/// A quiet row of small facts: timings, tokens, cost.
-private struct Stats: View {
-    let items: [String]
+/// A turn's timings, tokens and cost, folded away until you open them.
+private struct Details: View {
+    let facts: [String]
+    @State private var open = false
 
     var body: some View {
-        HStack(spacing: 6) {
-            ForEach(items, id: \.self) { item in
-                Text(item)
-                    .font(.system(size: 10, design: .monospaced))
+        VStack(alignment: .leading, spacing: 6) {
+            Button { withAnimation(.smooth(duration: 0.2)) { open.toggle() } } label: {
+                HStack(spacing: 4) {
+                    Text("Details").font(.system(.caption2, design: .rounded, weight: .semibold))
+                    Image(systemName: open ? "chevron.up" : "chevron.down").font(.system(size: 8, weight: .bold))
+                }
+                .foregroundStyle(.white.opacity(0.4))
+            }
+            .buttonStyle(.plain)
+            if open {
+                Text(facts.joined(separator: " · "))
+                    .font(.system(.caption2, design: .rounded))
                     .foregroundStyle(.white.opacity(0.55))
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(.white.opacity(0.06), in: Capsule())
+                    .textSelection(.enabled)
             }
         }
     }
