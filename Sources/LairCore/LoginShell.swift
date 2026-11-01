@@ -14,13 +14,8 @@ public enum LoginShell {
         process.executableURL = URL(fileURLWithPath: shell)
         // Interactive too, as tools often add themselves to PATH only in the rc file.
         process.arguments = ["-ilc", "printf '\(marker)%s' \"$PATH\""]
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = FileHandle.nullDevice
-        process.standardInput = FileHandle.nullDevice
-        guard (try? process.run()) != nil else { return nil }
-        let data = await Task.detached { output.fileHandleForReading.readDataToEndOfFile() }.value
-        return parse(String(decoding: data, as: UTF8.self))
+        guard let result = try? await ProcessRun.run(process) else { return nil }
+        return parse(result.output)
     }
 
     static let marker = "__LAIR_PATH__"

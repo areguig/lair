@@ -169,8 +169,8 @@ struct MenuBarIcon: View {
     static func write(to url: URL, variant: String = "approval") {
         let agents = variant == "empty" ? [] : variant == "crowded"
             ? (1...6).map { AgentConfig(id: "a\($0)", name: ["Claude", "Echo", "Nova", "Research assistant", "Ops", "Docs"][$0 - 1],
-                                        kind: .claudeCode, voice: "af_heart", color: AgentConfig.palette[$0 - 1]) }
-            : [AgentConfig(id: "claude", name: "Claude", kind: .claudeCode, voice: "af_heart", color: "#D97757", directory: "~"),
+                                        preset: .claude, voice: "af_heart", color: AgentConfig.palette[$0 - 1]) }
+            : [AgentConfig(id: "claude", name: "Claude", preset: .claude, voice: "af_heart", color: "#D97757", directory: "~"),
                AgentConfig(id: "echo", name: "Echo", kind: .hermes, voice: "bf_emma", color: "#7B5CFF")]
         let room = Room(config: LairConfig(agents: agents))
         room.readiness = variant == "micdenied" ? .microphoneDenied : .ready
@@ -187,8 +187,7 @@ struct MenuBarIcon: View {
                 room.calls[1].unread = true
                 call.state = .waiting
                 call.pendingApproval = ApprovalRequest(
-                    id: "demo", tool: "Bash", summary: "Bump the build number in Info.plist and commit it",
-                    suggestions: Data(#"[{"type":"addRules","rules":[{"toolName":"Bash"}],"behavior":"allow","destination":"localSettings"}]"#.utf8))
+                    id: "demo", tool: "Bash", summary: "Bump the build number in Info.plist and commit it", canAlwaysAllow: true)
             case "chat":
                 call.state = .speaking
                 call.lines += [
@@ -333,8 +332,7 @@ struct MenuBarIcon: View {
             room.focus(guest)
         case "approving":
             claude.state = .waiting
-            claude.pendingApproval = ApprovalRequest(id: "demo", tool: "Bash", summary: "Bump the build number in Info.plist and commit it",
-                suggestions: Data(#"[{"type":"addRules","rules":[{"toolName":"Bash"}],"behavior":"allow","destination":"localSettings"}]"#.utf8))
+            claude.pendingApproval = ApprovalRequest(id: "demo", tool: "Bash", summary: "Bump the build number in Info.plist and commit it", canAlwaysAllow: true)
         default:
             room.calls[1].state = .thinking
         }

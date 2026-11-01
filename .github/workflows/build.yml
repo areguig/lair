@@ -26,7 +26,10 @@ jobs:
           restore-keys: spm-${{ runner.os }}-
       - run: swift --version
       - run: swift build
+      # One task thread, as the app may get: any blocking call in async code then hangs a test instead of passing.
       - run: swift test
+        env:
+          LIBDISPATCH_COOPERATIVE_POOL_STRICT: 1
       - name: Make the disk image
         run: |
           if [ "$GITHUB_REF_TYPE" = tag ]; then export LAIR_VERSION="${GITHUB_REF_NAME#v}"; fi

@@ -11,9 +11,9 @@ import SwiftUI
     static let scale: CGFloat = 1.5
     static let you = "am_michael"
     static let agents = [
-        AgentConfig(id: "atlas", name: "Atlas", kind: .claudeCode, voice: "af_heart", color: "#D97757", directory: "~/dev/trips"),
-        AgentConfig(id: "iris", name: "Iris", kind: .claudeCode, voice: "bf_emma", color: "#C566E0", directory: "~/dev/trips"),
-        AgentConfig(id: "sage", name: "Sage", kind: .omp, voice: "af_bella", color: "#3FB68B", directory: "~/dev/trips"),
+        AgentConfig(id: "atlas", name: "Atlas", preset: .claude, voice: "af_heart", color: "#D97757", directory: "~/dev/trips"),
+        AgentConfig(id: "iris", name: "Iris", preset: .claude, voice: "bf_emma", color: "#C566E0", directory: "~/dev/trips"),
+        AgentConfig(id: "sage", name: "Sage", preset: .omp, voice: "af_bella", color: "#3FB68B", directory: "~/dev/trips"),
     ]
 
     // Where things are on the desktop, in points.

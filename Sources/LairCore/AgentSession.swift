@@ -1,9 +1,12 @@
 import Foundation
 
+/// One turn of the agent's reply, as it comes; it ends with the turn.
+public typealias AgentTurn = AsyncThrowingStream<AgentReply, Error>
+
 /// A live conversation with one agent; a call keeps one for its whole length.
 public protocol AgentSession: Sendable {
-    /// Sends one user turn; the stream yields the reply as it comes and ends with the turn.
-    func ask(_ text: String) throws -> AsyncThrowingStream<AgentReply, Error>
+    /// Sends one user turn and returns its reply.
+    func ask(_ text: String) throws -> AgentTurn
     /// Answers an approval the current turn is waiting on.
     func answer(_ request: ApprovalRequest, decision: ApprovalDecision) throws
     /// Stops the reply in progress; the current `ask` stream ends.
@@ -11,12 +14,14 @@ public protocol AgentSession: Sendable {
     func stop()
     /// What runs the agent, e.g. "gpt-6-luna · low thinking", as soon as the agent tells.
     var details: AsyncStream<String> { get }
-    /// Work the agent finished in the background after the turn that started it ended.
-    var news: AsyncStream<String> { get }
+    /// Turns the agent takes without being asked, such as telling what its background work found.
+    var ownTurns: AsyncStream<AgentTurn> { get }
     /// Something that went wrong between turns, such as background work that can't be checked on.
     var problems: AsyncStream<String> { get }
     /// Models the agent offers, each time it lists them, for the switcher.
     var models: AsyncStream<[String]> { get }
+    /// The other choices the agent offers, such as how it asks for approval, each time it lists them.
+    var options: AsyncStream<[AgentOption]> { get }
     /// Thinking levels, from least to most.
     var thinkingLevels: [String] { get }
     /// Switches the model for the rest of the call.
@@ -24,6 +29,38 @@ public protocol AgentSession: Sendable {
     /// Changes how much the agent thinks for the rest of the call; throws `ChangeLater` when it only applies
     /// from the next call.
     func setThinking(_ level: String) throws
+}
+
+/// An agent reported that its turn failed.
+public struct AgentFailure: LocalizedError {
+    public let message: String
+
+    public init(message: String) {
+        self.message = message
+    }
+
+    public var errorDescription: String? { message }
+}
+
+/// A choice the agent offers besides its model and thinking level, in its own words: Claude's "Mode",
+/// Copilot's "Allow all"…
+public struct AgentOption: Equatable, Sendable, Identifiable {
+    public let id: String
+    public let name: String
+    public let values: [Value]
+
+    public struct Value: Equatable, Hashable, Sendable {
+        public let id: String
+        public let name: String
+
+        public init(id: String, name: String) {
+            (self.id, self.name) = (id, name)
+        }
+    }
+
+    public init(id: String, name: String, values: [Value]) {
+        (self.id, self.name, self.values) = (id, name, values)
+    }
 }
 
 /// The agent can't make this change mid-call; it applies from the next call.
@@ -34,9 +71,10 @@ public struct ChangeLater: Error {
 extension AgentSession {
     public func answer(_ request: ApprovalRequest, decision: ApprovalDecision) throws {}
     public var details: AsyncStream<String> { AsyncStream { $0.finish() } }
-    public var news: AsyncStream<String> { AsyncStream { $0.finish() } }
+    public var ownTurns: AsyncStream<AgentTurn> { AsyncStream { $0.finish() } }
     public var problems: AsyncStream<String> { AsyncStream { $0.finish() } }
     public var models: AsyncStream<[String]> { AsyncStream { $0.finish() } }
+    public var options: AsyncStream<[AgentOption]> { AsyncStream { $0.finish() } }
     public var thinkingLevels: [String] { [] }
     public func setModel(_ model: String) throws { throw ChangeLater() }
     public func setThinking(_ level: String) throws { throw ChangeLater() }
@@ -88,21 +126,13 @@ public struct ApprovalRequest: Equatable, Identifiable, Sendable {
     public let tool: String
     /// What the agent says the action does, in words that can be read aloud.
     public let summary: String
-    /// The tool's input as the agent sent it, returned unchanged when allowed.
-    let input: Data
-    /// The agent's `permission_suggestions` JSON array, sent back to make an allow permanent.
-    let suggestions: Data?
+    /// Whether "always" is a choice: the agent can remember the answer.
+    public let canAlwaysAllow: Bool
 
-    public var canAlwaysAllow: Bool {
-        guard let suggestions, let list = try? JSONSerialization.jsonObject(with: suggestions) as? [Any] else { return false }
-        return !list.isEmpty
-    }
-
-    public init(id: String, tool: String, summary: String, input: Data = Data("{}".utf8), suggestions: Data? = nil) {
+    public init(id: String, tool: String, summary: String, canAlwaysAllow: Bool = false) {
         self.id = id
         self.tool = tool
         self.summary = summary
-        self.input = input
-        self.suggestions = suggestions
+        self.canAlwaysAllow = canAlwaysAllow
     }
 }

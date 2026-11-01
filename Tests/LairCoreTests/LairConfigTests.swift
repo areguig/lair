@@ -24,6 +24,45 @@ struct LairConfigTests {
         #expect(agent.directoryURL == nil)
     }
 
+    /// Configs from before ACP: their Claude Code and omp agents become those presets, keeping their settings.
+    @Test func readsClaudeCodeAndOmpAgentsAsTheirPresets() throws {
+        let url = temporaryURL()
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(##"{"agents":[{"id":"c","name":"C","kind":"claude-code","voice":"v","color":"#000000","model":"opus","permissionMode":"plan"},{"id":"o","name":"O","kind":"omp","voice":"v","color":"#000000","thinking":"high"}]}"##.utf8)
+            .write(to: url)
+        let agents = try LairConfig.load(from: url).agents
+        #expect(agents.map(\.kind) == [.acp, .acp])
+        #expect(agents.map(\.preset) == ["claude", "omp"])
+        #expect(agents.map(\.launchCommand) == [AgentPreset.claude.command, ["omp", "acp"]])
+        #expect(agents[0].model == "opus")
+        #expect(agents[1].thinking == "high")
+    }
+
+    @Test func keepsTheAgentsOtherChoices() throws {
+        let url = temporaryURL()
+        var agent = AgentConfig(id: "c", name: "C", preset: .claude, voice: "v", color: "#000000")
+        agent.options = ["mode": "acceptEdits"]
+        try LairConfig(agents: [agent]).save(to: url)
+        #expect(try LairConfig.load(from: url).agents.first?.options == ["mode": "acceptEdits"])
+    }
+
+    @Test func anAgentsOwnCommandWinsOverItsPreset() {
+        var agent = AgentConfig(id: "a", name: "A", kind: .acp, voice: "v", color: "#000000")
+        #expect(agent.launchCommand == nil)
+        agent.command = ["my-agent", "--acp"]
+        #expect(agent.launchCommand == ["my-agent", "--acp"])
+    }
+
+    @Test func aPresetIsInstalledWhenItsProgramIsOnThePath() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "lair-path-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        #expect(!AgentPreset.omp.isInstalled(path: "/nowhere:\(folder.path)"))
+        let program = folder.appending(path: "omp")
+        FileManager.default.createFile(atPath: program.path, contents: Data("#!/bin/sh\n".utf8), attributes: [.posixPermissions: 0o755])
+        #expect(AgentPreset.omp.isInstalled(path: "/nowhere:\(folder.path)"))
+    }
+
     @Test func keepsHeaderNamesInTheConfigAndValuesInTheKeychain() throws {
         let url = temporaryURL()
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -35,7 +74,7 @@ struct LairConfigTests {
     }
 
     @Test func expandsTildeInTheDirectory() {
-        let agent = AgentConfig(id: "c", name: "C", kind: .claudeCode, voice: "v", color: "#000000", directory: "~/dev")
+        let agent = AgentConfig(id: "c", name: "C", preset: .claude, voice: "v", color: "#000000", directory: "~/dev")
         #expect(agent.directoryURL?.path == FileManager.default.homeDirectoryForCurrentUser.appending(path: "dev").path)
     }
 }

@@ -514,7 +514,7 @@ private struct ModelSwitcher: View {
                 }
             }
             if !levels.isEmpty {
-                Section(call.agent.kind == .claudeCode ? "Effort, from the next call" : "Thinking") {
+                Section("Thinking") {
                     ForEach(levels, id: \.self) { level in
                         Toggle(level, isOn: Binding(get: { (call.thinkingNextCall ?? call.thinking) == level },
                                                     set: { _ in run(.thinking(level)) }))

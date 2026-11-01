@@ -3,20 +3,16 @@ import Foundation
 /// Sessions you start yourself on this Mac: which of your agents each one is, and what to call the rest.
 public enum Visitors {
     /// The tool a session runs, from the name its MCP client gives itself.
-    public static func kind(ofClient name: String?) -> AgentConfig.Kind? {
-        switch name {
-        case "claude-code": .claudeCode
-        case "omp-coding-agent": .omp
-        default: nil
-        }
+    public static func preset(ofClient name: String?) -> AgentPreset? {
+        name.flatMap { name in AgentPreset.all.first { $0.mcpClientName == name } }
     }
 
     /// The agent with this session's tool and exactly its folder; a parent folder doesn't count, or an agent in `~`
     /// would claim every session.
     public static func agent(client: String?, folder: URL?, in agents: [AgentConfig]) -> AgentConfig? {
-        guard let kind = kind(ofClient: client), let folder else { return nil }
+        guard let preset = preset(ofClient: client), let folder else { return nil }
         let path = canonical(folder)
-        return agents.first { $0.kind == kind && $0.directoryURL.map(canonical) == path }
+        return agents.first { $0.preset == preset.id && $0.directoryURL.map(canonical) == path }
     }
 
     /// "Checkout", then "Checkout (1)", "Checkout (2)", the way the Mac names copies.

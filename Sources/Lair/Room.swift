@@ -1,4 +1,5 @@
 import Foundation
+import LairACP
 import LairCore
 import LairMCP
 import LairVoice
@@ -30,7 +31,7 @@ import os
     var state = State.offline {
         didSet { if state == .ready, oldValue != .ready { becameReady?() } }
     }
-    /// Set by the room, so news that waited for the call to be free is heard however it got free.
+    /// Set by the room, so a turn the agent took by itself is heard as soon as the call is free, however it got free.
     @ObservationIgnored var becameReady: (@MainActor () -> Void)?
     var lines: [Line] = []
     var pendingApproval: ApprovalRequest?
@@ -52,8 +53,8 @@ import os
     @ObservationIgnored var turn: Task<Void, Never>?
     /// Identifies the running turn, so an interrupted one can't reset the state of the next.
     @ObservationIgnored var turnID: UUID?
-    /// Background work finished while the call was busy; heard as soon as it's ready.
-    @ObservationIgnored var newsWaiting = false
+    /// Turns the agent took by itself while the call was busy, oldest first; heard as soon as it's ready.
+    @ObservationIgnored var ownTurnsWaiting: [AgentTurn] = []
     /// What other agents answered for this one while you talked to them; sent before its next turn.
     @ObservationIgnored var context: [String] = []
     /// The session you started yourself on this Mac that this call is, while it's connected.
@@ -96,6 +97,10 @@ import os
     var readiness = Readiness.loading
     /// Models each agent offered on its last call, offered again in Settings.
     private(set) var knownModels: [String: [String]] = [:]
+    /// Thinking levels each agent offered on its last call, for Settings.
+    private(set) var knownThinking: [String: [String]] = [:]
+    /// The other choices each agent offered on its last call, such as how it asks for approval, for Settings.
+    private(set) var knownOptions: [String: [AgentOption]] = [:]
     /// A short-lived line under the agent's name, for a key press that can't do anything yet.
     private(set) var hint: String?
     private(set) var calls: [Call]
@@ -119,6 +124,11 @@ import os
     /// Drives the orb instead of the live microphone and speaker, for the demo video.
     @ObservationIgnored var meterOverride: LevelMeter?
     @ObservationIgnored private var environment: [String: String]?
+
+    /// Whether a preset's program is found on your login shell's PATH; unknown until that PATH is read.
+    func isInstalled(_ preset: AgentPreset) -> Bool? {
+        environment.map { preset.isInstalled(path: $0["PATH"]) }
+    }
     @ObservationIgnored private let notifier = ApprovalNotifier()
     @ObservationIgnored private var hintTask: Task<Void, Never>?
 
@@ -260,14 +270,16 @@ import os
                 for await models in session.models where !models.isEmpty {
                     call.models = models
                     knownModels[call.id] = models
+                    knownThinking[call.id] = session.thinkingLevels
                 }
             }
             Task { for await details in session.details { call.details = details } }
-            Task { for await _ in session.news { hearNews(from: call) } }
+            Task { for await options in session.options { knownOptions[call.id] = options } }
+            Task { for await turn in session.ownTurns { hear(turn, from: call) } }
             // After the state change that freed the call has run its course.
             call.becameReady = { [weak self, weak call] in
                 Task { @MainActor in
-                    if let self, let call, call.newsWaiting { self.hearNews(from: call) }
+                    if let self, let call { self.playWaitingTurn(in: call) }
                 }
             }
             Task {
@@ -285,17 +297,22 @@ import os
         }
     }
 
+    /// How long an agent's own turn waits for more before it's over: ACP v1 marks no end for those turns.
+    private static let ownTurnQuiet = Duration.seconds(2)
+
     private func session(for agent: AgentConfig, thinking: String?) throws -> any AgentSession {
         switch agent.kind {
-        case .claudeCode:
-            return try ClaudeCodeSession(model: agent.model, effort: thinking, directory: agent.directoryURL,
-                                         environment: environment,
-                                         permissionMode: agent.permissionMode, errorLog: AgentLog.url(for: agent.id),
-                                         systemPrompt: callPrompt(for: agent))
-        case .omp:
-            return try OmpSession(model: agent.model, thinking: thinking, directory: agent.directoryURL,
-                                  environment: environment,
-                                  errorLog: AgentLog.url(for: agent.id), systemPrompt: callPrompt(for: agent))
+        case .acp:
+            guard let command = agent.launchCommand else { throw SetupError.missingCommand }
+            if let preset = AgentPreset.withID(agent.preset), !preset.isInstalled(path: environment?["PATH"]) {
+                throw SetupError.missingProgram(preset)
+            }
+            let channel = try ProcessChannel(command: command, directory: agent.directoryURL, environment: environment,
+                                             errorLog: AgentLog.url(for: agent.id))
+            let folder = agent.directoryURL ?? FileManager.default.homeDirectoryForCurrentUser
+            return AcpSession(channel: channel, settings: .init(directory: folder.path, preamble: callPrompt(for: agent),
+                                                                ownTurnQuiet: Self.ownTurnQuiet, model: agent.model,
+                                                                thinking: thinking, options: agent.options ?? [:]))
         case .hermes:
             guard let url = agent.url.flatMap(URL.init(string:)), url.host() != nil else { throw SetupError.missingAddress }
             let secret = { Keychain.password(service: agent.keychainService, account: $0) }
@@ -323,12 +340,14 @@ import os
     }
 
     enum SetupError: Error {
-        case missingAddress, missingKey, guest
+        case missingAddress, missingKey, missingCommand, missingProgram(AgentPreset), guest
 
         func message(for name: String) -> String {
             switch self {
             case .missingAddress: "\(name) needs an address. Add it in Settings › Agents."
             case .missingKey: "\(name) needs an API key. Add it in Settings › Agents."
+            case .missingCommand: "\(name) needs a command to start it. Add it in Settings › Agents."
+            case .missingProgram(let preset): "\(name) needs \(preset.needs): \(preset.installURL.absoluteString)"
             case .guest: "\(name) runs on its own; it talks to you when it needs you."
             }
         }
@@ -338,6 +357,7 @@ import os
         if call.pendingApproval != nil { answer(call, decision: .deny) }
         resolveQuestion(of: call, with: nil)
         call.context = []
+        call.ownTurnsWaiting = []
         call.turn?.cancel()
         call.session?.stop()
         call.session = nil
@@ -426,6 +446,7 @@ import os
     }
 
     func interrupt(_ call: Call) {
+        Self.log.notice("\(call.id, privacy: .public): interrupted")
         if call.id == focusedID { speaker?.stop() }
         call.turnID = nil
         call.turn?.cancel()
@@ -446,6 +467,7 @@ import os
         }
         call.lines.append(.init(role: .info, text: "\(verdict): \(request.summary)"))
         call.log(.note("\(verdict): \(request.summary)"))
+        Self.log.notice("\(call.id, privacy: .public): approval answered, \(verdict, privacy: .public)")
         do {
             try call.session?.answer(request, decision: decision)
             if call.state == .waiting { call.state = .thinking }
@@ -596,12 +618,6 @@ import os
                 guard let level = step(command == .thinkMore ? 1 : -1, from: call.thinking, in: session.thinkingLevels)
                 else { throw ChangeLater() }
                 confirmation = try setThinking(level, in: call, session: session)
-            case .fast where call.agent.kind == .claudeCode:
-                try session.setModel("haiku")
-                confirmation = "Going fast, on Haiku."
-            case .deep where call.agent.kind == .claudeCode:
-                try session.setModel("opus")
-                confirmation = "Going deep, on Opus."
             case .fast, .deep:
                 guard local else { throw ChangeLater() }
                 confirmation = try setThinking(command == .fast ? "low" : "high", in: call, session: session)
@@ -637,33 +653,47 @@ import os
         return levels[min(max(index + by, 0), levels.count - 1)]
     }
 
-    /// The agent finished work in the background: take a turn so it says what it found.
-    private func hearNews(from call: Call) {
-        guard call.inCall, call.session != nil else { return }
-        guard call.state == .ready, call.pendingApproval == nil else {
-            call.newsWaiting = true
-            return
-        }
-        call.newsWaiting = false
+    /// The agent took a turn by itself, such as telling what its background work found.
+    private func hear(_ turn: AgentTurn, from call: Call) {
+        guard call.inCall else { return }
+        call.ownTurnsWaiting.append(turn)
+        playWaitingTurn(in: call)
+    }
+
+    private func playWaitingTurn(in call: Call) {
+        guard call.inCall, call.state == .ready, call.pendingApproval == nil, !call.ownTurnsWaiting.isEmpty else { return }
+        let turn = call.ownTurnsWaiting.removeFirst()
         call.state = .thinking
         call.turn = Task {
-            await converse(in: call, prompt: VoicePrompt.backgroundResult, speech: 0, start: Self.clock.now,
-                           shown: .init(role: .info, text: "Background task finished"))
+            await play({ turn }, in: call, speech: 0, start: Self.clock.now, opening: .init(role: .info, text: "Back with news"))
         }
     }
 
     /// `shown` replaces the prompt in the transcript when the prompt isn't something you said.
     private func converse(in call: Call, prompt: String, speech: Int, start: ContinuousClock.Instant,
                           shown: Call.Line? = nil, typed: Bool = false) async {
+        guard let session = call.session else { return }
+        call.lines.append(shown ?? .init(role: .you, text: prompt))
+        call.log(shown.map { $0.role == .you ? .you($0.text) : .note($0.text) } ?? .you(prompt))
+        let sent = (call.context + [prompt]).joined(separator: "\n\n")
+        call.context = []
+        await play({ try session.ask(sent) }, in: call, speech: speech, start: start, typed: typed)
+    }
+
+    /// Speaks a turn as it comes, asked or the agent's own. `opening` heads an own turn once it says something;
+    /// one with nothing to say passes silently.
+    private func play(_ turn: () throws -> AgentTurn, in call: Call, speech: Int, start: ContinuousClock.Instant,
+                      typed: Bool = false, opening: Call.Line? = nil) async {
         let turnID = UUID()
         call.turnID = turnID
         call.unheard = []
+        Self.log.notice("\(call.id, privacy: .public): \(opening == nil ? "turn sent" : "agent took a turn of its own", privacy: .public)")
         // The agent spoke to you: listen a few seconds for your reply. Typed turns don't open the mic.
         var listenAfter = false
         defer {
             if call.inCall, call.turnID == turnID {
                 call.state = .ready
-                if call.newsWaiting { hearNews(from: call) } else if listenAfter { listenForAnswer(in: call) }
+                if !call.ownTurnsWaiting.isEmpty { playWaitingTurn(in: call) } else if listenAfter { listenForAnswer(in: call) }
             }
         }
         let clock = Self.clock
@@ -680,25 +710,24 @@ import os
                 """)
         }
         do {
-            guard let session = call.session, let speaker else { return }
-            call.lines.append(shown ?? .init(role: .you, text: prompt))
-            call.log(shown.map { $0.role == .you ? .you($0.text) : .note($0.text) } ?? .you(prompt))
-            let sent = (call.context + [prompt]).joined(separator: "\n\n")
-            call.context = []
-
+            guard let speaker else { return }
             // Text after an approval starts a new line, so the transcript reads in order.
             var answer: Int?
             var answered = false
             var splitter = SentenceSplitter()
             // Links and paths in <show> tags go to the screen, never to the voice.
             var showing = ShowFilter()
-            for try await reply in try session.ask(sent) {
+            for try await reply in try turn() {
                 guard !Task.isCancelled else { return }
                 switch reply {
                 case .activity(let activity):
                     call.record(activity)
                 case .text(let delta):
                     if firstToken == nil { firstToken = clock.now - start }
+                    if !answered, let opening {
+                        call.lines.append(opening)
+                        call.log(.note(opening.text))
+                    }
                     call.logText(delta)
                     if answer == nil {
                         call.lines.append(.init(role: .agent, text: ""))
@@ -735,7 +764,7 @@ import os
             if let rest = splitter.flush(), try await say(rest, in: call), firstAudio == nil {
                 firstAudio = clock.now - start
             }
-            if !answered {
+            if !answered, opening == nil {
                 report(in: call, .init(role: .problem, text: "\(call.agent.name) didn't answer."))
             }
             if call.id == focusedID {
@@ -763,6 +792,7 @@ import os
     private func ask(_ call: Call, to request: ApprovalRequest) async throws {
         call.pendingApproval = request
         call.log(.approval("\(request.tool): \(request.summary)"))
+        Self.log.notice("\(call.id, privacy: .public): approval asked\(call.id == self.focusedID ? "" : " while not in focus", privacy: .public)")
         notifier.post(request, from: call.agent.name)
         speaker?.play(.needsYou)
         if call.id != focusedID {
@@ -926,7 +956,7 @@ import os
 
     /// A session of a tool Lair knows, in a folder none of your agents has, can become one.
     func canAdopt(_ call: Call) -> Bool {
-        guard call.stranger, let visitor = call.visitor, Visitors.kind(ofClient: visitor.client) != nil, call.folder != nil
+        guard call.stranger, let visitor = call.visitor, Visitors.preset(ofClient: visitor.client) != nil, call.folder != nil
         else { return false }
         return Visitors.agent(client: visitor.client, folder: call.folder, in: calls.filter { !$0.stranger }.map(\.agent)) == nil
     }
@@ -934,8 +964,8 @@ import os
     /// Saves the session's tool and folder as an agent named after the folder, with the voice and color it has now;
     /// its next sessions there join as that agent.
     func adopt(_ call: Call) {
-        guard canAdopt(call), let kind = Visitors.kind(ofClient: call.visitor?.client), let folder = call.folder else { return }
-        let draft = AgentConfig(id: "", name: Visitors.agentName(for: folder), kind: kind, voice: call.agent.voice,
+        guard canAdopt(call), let preset = Visitors.preset(ofClient: call.visitor?.client), let folder = call.folder else { return }
+        let draft = AgentConfig(id: "", name: Visitors.agentName(for: folder), preset: preset, voice: call.agent.voice,
                                 color: call.agent.color, directory: Visitors.configPath(folder))
         guard let saved = saveAgent?(draft) else { return }
         // Its id changes with it: keep pointing at it wherever the old one was used.

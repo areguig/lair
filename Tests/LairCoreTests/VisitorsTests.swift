@@ -4,10 +4,10 @@ import Testing
 
 @Suite struct VisitorsTests {
     private let agents = [
-        AgentConfig(id: "checkout", name: "Checkout", kind: .claudeCode, voice: "af_heart", color: "#D97757",
+        AgentConfig(id: "checkout", name: "Checkout", preset: .claude, voice: "af_heart", color: "#D97757",
                     directory: "~/dev/checkout-api"),
-        AgentConfig(id: "web", name: "Web", kind: .omp, voice: "bf_emma", color: "#7B5CFF", directory: "~/dev/landing-page"),
-        AgentConfig(id: "home", name: "Home", kind: .claudeCode, voice: "am_adam", color: "#3FB68B", directory: "~"),
+        AgentConfig(id: "web", name: "Web", preset: .omp, voice: "bf_emma", color: "#7B5CFF", directory: "~/dev/landing-page"),
+        AgentConfig(id: "home", name: "Home", preset: .claude, voice: "am_adam", color: "#3FB68B", directory: "~"),
     ]
     private let home = FileManager.default.homeDirectoryForCurrentUser
 
@@ -34,7 +34,7 @@ import Testing
         let real = URL(fileURLWithPath: "/private/tmp/lair-visitors-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: real) }
-        let agent = AgentConfig(id: "tmp", name: "Tmp", kind: .omp, voice: "af_heart", color: "#000000", directory: real.path)
+        let agent = AgentConfig(id: "tmp", name: "Tmp", preset: .omp, voice: "af_heart", color: "#000000", directory: real.path)
         let viaLink = URL(fileURLWithPath: "/tmp/" + real.lastPathComponent)
         #expect(Visitors.agent(client: "omp-coding-agent", folder: viaLink, in: [agent])?.id == "tmp")
     }
