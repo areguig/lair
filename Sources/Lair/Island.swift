@@ -101,6 +101,8 @@ import SwiftUI
 struct IslandView: View {
     let room: Room
     let model: IslandModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
 
     private enum Mode: Equatable {
         case hidden, resting, live, asking, approving
@@ -126,10 +128,22 @@ struct IslandView: View {
         }
         .padding(.top, model.metrics.top)
         .frame(width: Island.canvas.width, height: Island.canvas.height)
-        .animation(.spring(response: 0.42, dampingFraction: 0.82), value: mode)
-        .animation(.spring(response: 0.42, dampingFraction: 0.82), value: subject?.id)
+        .animation(reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.82), value: mode)
+        .animation(reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.82), value: subject?.id)
         .environment(\.colorScheme, .dark)
+        // Someone who isn't looking at the screen still hears that they're needed.
+        .onChange(of: announcement) { _, text in
+            if let text { AccessibilityNotification.Announcement(text).post() }
+        }
     }
+
+    /// What VoiceOver says when someone starts needing you.
+    private var announcement: String? {
+        mode == .asking || mode == .approving ? summary(subject) : nil
+    }
+
+    /// Secondary text, stronger when the person asked for more contrast.
+    private func dim(_ opacity: Double) -> Color { .white.opacity(contrast == .increased ? max(opacity, 0.85) : opacity) }
 
     @ViewBuilder private var island: some View {
         let metrics = model.metrics
@@ -156,6 +170,20 @@ struct IslandView: View {
         .shadow(color: .black.opacity(mode == .resting || mode == .hidden ? 0 : 0.45), radius: 18, y: 8)
         .opacity(mode == .hidden ? 0 : 1)
         .contentShape(shape)
+        .accessibilityElement(children: mode == .asking || mode == .approving ? .contain : .combine)
+        .accessibilityLabel(summary(call))
+        .accessibilityHidden(mode == .hidden)
+    }
+
+    /// Who, and what they're doing or asking.
+    private func summary(_ call: Call?) -> String {
+        guard let call else { return "" }
+        switch mode {
+        case .asking: return "\(call.agent.name) asks: \(call.questionText ?? "")"
+        case .approving: return "\(call.agent.name) needs your OK: \(call.pendingApproval?.summary ?? "")"
+        case .live: return "\(call.agent.name), \(call.state.label): \(caption(call))"
+        default: return "\(call.agent.name), \(call.state.label)"
+        }
     }
 
     private func width(for mode: Mode) -> CGFloat {
@@ -181,6 +209,9 @@ struct IslandView: View {
                 .contentShape(Rectangle())
                 .onTapGesture { room.toggleTalk() }
                 .help("\(call.agent.name): click to talk")
+                .accessibilityLabel("Talk to \(call.agent.name)")
+                .accessibilityAddTraits(.isButton)
+                .accessibilityAction { room.toggleTalk() }
             Spacer(minLength: model.metrics.notch ? model.metrics.width : 8)
             Group {
                 if waiting > 0 {
@@ -190,7 +221,7 @@ struct IslandView: View {
                         .frame(width: 18, height: 18)
                         .background(LairColors.attention, in: Circle())
                 } else if working {
-                    WorkingDots(tint: tint)
+                    WorkingDots(tint: tint, animated: !reduceMotion)
                 } else {
                     Circle().fill(tint.opacity(0.8)).frame(width: 6, height: 6)
                 }
@@ -209,18 +240,18 @@ struct IslandView: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(call.agent.name).font(.system(.caption, design: .rounded, weight: .bold)).foregroundStyle(tint)
-                    if call.guest { Image(systemName: "laptopcomputer").font(.system(size: 9)).foregroundStyle(.white.opacity(0.45)) }
+                    if call.guest { Image(systemName: "laptopcomputer").font(.system(size: 9)).foregroundStyle(dim(0.45)).accessibilityLabel("On this Mac") }
                 }
                 Text(caption(call))
                     .font(.system(.callout, design: .rounded, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.92))
+                    .foregroundStyle(dim(0.92))
                     .lineLimit(2)
                     .truncationMode(.head)
                     .contentTransition(.opacity)
             }
             Spacer(minLength: 0)
             if call.state == .listening {
-                ListeningBars(meter: room.meter(for: call), tint: tint)
+                ListeningBars(meter: room.meter(for: call), tint: tint, animated: !reduceMotion)
             }
         }
         .padding(.horizontal, 16).padding(.vertical, 12)
@@ -257,10 +288,10 @@ struct IslandView: View {
             HStack {
                 Label("Say it, or hold \(TalkKey.shared.label ?? "the talk key")", systemImage: "mic.fill")
                     .font(.system(.caption, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(dim(0.5))
                 Spacer()
                 Button("Skip") { room.skipQuestion(of: call) }
-                    .buttonStyle(IslandButtonStyle(fill: .white.opacity(0.12)))
+                    .buttonStyle(IslandButtonStyle(fill: .white.opacity(0.12), strongFill: .white.opacity(0.3)))
             }
         }
         .padding(16)
@@ -278,7 +309,7 @@ struct IslandView: View {
         let request = call.pendingApproval
         return VStack(alignment: .leading, spacing: 10) {
             header(call, tint: tint, title: "\(call.agent.name) needs your OK") {
-                Text(request?.tool ?? "").font(.system(.caption2, design: .monospaced)).foregroundStyle(.white.opacity(0.55))
+                Text(request?.tool ?? "").font(.system(.caption2, design: .monospaced)).foregroundStyle(dim(0.55))
             }
             Text(request?.summary ?? "")
                 .font(.system(.body, design: .rounded, weight: .semibold))
@@ -287,10 +318,10 @@ struct IslandView: View {
                 .lineLimit(4)
             HStack(spacing: 8) {
                 Button("Deny") { room.answer(call, decision: .deny) }
-                    .buttonStyle(IslandButtonStyle(fill: .white.opacity(0.12)))
+                    .buttonStyle(IslandButtonStyle(fill: .white.opacity(0.12), strongFill: .white.opacity(0.3)))
                 if request?.canAlwaysAllow == true {
                     Button("Always allow") { room.answer(call, decision: .allowAlways) }
-                        .buttonStyle(IslandButtonStyle(fill: tint.opacity(0.3)))
+                        .buttonStyle(IslandButtonStyle(fill: tint.opacity(0.3), strongFill: tint.opacity(0.6)))
                 }
                 Spacer()
                 Button("Allow") { room.answer(call, decision: .allowOnce) }
@@ -306,7 +337,7 @@ struct IslandView: View {
             Orb(color: tint, state: call.state, meter: room.meter(for: call)).frame(width: 22, height: 22)
             Text(title).font(.system(.subheadline, design: .rounded, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
             if let folder = call.folder, call.guest {
-                Text(folder.lastPathComponent).font(.caption).foregroundStyle(.secondary)
+                Text(folder.lastPathComponent).font(.caption).foregroundStyle(dim(0.6))
             }
             Spacer(minLength: 6)
             trailing()
@@ -333,10 +364,14 @@ private struct IslandShape: Shape {
 
 private struct IslandButtonStyle: ButtonStyle {
     var fill: Color
+    /// The fill when the person asked for more contrast.
+    var strongFill: Color? = nil
     var text: Color = .white
+    @Environment(\.colorSchemeContrast) private var contrast
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
+        let fill = contrast == .increased ? strongFill ?? fill : fill
+        return configuration.label
             .font(.system(.callout, design: .rounded, weight: .semibold))
             .foregroundStyle(text)
             .padding(.horizontal, 14).padding(.vertical, 6)
@@ -347,10 +382,11 @@ private struct IslandButtonStyle: ButtonStyle {
 /// Three dots taking turns while an agent works.
 private struct WorkingDots: View {
     let tint: Color
+    let animated: Bool
     @Environment(\.renderTime) private var renderTime
 
     var body: some View {
-        TimelineView(.animation) { timeline in
+        TimelineView(.animation(paused: !animated)) { timeline in
             let time = renderTime ?? timeline.date.timeIntervalSinceReferenceDate
             HStack(spacing: 3) {
                 ForEach(0..<3) { i in
@@ -368,10 +404,11 @@ private struct WorkingDots: View {
 private struct ListeningBars: View {
     let meter: LevelMeter?
     let tint: Color
+    let animated: Bool
     @Environment(\.renderTime) private var renderTime
 
     var body: some View {
-        TimelineView(.animation) { timeline in
+        TimelineView(.animation(paused: !animated)) { timeline in
             let time = renderTime ?? timeline.date.timeIntervalSinceReferenceDate
             let level = Double(meter?.level ?? 0)
             HStack(spacing: 3) {
