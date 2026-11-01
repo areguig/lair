@@ -223,35 +223,46 @@ private struct AgentForm: View {
                         Helper("\(agent.name) needs \(preset.needs), not found on this Mac.")
                         Link("Get \(preset.needs)", destination: preset.installURL)
                     }
+                    VStack(alignment: .leading, spacing: 2) {
+                        FolderField(path: $agent.directory)
+                        if AgentPreset.withID(agent.preset)?.mcpClientName != nil {
+                            Hint("Start it yourself in this folder and it talks to you as \(agent.name), once it's connected in On this Mac.")
+                        }
+                    }
                     ModelField(model: $agent.model, prompt: "The agent's default",
                                choices: (room.knownModels[agent.id] ?? []).map { ($0, $0) },
                                emptyHint: "Call this agent once to list its models")
-                    ThinkingPicker(title: "Thinking", thinking: $agent.thinking, levels: room.knownThinking[agent.id] ?? [])
-                    FolderField(path: $agent.directory)
+                    VStack(alignment: .leading, spacing: 2) {
+                        ThinkingPicker(title: "Thinking", thinking: $agent.thinking, levels: room.knownThinking[agent.id] ?? [])
+                        Hint("Applies from the next call. During a call, say “switch to <model>”, “think harder” or “go fast”.")
+                    }
                     ForEach(room.knownOptions[agent.id] ?? []) { option in
                         Picker(option.name, selection: chosen(option.id)) {
                             Text("Default").tag(String?.none)
                             ForEach(option.values, id: \.self) { Text($0.name).tag(String?($0.id)) }
                         }
                     }
+                    if room.knownOptions[agent.id] == nil {
+                        Hint("Call it once to see its models and other choices, such as how it asks for approval.")
+                    }
                 case .hermes:
                     VStack(alignment: .leading, spacing: 2) {
                         TextField("Address", text: optional($agent.url), prompt: Text("http://hermes.local:8642"))
                         if let problem = addressProblem(agent.url) { Helper(problem) }
                     }
-                    TextField("Model", text: optional($agent.model), prompt: Text("hermes-agent"))
-                    SecretField(title: "API key", service: agent.keychainService, account: "api-key")
+                    VStack(alignment: .leading, spacing: 2) {
+                        TextField("Model", text: optional($agent.model), prompt: Text("hermes-agent"))
+                        Hint("Address and model apply from the next call.")
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        SecretField(title: "API key", service: agent.keychainService, account: "api-key")
+                        Hint("Keys stay in your Keychain, never in the config file.")
+                    }
                 case .guest:
                     EmptyView()
                 }
             } header: {
                 Text("Agent")
-            } footer: {
-                Text(footer)
-                .multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .font(.caption)
-                .foregroundStyle(.secondary)
             }
             if agent.kind == .hermes {
                 ExtraHeaders(agent: $agent)
@@ -286,18 +297,6 @@ private struct AgentForm: View {
     private var command: Binding<String> {
         Binding(get: { agent.command?.joined(separator: " ") ?? "" },
                 set: { agent.command = $0.split(separator: " ").map(String.init).nilIfEmpty })
-    }
-
-    private var footer: String {
-        switch agent.kind {
-        case .acp:
-            let guests = AgentPreset.withID(agent.preset)?.mcpClientName == nil ? "" :
-                "Start it yourself in this folder and it talks to you as \(agent.name), once it's connected in On this Mac."
-            let options = room.knownOptions[agent.id] == nil ? "Call it once to see its models and other choices, such as how it asks for approval. " : ""
-            return "These apply from the next call. During a call, say “switch to <model>”, “think harder” or “go fast”. " + options + guests
-        case .hermes: return "Address and model apply from the next call. Keys stay in your Keychain, never in the config file."
-        case .guest: return ""
-        }
     }
 
     /// An empty field means "not set", so the agent's own default applies.
@@ -356,6 +355,12 @@ private struct ThinkingPicker: View {
             ForEach(levels, id: \.self) { Text($0).tag(String?($0)) }
         }
     }
+}
+
+private struct Hint: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+    var body: some View { Text(text).font(.caption).foregroundStyle(.secondary) }
 }
 
 private struct Helper: View {
