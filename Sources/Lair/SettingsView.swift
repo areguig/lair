@@ -73,7 +73,7 @@ private struct AgentsSettings: View {
                         Circle().fill(Color(hex: agent.color)).frame(width: 10, height: 10)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(agent.name.isEmpty ? "Unnamed" : agent.name)
-                            Text(agent.disabled == true ? "\(agent.kind.label) · off" : agent.kind.label)
+                            Text(agent.disabled == true ? "\(AgentChoice(agent).label) · off" : AgentChoice(agent).label)
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         .opacity(agent.disabled == true ? 0.5 : 1)
@@ -88,8 +88,8 @@ private struct AgentsSettings: View {
                 .listStyle(.sidebar)
                 HStack(spacing: 0) {
                     Menu {
-                        ForEach(AgentConfig.Kind.allCases, id: \.self) { kind in
-                            Button(kind.label) { add(kind) }
+                        ForEach(AgentChoice.all, id: \.self) { choice in
+                            Button(choice.label) { add(choice) }
                         }
                     } label: {
                         Image(systemName: "plus").frame(width: 24, height: 20)
@@ -148,23 +148,24 @@ private struct AgentsSettings: View {
     private func hasProblem(_ agent: AgentConfig) -> Bool {
         let others = store.config.agents.filter { $0.id != agent.id }
         if nameProblem(agent.name, others: others) != nil { return true }
+        if agent.kind == .acp { return agent.launchCommand == nil }
         guard agent.kind == .hermes else { return false }
         return addressProblem(agent.url) != nil || Keychain.password(service: agent.keychainService, account: "api-key") == nil
     }
 
-    private func add(_ kind: AgentConfig.Kind) {
+    private func add(_ choice: AgentChoice) {
         var config = store.config
         let used = Set(config.agents.map(\.voice))
-        // "Claude Code", then "Claude Code 2"…: two new agents never share a name.
+        // "Claude", then "Claude 2"…: two new agents never share a name.
         let taken = Set(config.agents.map { $0.name.lowercased() })
-        var name = kind.label
+        var name = choice.label
         var n = 2
-        while taken.contains(name.lowercased()) { name = "\(kind.label) \(n)"; n += 1 }
-        let agent = AgentConfig(
-            id: config.newAgentID(for: kind.label), name: name, kind: kind,
+        while taken.contains(name.lowercased()) { name = "\(choice.label) \(n)"; n += 1 }
+        var agent = AgentConfig(
+            id: config.newAgentID(for: choice.label), name: name, kind: .acp,
             voice: VoiceModels.voices.first { !used.contains($0) } ?? "af_heart",
-            color: AgentConfig.palette[config.agents.count % AgentConfig.palette.count],
-            directory: kind == .hermes ? nil : "~")
+            color: AgentConfig.palette[config.agents.count % AgentConfig.palette.count])
+        choice.apply(to: &agent)
         config.agents.append(agent)
         store.save(config)
         selection = agent.id
@@ -194,8 +195,8 @@ private struct AgentForm: View {
                     TextField("Name", text: $agent.name, prompt: Text("What you call it by voice"))
                     if let problem = nameProblem(agent.name, others: others) { Helper(problem) }
                 }
-                Picker("Kind", selection: kind) {
-                    ForEach(AgentConfig.Kind.allCases, id: \.self) { Text($0.label).tag($0) }
+                Picker("Agent", selection: choice) {
+                    ForEach(AgentChoice.all, id: \.self) { Text($0.label).tag($0) }
                 }
                 ColorPicker("Color", selection: Binding(get: { Color(hex: agent.color) }, set: { agent.color = $0.hex }),
                             supportsOpacity: false)
@@ -215,25 +216,17 @@ private struct AgentForm: View {
             }
             Section {
                 switch agent.kind {
-                case .claudeCode:
-                    ModelField(model: $agent.model, prompt: "Claude Code's default",
-                               choices: [("Opus", "opus"), ("Sonnet", "sonnet"), ("Haiku", "haiku")], emptyHint: nil)
-                    ThinkingPicker(title: "Effort", thinking: $agent.thinking, levels: ["low", "medium", "high", "xhigh", "max"])
-                    FolderField(path: $agent.directory)
-                    Picker("Approvals", selection: $agent.permissionMode) {
-                        Text("As in my Claude Code settings").tag(String?.none)
-                        Text("Ask before anything").tag(String?("manual"))
-                        Text("Allow file edits").tag(String?("acceptEdits"))
-                        Text("Plan only, change nothing").tag(String?("plan"))
-                        Text("Let Claude decide").tag(String?("auto"))
-                        Text("Allow everything").tag(String?("bypassPermissions"))
+                case .acp:
+                    if agent.preset == nil {
+                        TextField("Command", text: command, prompt: Text("my-agent --acp"))
+                    } else if let preset = AgentPreset.withID(agent.preset), room.isInstalled(preset) == false {
+                        Helper("\(agent.name) needs \(preset.needs), not found on this Mac.")
+                        Link("Get \(preset.needs)", destination: preset.installURL)
                     }
-                case .omp:
-                    let known = (room.knownModels[agent.id] ?? []).sorted()
-                    ModelField(model: $agent.model, prompt: "omp's default", choices: known.map { ($0, $0) },
+                    ModelField(model: $agent.model, prompt: "The agent's default",
+                               choices: (room.knownModels[agent.id] ?? []).map { ($0, $0) },
                                emptyHint: "Call this agent once to list its models")
-                    ThinkingPicker(title: "Thinking", thinking: $agent.thinking,
-                                   levels: ["off", "minimal", "low", "medium", "high", "xhigh", "max"])
+                    ThinkingPicker(title: "Thinking", thinking: $agent.thinking, levels: room.knownThinking[agent.id] ?? [])
                     FolderField(path: $agent.directory)
                 case .hermes:
                     VStack(alignment: .leading, spacing: 2) {
@@ -261,27 +254,30 @@ private struct AgentForm: View {
         .formStyle(.grouped)
     }
 
-    /// Switching kind drops the settings that only made sense for the old one.
-    private var kind: Binding<AgentConfig.Kind> {
-        Binding(get: { agent.kind }, set: { new in
-            guard new != agent.kind else { return }
-            agent.kind = new
+    /// Switching agent drops the settings that only made sense for the old one.
+    private var choice: Binding<AgentChoice> {
+        Binding(get: { AgentChoice(agent) }, set: { new in
+            guard new != AgentChoice(agent) else { return }
             agent.model = nil
             agent.thinking = nil
-            agent.directory = new == .hermes ? nil : "~"
-            if new != .hermes { agent.url = nil; agent.headers = nil }
-            if new != .claudeCode { agent.permissionMode = nil }
+            new.apply(to: &agent)
         })
+    }
+
+    /// The command as typed, split on spaces: `my-agent --acp` → ["my-agent", "--acp"].
+    private var command: Binding<String> {
+        Binding(get: { agent.command?.joined(separator: " ") ?? "" },
+                set: { agent.command = $0.split(separator: " ").map(String.init).nilIfEmpty })
     }
 
     private var footer: String {
         switch agent.kind {
-        case .claudeCode: "These apply from the next call. During a call, say “switch to Opus” or “go fast”. "
-            + "Start Claude Code yourself in this folder and it talks to you as \(agent.name), once it's connected in On this Mac."
-        case .omp: "These apply from the next call. During a call, say “think harder”, “go fast” or “switch to <model>”. "
-            + "Start omp yourself in this folder and it talks to you as \(agent.name), once it's connected in On this Mac."
-        case .hermes: "Address and model apply from the next call. Keys stay in your Keychain, never in the config file."
-        case .guest: ""
+        case .acp:
+            let guests = AgentPreset.withID(agent.preset)?.mcpClientName == nil ? "" :
+                "Start it yourself in this folder and it talks to you as \(agent.name), once it's connected in On this Mac."
+            return "These apply from the next call. During a call, say “switch to <model>”, “think harder” or “go fast”. " + guests
+        case .hermes: return "Address and model apply from the next call. Keys stay in your Keychain, never in the config file."
+        case .guest: return ""
         }
     }
 
@@ -628,16 +624,39 @@ private struct GeneralSettings: View {
 
 // MARK: - Helpers
 
-extension AgentConfig.Kind: CaseIterable {
-    public static let allCases: [AgentConfig.Kind] = [.claudeCode, .omp, .hermes]
+/// What an agent is, as Settings offers it: one of Lair's presets, your own ACP command, or a Hermes reached over
+/// its HTTP API.
+enum AgentChoice: Hashable {
+    case preset(String)
+    case command
+    case remoteHermes
+    case guest
+
+    static let all: [AgentChoice] = AgentPreset.all.map { .preset($0.id) } + [.command, .remoteHermes]
+
+    init(_ agent: AgentConfig) {
+        switch agent.kind {
+        case .acp: self = agent.preset.map(AgentChoice.preset) ?? .command
+        case .hermes: self = .remoteHermes
+        case .guest: self = .guest
+        }
+    }
 
     var label: String {
         switch self {
-        case .claudeCode: "Claude Code"
-        case .omp: "omp"
-        case .hermes: "Hermes"
+        case .preset(let id): AgentPreset.withID(id).map { $0.id == AgentPreset.hermes.id ? "Hermes on this Mac" : $0.name } ?? id
+        case .command: "Other ACP agent"
+        case .remoteHermes: "Hermes (remote)"
         case .guest: "On this Mac"
         }
+    }
+
+    func apply(to agent: inout AgentConfig) {
+        agent.kind = self == .remoteHermes ? .hermes : .acp
+        agent.preset = if case .preset(let id) = self { id } else { nil }
+        agent.directory = agent.kind == .hermes ? nil : (agent.directory ?? "~")
+        if agent.kind != .hermes { agent.url = nil; agent.headers = nil }
+        if self != .command { agent.command = nil }
     }
 }
 

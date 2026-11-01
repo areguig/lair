@@ -1,4 +1,5 @@
 import Foundation
+import LairACP
 import LairCore
 import LairMCP
 import LairVoice
@@ -96,6 +97,8 @@ import os
     var readiness = Readiness.loading
     /// Models each agent offered on its last call, offered again in Settings.
     private(set) var knownModels: [String: [String]] = [:]
+    /// Thinking levels each agent offered on its last call, for Settings.
+    private(set) var knownThinking: [String: [String]] = [:]
     /// A short-lived line under the agent's name, for a key press that can't do anything yet.
     private(set) var hint: String?
     private(set) var calls: [Call]
@@ -119,6 +122,11 @@ import os
     /// Drives the orb instead of the live microphone and speaker, for the demo video.
     @ObservationIgnored var meterOverride: LevelMeter?
     @ObservationIgnored private var environment: [String: String]?
+
+    /// Whether a preset's program is found on your login shell's PATH; unknown until that PATH is read.
+    func isInstalled(_ preset: AgentPreset) -> Bool? {
+        environment.map { preset.isInstalled(path: $0["PATH"]) }
+    }
     @ObservationIgnored private let notifier = ApprovalNotifier()
     @ObservationIgnored private var hintTask: Task<Void, Never>?
 
@@ -260,6 +268,7 @@ import os
                 for await models in session.models where !models.isEmpty {
                     call.models = models
                     knownModels[call.id] = models
+                    knownThinking[call.id] = session.thinkingLevels
                 }
             }
             Task { for await details in session.details { call.details = details } }
@@ -285,17 +294,22 @@ import os
         }
     }
 
+    /// How long an agent's own turn waits for more before it's over: ACP v1 marks no end for those turns.
+    private static let ownTurnQuiet = Duration.seconds(2)
+
     private func session(for agent: AgentConfig, thinking: String?) throws -> any AgentSession {
         switch agent.kind {
-        case .claudeCode:
-            return try ClaudeCodeSession(model: agent.model, effort: thinking, directory: agent.directoryURL,
-                                         environment: environment,
-                                         permissionMode: agent.permissionMode, errorLog: AgentLog.url(for: agent.id),
-                                         systemPrompt: callPrompt(for: agent))
-        case .omp:
-            return try OmpSession(model: agent.model, thinking: thinking, directory: agent.directoryURL,
-                                  environment: environment,
-                                  errorLog: AgentLog.url(for: agent.id), systemPrompt: callPrompt(for: agent))
+        case .acp:
+            guard let command = agent.launchCommand else { throw SetupError.missingCommand }
+            if let preset = AgentPreset.withID(agent.preset), !preset.isInstalled(path: environment?["PATH"]) {
+                throw SetupError.missingProgram(preset)
+            }
+            let channel = try ProcessChannel(command: command, directory: agent.directoryURL, environment: environment,
+                                             errorLog: AgentLog.url(for: agent.id))
+            let folder = agent.directoryURL ?? FileManager.default.homeDirectoryForCurrentUser
+            return AcpSession(channel: channel, settings: .init(directory: folder.path, preamble: callPrompt(for: agent),
+                                                                ownTurnQuiet: Self.ownTurnQuiet, model: agent.model,
+                                                                thinking: thinking))
         case .hermes:
             guard let url = agent.url.flatMap(URL.init(string:)), url.host() != nil else { throw SetupError.missingAddress }
             let secret = { Keychain.password(service: agent.keychainService, account: $0) }
@@ -323,12 +337,14 @@ import os
     }
 
     enum SetupError: Error {
-        case missingAddress, missingKey, guest
+        case missingAddress, missingKey, missingCommand, missingProgram(AgentPreset), guest
 
         func message(for name: String) -> String {
             switch self {
             case .missingAddress: "\(name) needs an address. Add it in Settings › Agents."
             case .missingKey: "\(name) needs an API key. Add it in Settings › Agents."
+            case .missingCommand: "\(name) needs a command to start it. Add it in Settings › Agents."
+            case .missingProgram(let preset): "\(name) needs \(preset.needs): \(preset.installURL.absoluteString)"
             case .guest: "\(name) runs on its own; it talks to you when it needs you."
             }
         }
@@ -597,12 +613,6 @@ import os
                 guard let level = step(command == .thinkMore ? 1 : -1, from: call.thinking, in: session.thinkingLevels)
                 else { throw ChangeLater() }
                 confirmation = try setThinking(level, in: call, session: session)
-            case .fast where call.agent.kind == .claudeCode:
-                try session.setModel("haiku")
-                confirmation = "Going fast, on Haiku."
-            case .deep where call.agent.kind == .claudeCode:
-                try session.setModel("opus")
-                confirmation = "Going deep, on Opus."
             case .fast, .deep:
                 guard local else { throw ChangeLater() }
                 confirmation = try setThinking(command == .fast ? "low" : "high", in: call, session: session)
@@ -939,7 +949,7 @@ import os
 
     /// A session of a tool Lair knows, in a folder none of your agents has, can become one.
     func canAdopt(_ call: Call) -> Bool {
-        guard call.stranger, let visitor = call.visitor, Visitors.kind(ofClient: visitor.client) != nil, call.folder != nil
+        guard call.stranger, let visitor = call.visitor, Visitors.preset(ofClient: visitor.client) != nil, call.folder != nil
         else { return false }
         return Visitors.agent(client: visitor.client, folder: call.folder, in: calls.filter { !$0.stranger }.map(\.agent)) == nil
     }
@@ -947,8 +957,8 @@ import os
     /// Saves the session's tool and folder as an agent named after the folder, with the voice and color it has now;
     /// its next sessions there join as that agent.
     func adopt(_ call: Call) {
-        guard canAdopt(call), let kind = Visitors.kind(ofClient: call.visitor?.client), let folder = call.folder else { return }
-        let draft = AgentConfig(id: "", name: Visitors.agentName(for: folder), kind: kind, voice: call.agent.voice,
+        guard canAdopt(call), let preset = Visitors.preset(ofClient: call.visitor?.client), let folder = call.folder else { return }
+        let draft = AgentConfig(id: "", name: Visitors.agentName(for: folder), preset: preset, voice: call.agent.voice,
                                 color: call.agent.color, directory: Visitors.configPath(folder))
         guard let saved = saveAgent?(draft) else { return }
         // Its id changes with it: keep pointing at it wherever the old one was used.

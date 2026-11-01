@@ -15,9 +15,14 @@ public final class AcpSession: AgentSession {
         public var preamble: String?
         public var mcpServers: [MCPServer]
         public var ownTurnQuiet: Duration
+        /// Chosen as the call starts, by the name or id the agent gives it; unset keeps the agent's default.
+        public var model: String?
+        public var thinking: String?
 
-        public init(directory: String, preamble: String?, mcpServers: [MCPServer] = [], ownTurnQuiet: Duration) {
+        public init(directory: String, preamble: String?, mcpServers: [MCPServer] = [], ownTurnQuiet: Duration,
+                    model: String? = nil, thinking: String? = nil) {
             (self.directory, self.preamble, self.mcpServers, self.ownTurnQuiet) = (directory, preamble, mcpServers, ownTurnQuiet)
+            (self.model, self.thinking) = (model, thinking)
         }
     }
 
@@ -87,6 +92,16 @@ public final class AcpSession: AgentSession {
                 let session = try await setup.value
                 state.withLock { $0.sessionID = session.sessionId }
                 show(session.configOptions)
+                for (category, wanted) in [("model", settings.model), ("thought_level", settings.thinking)] {
+                    guard let wanted else { continue }
+                    do {
+                        try set(category: category, to: wanted)
+                    } catch is ChangeLater {
+                        // The agent offers no such choice: nothing to apply.
+                    } catch {
+                        problemsContinuation.yield("Couldn't choose \(wanted): \(error.localizedDescription)")
+                    }
+                }
             } catch {
                 problemsContinuation.yield("Couldn't start the call: \(error.localizedDescription)")
             }

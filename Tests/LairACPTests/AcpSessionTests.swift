@@ -162,6 +162,18 @@ struct AcpSessionTests {
         session.stop()
     }
 
+    @Test func choosesTheConfiguredModelAndThinkingAsTheCallStarts() async {
+        let agent = FakeAgent()
+        let session = AcpSession(channel: agent, settings: .init(directory: "/work", preamble: nil, ownTurnQuiet: .seconds(1),
+                                                                 model: "opus", thinking: "high"))
+        await agent.handshake()
+        let first = await agent.next()
+        let second = await agent.next()
+        #expect([first, second].map { $0.params["configId"] as? String } == ["model", "effort"])
+        #expect([first, second].map { $0.params["value"] as? String } == ["opus", "high"])
+        session.stop()
+    }
+
     @Test func theAgentGoingAwayFailsTheTurnAsStopped() async throws {
         let agent = FakeAgent()
         let session = session(agent)

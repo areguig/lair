@@ -24,7 +24,7 @@ public struct LairConfig: Codable, Equatable, Sendable {
         .appending(path: ".config/lair/config.json")
 
     public static let initial = LairConfig(agents: [
-        AgentConfig(id: "claude", name: "Claude", kind: .claudeCode, voice: "af_heart", color: "#D97757",
+        AgentConfig(id: "claude", name: "Claude", preset: .claude, voice: "af_heart", color: "#D97757",
                     model: "haiku", directory: "~"),
     ])
 
@@ -77,8 +77,9 @@ public struct GuestSettings: Codable, Equatable, Sendable {
 
 public struct AgentConfig: Codable, Equatable, Identifiable, Sendable {
     public enum Kind: String, Codable, Sendable {
-        case claudeCode = "claude-code"
-        case omp
+        /// Started on this Mac and spoken to over the Agent Client Protocol.
+        case acp
+        /// A Hermes agent reached over its HTTP API, at home or away.
         case hermes
         /// An agent on this Mac that joined over MCP; never saved in the config.
         case guest
@@ -93,10 +94,12 @@ public struct AgentConfig: Codable, Equatable, Identifiable, Sendable {
     public var model: String?
     /// Working folder of the agent's sessions; `~` is your home folder.
     public var directory: String?
-    /// How much the agent thinks: Claude Code's effort (low…max), omp's thinking level (off…max).
+    /// How much the agent thinks, by the name the agent gives its levels (low, high…); unset keeps its default.
     public var thinking: String?
-    /// Claude Code: `--permission-mode` for its sessions; unset keeps your own Claude Code settings.
-    public var permissionMode: String?
+    /// ACP: the preset this agent is started from (`AgentPreset.id`).
+    public var preset: String?
+    /// ACP: the command that starts an agent that isn't a preset, e.g. `["my-agent", "--acp"]`.
+    public var command: [String]?
     /// Hermes: base URL of its API server, e.g. `http://hermes.local:8642` at home or a public address away.
     public var url: String?
     /// Turned off: kept in the file and in Settings, but not in the panel, Mission Control or by name.
@@ -116,6 +119,41 @@ public struct AgentConfig: Codable, Equatable, Identifiable, Sendable {
         self.directory = directory
         self.url = url
         self.headers = headers
+    }
+
+    public init(id: String, name: String, preset: AgentPreset, voice: String, color: String, model: String? = nil,
+                directory: String? = nil) {
+        self.init(id: id, name: name, kind: .acp, voice: voice, color: color, model: model, directory: directory)
+        self.preset = preset.id
+    }
+
+    /// Reads configs written before agents spoke ACP: a "claude-code" or "omp" agent becomes that preset.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let legacyPresets = ["claude-code": AgentPreset.claude.id, "omp": AgentPreset.omp.id]
+        let kind = try container.decode(String.self, forKey: .kind)
+        self.kind = legacyPresets[kind] == nil ? try container.decode(Kind.self, forKey: .kind) : .acp
+        preset = try container.decodeIfPresent(String.self, forKey: .preset) ?? legacyPresets[kind]
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        voice = try container.decode(String.self, forKey: .voice)
+        color = try container.decode(String.self, forKey: .color)
+        model = try container.decodeIfPresent(String.self, forKey: .model)
+        directory = try container.decodeIfPresent(String.self, forKey: .directory)
+        thinking = try container.decodeIfPresent(String.self, forKey: .thinking)
+        command = try container.decodeIfPresent([String].self, forKey: .command)
+        url = try container.decodeIfPresent(String.self, forKey: .url)
+        disabled = try container.decodeIfPresent(Bool.self, forKey: .disabled)
+        headers = try container.decodeIfPresent([String].self, forKey: .headers)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, kind, voice, color, model, directory, thinking, preset, command, url, disabled, headers
+    }
+
+    /// What starts an ACP agent: its own command, else its preset's.
+    public var launchCommand: [String]? {
+        command ?? AgentPreset.withID(preset)?.command
     }
 
     /// Keychain service holding this agent's secrets: `api-key`, and one `header:<name>` per extra header.
