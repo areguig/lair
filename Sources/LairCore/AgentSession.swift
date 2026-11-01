@@ -124,15 +124,18 @@ public enum ApprovalDecision: Equatable, Sendable {
 public struct ApprovalRequest: Equatable, Identifiable, Sendable {
     public let id: String
     public let tool: String
-    /// What the agent says the action does, in words that can be read aloud.
+    /// What the agent says the action does, shown in full: often the exact command.
     public let summary: String
+    /// A few words for the voice, such as "run a command": a command read aloud is noise.
+    public let spoken: String
     /// Whether "always" is a choice: the agent can remember the answer.
     public let canAlwaysAllow: Bool
 
-    public init(id: String, tool: String, summary: String, canAlwaysAllow: Bool = false) {
+    public init(id: String, tool: String, summary: String, spoken: String? = nil, canAlwaysAllow: Bool = false) {
         self.id = id
         self.tool = tool
         self.summary = summary
+        self.spoken = spoken ?? summary
         self.canAlwaysAllow = canAlwaysAllow
     }
 }

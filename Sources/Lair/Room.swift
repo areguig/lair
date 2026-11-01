@@ -807,7 +807,7 @@ import os
             announce("\(call.agent.name) needs your OK.", for: call)
             return
         }
-        _ = try await say("\(call.agent.name) needs your OK to \(request.summary.lowercasedFirst). Allow it?" + (request.canAlwaysAllow ? " Say yes, always, or no." : " Say yes or no."), in: call)
+        _ = try await say("\(call.agent.name) needs your OK to \(request.spoken.lowercasedFirst). Allow it?" + (request.canAlwaysAllow ? " Say yes, always, or no." : " Say yes or no."), in: call)
         if call.pendingApproval?.id == request.id { call.state = .waiting }
         await speaker?.waitUntilDone()
         if call.pendingApproval?.id == request.id { listenForAnswer(in: call) }

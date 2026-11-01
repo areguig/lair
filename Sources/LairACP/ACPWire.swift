@@ -212,6 +212,23 @@ enum ACPWire {
         struct ToolCall: Decodable {
             let toolCallId: String
             let title: String?
+            /// ACP's tool kind: read, edit, delete, move, search, execute, think, fetch, switch_mode or other.
+            let kind: String?
+
+            /// The kind in a few words for the voice; the title is often the raw command.
+            var spokenAction: String {
+                switch kind {
+                case "read": "read a file"
+                case "edit": "edit a file"
+                case "delete": "delete a file"
+                case "move": "move a file"
+                case "search": "search"
+                case "execute": "run a command"
+                case "fetch": "fetch from the web"
+                case "switch_mode": "switch modes"
+                default: "use a tool"
+                }
+            }
         }
     }
 
