@@ -14,6 +14,8 @@ jobs:
   build:
     # Xcode 27: older SwiftPM can't find resource bundles inside an app (see scripts/build-app.sh).
     runs-on: xcode-27
+    env:
+      HAS_DEVELOPER_ID: ${{ secrets.DEVELOPER_ID_P12 != '' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -30,10 +32,27 @@ jobs:
       - run: swift test
         env:
           LIBDISPATCH_COOPERATIVE_POOL_STRICT: 1
+      # Releases are signed with Developer ID and notarized once these secrets exist; until then, signed ad hoc.
+      - uses: Apple-Actions/import-codesign-certs@v7
+        if: github.ref_type == 'tag' && env.HAS_DEVELOPER_ID == 'true'
+        with:
+          p12-file-base64: ${{ secrets.DEVELOPER_ID_P12 }}
+          p12-password: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+      - name: Use the Developer ID certificate and the notary key
+        if: github.ref_type == 'tag' && env.HAS_DEVELOPER_ID == 'true'
+        env:
+          NOTARY_KEY: ${{ secrets.NOTARY_KEY }}
+        run: |
+          echo "$NOTARY_KEY" | base64 --decode > "$RUNNER_TEMP/notary.p8"
+          echo "LAIR_SIGN_IDENTITY=Developer ID Application" >> "$GITHUB_ENV"
+          echo "LAIR_NOTARY_KEY=$RUNNER_TEMP/notary.p8" >> "$GITHUB_ENV"
       - name: Make the disk image
+        env:
+          LAIR_NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          LAIR_NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER }}
         run: |
           if [ "$GITHUB_REF_TYPE" = tag ]; then export LAIR_VERSION="${GITHUB_REF_NAME#v}"; fi
-          LAIR_SIGN_IDENTITY=- scripts/make-dmg.sh "$RUNNER_TEMP/Lair.dmg"
+          LAIR_SIGN_IDENTITY="${LAIR_SIGN_IDENTITY:--}" scripts/make-dmg.sh "$RUNNER_TEMP/Lair.dmg"
       - uses: actions/upload-artifact@v4
         with:
           name: Lair
