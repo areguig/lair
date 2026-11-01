@@ -658,13 +658,10 @@ private struct Transcript: View {
                 .clipped()
             }
         }
-        .padding(.horizontal, 12)
-        .frame(height: lines.isEmpty ? (live ? 44 : 0) : 150)
+        .frame(height: lines.isEmpty ? (live ? 44 : 0) : 240)
         .frame(maxWidth: .infinity)
-        // A card like a Mission Control column: older lines scroll away under a clean edge, not a fade.
-        .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.white.opacity(0.07), lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        // Older lines scroll away under a clean edge, not a fade.
+        .clipped()
         .opacity(lines.isEmpty && !live ? 0 : 1)
         .animation(.smooth, value: lines.isEmpty)
         .animation(.smooth, value: live)
