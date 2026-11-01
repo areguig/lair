@@ -162,10 +162,10 @@ private struct AgentColumn: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(call.agent.name).font(.system(.headline, design: .rounded, weight: .semibold))
                 if call.guest {
-                    GuestBadge(folder: call.folder, monospaced: true)
+                    GuestBadge(folder: call.folder)
                 } else {
                     Text([call.details, stateText].compactMap { $0 }.joined(separator: " · "))
-                        .font(.system(.caption, design: .monospaced))
+                        .font(.system(.caption, design: .rounded))
                         .foregroundStyle(.white.opacity(0.55))
                         .lineLimit(1)
                 }
