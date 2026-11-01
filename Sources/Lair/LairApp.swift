@@ -175,7 +175,7 @@ struct MenuBarIcon: View {
         let room = Room(config: LairConfig(agents: agents))
         room.readiness = variant == "micdenied" ? .microphoneDenied : .ready
         if let call = room.calls.first {
-            call.details = "claude-haiku-5-5"
+            call.details = "Haiku 5.5"
             call.lines = [
                 .init(role: .you, text: "What's left on the release checklist?"),
                 .init(role: .agent, text: "Two things: the changelog still needs the new voice section, and the build "

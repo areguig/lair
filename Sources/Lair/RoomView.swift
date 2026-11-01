@@ -540,7 +540,7 @@ private struct ModelSwitcher: View {
                     .lineLimit(1)
                 Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
             }
-            .font(.system(.caption, design: .monospaced))
+            .font(.caption)
             .foregroundStyle(.white.opacity(0.62))
             .padding(.horizontal, 8).padding(.vertical, 2)
             .background(.white.opacity(0.06), in: Capsule())
