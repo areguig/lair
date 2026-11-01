@@ -38,6 +38,14 @@ struct LairConfigTests {
         #expect(agents[1].thinking == "high")
     }
 
+    @Test func keepsTheAgentsOtherChoices() throws {
+        let url = temporaryURL()
+        var agent = AgentConfig(id: "c", name: "C", preset: .claude, voice: "v", color: "#000000")
+        agent.options = ["mode": "acceptEdits"]
+        try LairConfig(agents: [agent]).save(to: url)
+        #expect(try LairConfig.load(from: url).agents.first?.options == ["mode": "acceptEdits"])
+    }
+
     @Test func anAgentsOwnCommandWinsOverItsPreset() {
         var agent = AgentConfig(id: "a", name: "A", kind: .acp, voice: "v", color: "#000000")
         #expect(agent.launchCommand == nil)

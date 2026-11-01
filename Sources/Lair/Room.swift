@@ -99,6 +99,8 @@ import os
     private(set) var knownModels: [String: [String]] = [:]
     /// Thinking levels each agent offered on its last call, for Settings.
     private(set) var knownThinking: [String: [String]] = [:]
+    /// The other choices each agent offered on its last call, such as how it asks for approval, for Settings.
+    private(set) var knownOptions: [String: [AgentOption]] = [:]
     /// A short-lived line under the agent's name, for a key press that can't do anything yet.
     private(set) var hint: String?
     private(set) var calls: [Call]
@@ -272,6 +274,7 @@ import os
                 }
             }
             Task { for await details in session.details { call.details = details } }
+            Task { for await options in session.options { knownOptions[call.id] = options } }
             Task { for await turn in session.ownTurns { hear(turn, from: call) } }
             // After the state change that freed the call has run its course.
             call.becameReady = { [weak self, weak call] in
@@ -309,7 +312,7 @@ import os
             let folder = agent.directoryURL ?? FileManager.default.homeDirectoryForCurrentUser
             return AcpSession(channel: channel, settings: .init(directory: folder.path, preamble: callPrompt(for: agent),
                                                                 ownTurnQuiet: Self.ownTurnQuiet, model: agent.model,
-                                                                thinking: thinking))
+                                                                thinking: thinking, options: agent.options ?? [:]))
         case .hermes:
             guard let url = agent.url.flatMap(URL.init(string:)), url.host() != nil else { throw SetupError.missingAddress }
             let secret = { Keychain.password(service: agent.keychainService, account: $0) }

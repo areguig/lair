@@ -175,6 +175,23 @@ struct AcpSessionTests {
         session.stop()
     }
 
+    @Test func listsTheAgentsOtherChoicesAndMakesTheConfiguredOnesAsTheCallStarts() async {
+        let agent = FakeAgent()
+        let session = AcpSession(channel: agent, settings: .init(directory: "/work", preamble: nil, ownTurnQuiet: .seconds(1),
+                                                                 options: ["mode": "plan"]))
+        var options = session.options.makeAsyncIterator()
+        let initialize = await agent.next()
+        agent.answer(initialize, #"{"protocolVersion":1}"#)
+        let newSession = await agent.next()
+        agent.answer(newSession, #"{"sessionId":"s1","configOptions":[{"id":"mode","name":"Mode","category":"mode","type":"select","currentValue":"default","options":[{"value":"default","name":"Ask first"},{"value":"plan","name":"Plan only"}]},{"id":"model","name":"Model","category":"model","type":"select","currentValue":"m","options":[{"value":"m","name":"M"}]}]}"#)
+        #expect(await options.next() == [AgentOption(id: "mode", name: "Mode",
+                                                     values: [.init(id: "default", name: "Ask first"), .init(id: "plan", name: "Plan only")])])
+        let change = await agent.next()
+        #expect(change.params["configId"] as? String == "mode")
+        #expect(change.params["value"] as? String == "plan")
+        session.stop()
+    }
+
     @Test func theAgentGoingAwayFailsTheTurnAsStopped() async throws {
         let agent = FakeAgent()
         let session = session(agent)

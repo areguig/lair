@@ -20,6 +20,8 @@ public protocol AgentSession: Sendable {
     var problems: AsyncStream<String> { get }
     /// Models the agent offers, each time it lists them, for the switcher.
     var models: AsyncStream<[String]> { get }
+    /// The other choices the agent offers, such as how it asks for approval, each time it lists them.
+    var options: AsyncStream<[AgentOption]> { get }
     /// Thinking levels, from least to most.
     var thinkingLevels: [String] { get }
     /// Switches the model for the rest of the call.
@@ -40,6 +42,27 @@ public struct AgentFailure: LocalizedError {
     public var errorDescription: String? { message }
 }
 
+/// A choice the agent offers besides its model and thinking level, in its own words: Claude's "Mode",
+/// Copilot's "Allow all"…
+public struct AgentOption: Equatable, Sendable, Identifiable {
+    public let id: String
+    public let name: String
+    public let values: [Value]
+
+    public struct Value: Equatable, Hashable, Sendable {
+        public let id: String
+        public let name: String
+
+        public init(id: String, name: String) {
+            (self.id, self.name) = (id, name)
+        }
+    }
+
+    public init(id: String, name: String, values: [Value]) {
+        (self.id, self.name, self.values) = (id, name, values)
+    }
+}
+
 /// The agent can't make this change mid-call; it applies from the next call.
 public struct ChangeLater: Error {
     public init() {}
@@ -51,6 +74,7 @@ extension AgentSession {
     public var ownTurns: AsyncStream<AgentTurn> { AsyncStream { $0.finish() } }
     public var problems: AsyncStream<String> { AsyncStream { $0.finish() } }
     public var models: AsyncStream<[String]> { AsyncStream { $0.finish() } }
+    public var options: AsyncStream<[AgentOption]> { AsyncStream { $0.finish() } }
     public var thinkingLevels: [String] { [] }
     public func setModel(_ model: String) throws { throw ChangeLater() }
     public func setThinking(_ level: String) throws { throw ChangeLater() }

@@ -228,6 +228,12 @@ private struct AgentForm: View {
                                emptyHint: "Call this agent once to list its models")
                     ThinkingPicker(title: "Thinking", thinking: $agent.thinking, levels: room.knownThinking[agent.id] ?? [])
                     FolderField(path: $agent.directory)
+                    ForEach(room.knownOptions[agent.id] ?? []) { option in
+                        Picker(option.name, selection: chosen(option.id)) {
+                            Text("Default").tag(String?.none)
+                            ForEach(option.values, id: \.self) { Text($0.name).tag(String?($0.id)) }
+                        }
+                    }
                 case .hermes:
                     VStack(alignment: .leading, spacing: 2) {
                         TextField("Address", text: optional($agent.url), prompt: Text("http://hermes.local:8642"))
@@ -260,7 +266,17 @@ private struct AgentForm: View {
             guard new != AgentChoice(agent) else { return }
             agent.model = nil
             agent.thinking = nil
+            agent.options = nil
             new.apply(to: &agent)
+        })
+    }
+
+    /// One of the agent's other choices, kept by option id; "Default" removes it.
+    private func chosen(_ optionID: String) -> Binding<String?> {
+        Binding(get: { agent.options?[optionID] }, set: { value in
+            var options = agent.options ?? [:]
+            options[optionID] = value
+            agent.options = options.isEmpty ? nil : options
         })
     }
 
@@ -275,7 +291,8 @@ private struct AgentForm: View {
         case .acp:
             let guests = AgentPreset.withID(agent.preset)?.mcpClientName == nil ? "" :
                 "Start it yourself in this folder and it talks to you as \(agent.name), once it's connected in On this Mac."
-            return "These apply from the next call. During a call, say “switch to <model>”, “think harder” or “go fast”. " + guests
+            let options = room.knownOptions[agent.id] == nil ? "Call it once to see its models and other choices, such as how it asks for approval. " : ""
+            return "These apply from the next call. During a call, say “switch to <model>”, “think harder” or “go fast”. " + options + guests
         case .hermes: return "Address and model apply from the next call. Keys stay in your Keychain, never in the config file."
         case .guest: return ""
         }

@@ -18,11 +18,13 @@ public final class AcpSession: AgentSession {
         /// Chosen as the call starts, by the name or id the agent gives it; unset keeps the agent's default.
         public var model: String?
         public var thinking: String?
+        /// The agent's other choices, by option id, e.g. `["mode": "acceptEdits"]`.
+        public var options: [String: String]
 
         public init(directory: String, preamble: String?, mcpServers: [MCPServer] = [], ownTurnQuiet: Duration,
-                    model: String? = nil, thinking: String? = nil) {
+                    model: String? = nil, thinking: String? = nil, options: [String: String] = [:]) {
             (self.directory, self.preamble, self.mcpServers, self.ownTurnQuiet) = (directory, preamble, mcpServers, ownTurnQuiet)
-            (self.model, self.thinking) = (model, thinking)
+            (self.model, self.thinking, self.options) = (model, thinking, options)
         }
     }
 
@@ -67,6 +69,8 @@ public final class AcpSession: AgentSession {
     private let detailsContinuation: AsyncStream<String>.Continuation
     public let models: AsyncStream<[String]>
     private let modelsContinuation: AsyncStream<[String]>.Continuation
+    public let options: AsyncStream<[AgentOption]>
+    private let optionsContinuation: AsyncStream<[AgentOption]>.Continuation
     public let problems: AsyncStream<String>
     private let problemsContinuation: AsyncStream<String>.Continuation
 
@@ -78,6 +82,7 @@ public final class AcpSession: AgentSession {
         (ownTurns, ownTurnsContinuation) = AsyncStream<AgentTurn>.makeStream()
         (details, detailsContinuation) = AsyncStream<String>.makeStream()
         (models, modelsContinuation) = AsyncStream<[String]>.makeStream()
+        (options, optionsContinuation) = AsyncStream<[AgentOption]>.makeStream()
         (problems, problemsContinuation) = AsyncStream<String>.makeStream()
         setup = Task {
             _ = try await peer.request("initialize", ACPWire.InitializeParams(clientInfo: .init(name: "Lair", version: "1")),
@@ -94,10 +99,11 @@ public final class AcpSession: AgentSession {
                 let session = try await setup.value
                 state.withLock { $0.sessionID = session.sessionId }
                 show(session.configOptions)
-                for (category, wanted) in [("model", settings.model), ("thought_level", settings.thinking)] {
-                    guard let wanted else { continue }
+                let chosen = [(Self.isCategory("model"), settings.model), (Self.isCategory("thought_level"), settings.thinking)]
+                    + settings.options.sorted { $0.key < $1.key }.map { id, value in ({ $0.id == id }, value) }
+                for case let (option, wanted?) in chosen {
                     do {
-                        try await apply(choice(category: category, wanted: wanted))
+                        try await apply(choice(option, wanted: wanted))
                     } catch is ChangeLater {
                         // The agent offers no such choice: nothing to apply.
                     } catch {
@@ -198,6 +204,7 @@ public final class AcpSession: AgentSession {
         ownTurnsContinuation.finish()
         detailsContinuation.finish()
         modelsContinuation.finish()
+        optionsContinuation.finish()
         problemsContinuation.finish()
     }
 
@@ -284,16 +291,22 @@ public final class AcpSession: AgentSession {
     }
 
     public func setModel(_ model: String) throws {
-        try change(category: "model", to: model)
+        try change(Self.isCategory("model"), to: model)
     }
 
     public func setThinking(_ level: String) throws {
-        try change(category: "thought_level", to: level)
+        try change(Self.isCategory("thought_level"), to: level)
+    }
+
+    private typealias Which = @Sendable (ACPWire.ConfigOption) -> Bool
+
+    private static func isCategory(_ category: String) -> Which {
+        { $0.category == category }
     }
 
     /// Checks the choice now; the agent confirms it in the background, and a refusal is reported as a problem.
-    private func change(category: String, to wanted: String) throws {
-        let change = try choice(category: category, wanted: wanted)
+    private func change(_ option: Which, to wanted: String) throws {
+        let change = try choice(option, wanted: wanted)
         Task { [self] in
             do {
                 try await apply(change)
@@ -310,8 +323,8 @@ public final class AcpSession: AgentSession {
     }
 
     /// Picks the value by its id or name, exactly, else the first that contains it ("opus" → "Claude Opus 5.5").
-    private func choice(category: String, wanted: String) throws -> Choice {
-        let (sessionID, option) = state.withLock { ($0.sessionID, $0.options.first { $0.category == category }) }
+    private func choice(_ which: Which, wanted: String) throws -> Choice {
+        let (sessionID, option) = state.withLock { ($0.sessionID, $0.options.first(where: which)) }
         guard let sessionID, let option else { throw ChangeLater() }
         let matches = { (value: ACPWire.ConfigOption.Value) in
             value.value.caseInsensitiveCompare(wanted) == .orderedSame || value.name.caseInsensitiveCompare(wanted) == .orderedSame
@@ -337,6 +350,9 @@ public final class AcpSession: AgentSession {
             options.first { $0.category == category }.flatMap { option in option.values.first { $0.value == option.currentValue }?.name }
         }
         if let model = options.first(where: { $0.category == "model" }) { modelsContinuation.yield(model.values.map(\.name)) }
+        optionsContinuation.yield(options.filter { $0.category != "model" && $0.category != "thought_level" }.map { option in
+            AgentOption(id: option.id, name: option.name, values: option.values.map { .init(id: $0.value, name: $0.name) })
+        })
         if let details = agentDetails(model: current("model"), thinking: current("thought_level")) { detailsContinuation.yield(details) }
     }
 }

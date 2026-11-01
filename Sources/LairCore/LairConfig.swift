@@ -100,6 +100,8 @@ public struct AgentConfig: Codable, Equatable, Identifiable, Sendable {
     public var preset: String?
     /// ACP: the command that starts an agent that isn't a preset, e.g. `["my-agent", "--acp"]`.
     public var command: [String]?
+    /// ACP: the agent's other choices to make as a call starts, by option id: e.g. `{"mode": "acceptEdits"}`.
+    public var options: [String: String]?
     /// Hermes: base URL of its API server, e.g. `http://hermes.local:8642` at home or a public address away.
     public var url: String?
     /// Turned off: kept in the file and in Settings, but not in the panel, Mission Control or by name.
@@ -142,13 +144,14 @@ public struct AgentConfig: Codable, Equatable, Identifiable, Sendable {
         directory = try container.decodeIfPresent(String.self, forKey: .directory)
         thinking = try container.decodeIfPresent(String.self, forKey: .thinking)
         command = try container.decodeIfPresent([String].self, forKey: .command)
+        options = try container.decodeIfPresent([String: String].self, forKey: .options)
         url = try container.decodeIfPresent(String.self, forKey: .url)
         disabled = try container.decodeIfPresent(Bool.self, forKey: .disabled)
         headers = try container.decodeIfPresent([String].self, forKey: .headers)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, kind, voice, color, model, directory, thinking, preset, command, url, disabled, headers
+        case id, name, kind, voice, color, model, directory, thinking, preset, command, options, url, disabled, headers
     }
 
     /// What starts an ACP agent: its own command, else its preset's.
