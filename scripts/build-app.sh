@@ -18,6 +18,10 @@ fi
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$bin/Lair" "$app/Contents/MacOS/$name"
+# Sparkle's XPC services are only for sandboxed apps.
+sparkle="$app/Contents/Frameworks/Sparkle.framework"
+ditto "$bin/Sparkle.framework" "$sparkle"
+rm -rf "$sparkle/XPCServices" "$sparkle/Versions/B/XPCServices"
 # The app draws its own icon: render it, then scale it into an iconset.
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -46,6 +50,9 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>CFBundleVersion</key><string>$(git -C "$repo" rev-list --count HEAD 2>/dev/null || echo 0)</string>
   <key>LSMinimumSystemVersion</key><string>15.0</string>
   <key>LSUIElement</key><true/>
+  <key>SUFeedURL</key><string>https://github.com/areguig/lair/releases/latest/download/appcast.xml</string>
+  <key>SUPublicEDKey</key><string>dxNFdjuJmZE7FSoBXtKgfw6xZoTFfoCEeleM5WLloVk=</string>
+  <key>SUEnableAutomaticChecks</key><true/>
   <key>NSMicrophoneUsageDescription</key><string>$name listens while you hold the talk key or after you click the orb, to hear what you say to your agents.</string>
 </dict></plist>
 PLIST
@@ -58,5 +65,9 @@ identity=${identity:--}
 # The hardened runtime and a secure timestamp are what notarization asks for; ad hoc signatures can't be timestamped.
 timestamp=--timestamp
 [ "$identity" = - ] && timestamp=--timestamp=none
+# Inside out, without --deep, as Sparkle's docs ask.
+for part in "$sparkle/Versions/B/Autoupdate" "$sparkle/Versions/B/Updater.app" "$sparkle"; do
+  codesign --force --options runtime "$timestamp" --sign "$identity" "$part"
+done
 codesign --force --options runtime "$timestamp" --entitlements "$repo/scripts/Lair.entitlements" --sign "$identity" "$app"
 echo "Built $app"

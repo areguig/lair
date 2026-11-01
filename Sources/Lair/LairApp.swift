@@ -30,6 +30,7 @@ struct LairApp: App {
     private let link: GuestLink
     private let store: ConfigStore
     private let island: Island
+    private let updates: Updates
 
     init() {
         // An agent process that exits must not take Lair down with it: writing to it then just throws.
@@ -111,6 +112,7 @@ struct LairApp: App {
         self.room = room
         self.link = link
         self.island = island
+        updates = Updates()
         KeyboardShortcuts.onKeyDown(for: .pushToTalk) { room.pressTalk() }
         KeyboardShortcuts.onKeyUp(for: .pushToTalk) { room.releaseTalk() }
         KeyboardShortcuts.onKeyDown(for: .missionControl) { MissionControl.toggle(room: room) }
@@ -119,9 +121,9 @@ struct LairApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            RoomView(room: room, configProblem: store.problem)
+            RoomView(room: room, configProblem: store.problem, updates: updates)
         } label: {
-            MenuBarIcon(room: room)
+            MenuBarIcon(room: room, updates: updates)
         }
         .menuBarExtraStyle(.window)
 
@@ -135,6 +137,7 @@ struct LairApp: App {
 /// The whole room at a glance: what needs you first, then what's happening, then whether anyone is on a call.
 struct MenuBarIcon: View {
     let room: Room
+    var updates: Updates?
 
     var body: some View {
         let (symbol, label) = summary
@@ -159,6 +162,7 @@ struct MenuBarIcon: View {
         if let working = calls.first(where: { $0.state == .thinking }) {
             return ("ellipsis.circle.fill", "\(working.agent.name) is \(CallState.thinking.label.lowercased())")
         }
+        if let version = updates?.reminder.version { return ("arrow.down.circle.fill", "Lair \(version) is ready to install") }
         if let news = calls.first(where: \.unread) { return ("circle.circle.fill", "\(news.agent.name) has news") }
         if calls.contains(where: \.inCall) { return ("circle.circle.fill", "in a call") }
         return ("circle.circle", "idle")

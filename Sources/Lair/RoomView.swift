@@ -9,6 +9,7 @@ struct RoomView: View {
     let room: Room
     /// The config file has an error; Lair keeps running with the last good version until it's fixed.
     var configProblem: String?
+    var updates: Updates?
     @Environment(\.openWindow) private var openWindow
     var body: some View {
         let call = room.focused
@@ -50,6 +51,17 @@ struct RoomView: View {
                     .contentTransition(.numericText())
             }
             Spacer()
+            if let updates, let version = updates.reminder.version {
+                Button { updates.install() } label: {
+                    Text("Update")
+                        .font(.system(.caption, design: .rounded, weight: .semibold))
+                        .padding(.horizontal, 10).frame(height: 26)
+                        .controlSurface(Capsule())
+                }
+                .buttonStyle(.plain)
+                .help("Lair \(version) is ready to install")
+                .accessibilityLabel("Install Lair \(version)")
+            }
             Menu {
                 Button("Mission Control…") { MissionControl.toggle(room: room) }
                 Button("Settings…") { openSettings(.agents) }
