@@ -105,6 +105,7 @@ struct RoomView: View {
                     .foregroundStyle(.secondary)
                     .frame(width: 34, height: 34)
                     .overlay(Circle().strokeBorder(.secondary.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [3, 3])))
+                    .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .help("Add an agent, or connect the ones you run on this Mac")
@@ -321,10 +322,12 @@ struct RoomView: View {
             .font(.system(.caption, design: .rounded))
             .foregroundStyle(.secondary)
         } else {
-            Button("Set a talk shortcut in Settings…") { openSettings(.general) }
-                .buttonStyle(.plain)
-                .font(.system(.caption, design: .rounded, weight: .medium))
-                .foregroundStyle(.primary)
+            Button { openSettings(.general) } label: {
+                Text("Set a talk shortcut in Settings…").contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .font(.system(.caption, design: .rounded, weight: .medium))
+            .foregroundStyle(.primary)
         }
     }
 
@@ -1140,7 +1143,10 @@ private struct ControlSurface<S: InsettableShape>: ViewModifier {
     func body(content: Content) -> some View {
         // Glass doesn't render offscreen, so snapshots get the fallback.
         if #available(macOS 26, *), !reduceTransparency, renderTime == nil {
-            content.glassEffect(tint.map { .regular.tint($0).interactive() } ?? .regular.interactive(), in: shape)
+            // Glass isn't hit-testable: without the shape, a plain button only takes clicks on its symbol.
+            content
+                .contentShape(shape)
+                .glassEffect(tint.map { .regular.tint($0).interactive() } ?? .regular.interactive(), in: shape)
         } else {
             content
                 .background(tint ?? (reduceTransparency ? Color(nsColor: .controlBackgroundColor) : Color.primary.opacity(0.1)), in: shape)
