@@ -536,7 +536,7 @@ import os
             return
         }
         call.state = .thinking
-        call.turn = Task { await converse(in: call, prompt: text, speech: 0, start: Self.clock.now) }
+        call.turn = Task { await converse(in: call, prompt: text, speech: 0, start: Self.clock.now, typed: true) }
     }
 
     /// "Ask Echo to check it", or "Nova, ask Claude what it thinks": the target answers, with the source's latest
@@ -568,7 +568,7 @@ import os
         let before = target.lines.count
         target.turn = Task {
             await converse(in: target, prompt: prompt, speech: speech, start: start,
-                           shown: .init(role: .you, text: relay.words))
+                           shown: .init(role: .you, text: relay.words), typed: speech == 0)
             guard source.inCall, let answer = target.lines.dropFirst(before)
                 .last(where: { $0.role == .agent && !$0.text.isEmpty })?.text else { return }
             source.context.append(VoicePrompt.relayed(relay.words, to: target.agent.name, answer: answer))
@@ -654,11 +654,11 @@ import os
 
     /// `shown` replaces the prompt in the transcript when the prompt isn't something you said.
     private func converse(in call: Call, prompt: String, speech: Int, start: ContinuousClock.Instant,
-                          shown: Call.Line? = nil) async {
+                          shown: Call.Line? = nil, typed: Bool = false) async {
         let turnID = UUID()
         call.turnID = turnID
         call.unheard = []
-        // The agent answered what you said aloud: listen a few seconds for your reply. Typed turns don't open the mic.
+        // The agent spoke to you: listen a few seconds for your reply. Typed turns don't open the mic.
         var listenAfter = false
         defer {
             if call.inCall, call.turnID == turnID {
@@ -740,7 +740,7 @@ import os
             }
             if call.id == focusedID {
                 await speaker.waitUntilDone()
-                listenAfter = answered && speech > 0
+                listenAfter = answered && !typed
             } else if !Task.isCancelled {
                 call.unread = true
                 speaker.play(.done)
