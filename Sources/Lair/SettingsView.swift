@@ -70,7 +70,7 @@ private struct AgentsSettings: View {
             VStack(spacing: 0) {
                 List(store.config.agents, selection: $selection) { agent in
                     HStack(spacing: 8) {
-                        Circle().fill(Color(hex: agent.color)).frame(width: 10, height: 10)
+                        Circle().fill(Color(hex: agent.color)).frame(width: 10, height: 10).accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(agent.name.isEmpty ? "Unnamed" : agent.name)
                             Text(agent.disabled == true ? "\(AgentChoice(agent).label) · off" : AgentChoice(agent).label)
@@ -83,6 +83,7 @@ private struct AgentsSettings: View {
                                 .accessibilityLabel("Needs attention")
                         }
                     }
+                    .accessibilityElement(children: .combine)
                     .tag(agent.id)
                 }
                 .listStyle(.sidebar)
@@ -189,10 +190,8 @@ private struct AgentForm: View {
     var body: some View {
         Form {
             Section("Identity") {
-                VStack(alignment: .leading, spacing: 2) {
-                    Toggle("Use this agent", isOn: Binding(get: { agent.disabled != true }, set: { agent.disabled = $0 ? nil : true }))
-                    Hint("Off keeps its settings but takes it out of the panel and Mission Control.")
-                }
+                Toggle("Use this agent", isOn: Binding(get: { agent.disabled != true }, set: { agent.disabled = $0 ? nil : true }))
+                    .hint("Off keeps its settings but takes it out of the panel and Mission Control.")
                 VStack(alignment: .leading, spacing: 2) {
                     TextField("Name", text: $agent.name, prompt: Text("What you call it by voice"))
                     if let problem = nameProblem(agent.name, others: others) { Helper(problem) }
@@ -209,7 +208,7 @@ private struct AgentForm: View {
                         Image(systemName: "play.fill")
                     }
                     .help("Hear this voice")
-                    .accessibilityLabel("Hear this voice")
+                    .accessibilityLabel("Hear \(voiceLabel(agent.voice))")
                     .disabled(room.readiness != .ready)
                 }
             }
@@ -225,19 +224,15 @@ private struct AgentForm: View {
                         Helper("\(agent.name) needs \(preset.needs), not found on this Mac.")
                         Link("Get \(preset.needs)", destination: preset.installURL)
                     }
-                    VStack(alignment: .leading, spacing: 2) {
-                        FolderField(path: $agent.directory)
-                        if AgentPreset.withID(agent.preset)?.mcpClientName != nil {
-                            Hint("Start it yourself in this folder and it talks to you as \(agent.name), once it's connected in On this Mac.")
-                        }
+                    FolderField(path: $agent.directory)
+                    if AgentPreset.withID(agent.preset)?.mcpClientName != nil {
+                        Hint("Start it yourself in this folder and it talks to you as \(agent.name), once it's connected in On this Mac.")
                     }
                     ModelField(model: $agent.model, prompt: "The agent's default",
                                choices: (room.knownModels[agent.id] ?? []).map { ($0, $0) },
                                emptyHint: "Call this agent once to list its models")
-                    VStack(alignment: .leading, spacing: 2) {
-                        ThinkingPicker(title: "Thinking", thinking: $agent.thinking, levels: room.knownThinking[agent.id] ?? [])
-                        Hint("Applies from the next call. During a call, say “switch to <model>”, “think harder” or “go fast”.")
-                    }
+                    ThinkingPicker(title: "Thinking", thinking: $agent.thinking, levels: room.knownThinking[agent.id] ?? [])
+                        .hint("Applies from the next call. During a call, say “switch to <model>”, “think harder” or “go fast”.")
                     ForEach(room.knownOptions[agent.id] ?? []) { option in
                         Picker(option.name, selection: chosen(option.id)) {
                             Text("Default").tag(String?.none)
@@ -252,14 +247,10 @@ private struct AgentForm: View {
                         TextField("Address", text: optional($agent.url), prompt: Text("http://hermes.local:8642"))
                         if let problem = addressProblem(agent.url) { Helper(problem) }
                     }
-                    VStack(alignment: .leading, spacing: 2) {
-                        TextField("Model", text: optional($agent.model), prompt: Text("hermes-agent"))
-                        Hint("Address and model apply from the next call.")
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        SecretField(title: "API key", service: agent.keychainService, account: "api-key")
-                        Hint("Keys stay in your Keychain, never in the config file.")
-                    }
+                    TextField("Model", text: optional($agent.model), prompt: Text("hermes-agent"))
+                        .hint("Address and model apply from the next call.")
+                    SecretField(title: "API key", service: agent.keychainService, account: "api-key")
+                        .hint("Keys stay in your Keychain, never in the config file.")
                 case .guest:
                     EmptyView()
                 }
@@ -359,6 +350,16 @@ private struct ThinkingPicker: View {
     }
 }
 
+private extension View {
+    /// Shows `text` under the control and has VoiceOver read it with the control rather than apart from it.
+    func hint(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            accessibilityHint(text)
+            Hint(text).accessibilityHidden(true)
+        }
+    }
+}
+
 private struct Hint: View {
     let text: String
     init(_ text: String) { self.text = text }
@@ -395,7 +396,7 @@ private struct FolderField: View {
             HStack {
                 Text(path ?? "Not set").foregroundStyle(path == nil ? .secondary : .primary)
                     .lineLimit(1).truncationMode(.middle)
-                Button("Choose…", action: choose)
+                Button("Choose…", action: choose).accessibilityLabel("Choose folder")
             }
         }
     }
@@ -420,6 +421,8 @@ private struct SoulEditor: View {
     var body: some View {
         Section {
             TextEditor(text: $text)
+                .accessibilityLabel("Soul")
+                .accessibilityHint("How this agent talks and behaves on a call")
                 .font(.body)
                 .frame(minHeight: 110)
                 .scrollContentBackground(.hidden)
