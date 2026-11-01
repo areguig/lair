@@ -1,3 +1,4 @@
+import KeyboardShortcuts
 import LairCore
 import LairVoice
 import SwiftUI
@@ -9,6 +10,7 @@ struct RoomView: View {
     /// The config file has an error; Lair keeps running with the last good version until it's fixed.
     var configProblem: String?
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let call = room.focused
@@ -28,7 +30,7 @@ struct RoomView: View {
             } else {
                 emptyState
             }
-            footer.padding(.top, 14)
+            if call.map(statusMentionsTalkKey) != true { footer.padding(.top, 14) }
         }
         .padding(18)
         .frame(width: call == nil ? 340 : 424)
@@ -154,10 +156,12 @@ struct RoomView: View {
     }
 
     private func stage(_ call: Call, tint: Color) -> some View {
-        VStack(spacing: 12) {
+        // Once there are words, the orb and name shrink to leave the room to the transcript.
+        let compact = !call.lines.isEmpty
+        return VStack(spacing: compact ? 6 : 12) {
             Orb(color: tint, state: call.state, meter: room.meter(for: call))
-                .frame(width: 96, height: 96)
-                .frame(height: 124)
+                .frame(width: compact ? 56 : 96, height: compact ? 56 : 96)
+                .frame(height: compact ? 64 : 124)
                 .contentShape(Circle())
                 // Starts a call; hanging up stays on the red button, so a stray click can't end one.
                 .onTapGesture { if !call.inCall, !call.guest { room.summon(call) } }
@@ -195,6 +199,7 @@ struct RoomView: View {
                 status(for: call)
             }
         }
+        .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: compact)
     }
 
     /// The caption under the name, or what's in the way and how to fix it.
@@ -248,9 +253,13 @@ struct RoomView: View {
             RoundButton(symbol: "rectangle.split.3x1", fill: .white.opacity(0.1), size: 42) {
                 MissionControl.toggle(room: room)
             }
-            .help("Mission Control: every agent's whole stream")
-            .accessibilityLabel("Mission Control")
+            .help("Mission Control\(missionControlKey): every agent's whole stream")
+            .accessibilityLabel("Mission Control\(missionControlKey)")
         }
+    }
+
+    private var missionControlKey: String {
+        KeyboardShortcuts.getShortcut(for: .missionControl).map { " (\($0))" } ?? ""
     }
 
     /// What you can say, shown while a call has no words yet.
@@ -357,6 +366,12 @@ struct RoomView: View {
         }
     }
 
+    /// The state line already tells how to talk, so the footer's hint would say it twice.
+    private func statusMentionsTalkKey(_ call: Call) -> Bool {
+        guard let key = TalkKey.shared.label else { return false }
+        return (room.hint ?? caption(for: call)).contains(key)
+    }
+
     private func spoken(_ state: Call.State) -> String {
         switch state {
         case .offline: "not in a call"
@@ -400,8 +415,8 @@ private struct RailAvatar: View {
                 Text(call.agent.name)
                     .font(.system(size: 10, weight: focused ? .semibold : .medium, design: .rounded))
                     .foregroundStyle(.white.opacity(focused ? 0.95 : call.inCall ? 0.7 : 0.45))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
                     .truncationMode(.tail)
                     .frame(width: 60)
             }
@@ -530,7 +545,7 @@ private struct ModelSwitcher: View {
                     .lineLimit(1)
                 Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
             }
-            .font(.system(.caption, design: .monospaced))
+            .font(.caption)
             .foregroundStyle(.white.opacity(0.62))
             .padding(.horizontal, 8).padding(.vertical, 2)
             .background(.white.opacity(0.06), in: Capsule())
@@ -643,13 +658,10 @@ private struct Transcript: View {
                 .clipped()
             }
         }
-        .padding(.horizontal, 12)
-        .frame(height: lines.isEmpty ? (live ? 44 : 0) : 150)
+        .frame(height: lines.isEmpty ? (live ? 44 : 0) : 240)
         .frame(maxWidth: .infinity)
-        // A card like a Mission Control column: older lines scroll away under a clean edge, not a fade.
-        .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.white.opacity(0.07), lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        // Older lines scroll away under a clean edge, not a fade.
+        .clipped()
         .opacity(lines.isEmpty && !live ? 0 : 1)
         .animation(.smooth, value: lines.isEmpty)
         .animation(.smooth, value: live)
