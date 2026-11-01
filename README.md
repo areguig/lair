@@ -11,13 +11,15 @@ A macOS menu-bar app to talk with your coding agents by voice. Speech-to-text an
 - **The island:** Lair grows out of the notch when an agent talks or needs you, with its choices and OKs right there, and gets out of the way after. It never steals focus.
 - **Agents in your terminal:** connect Claude Code or omp in Settings › On this Mac. Every session you start yourself can then speak to you and ask you out loud. Any other MCP agent can join too: Lair is a local MCP server with two tools, speak and ask.
 - **Choices:** a question can come with choices, read out and shown as numbered buttons. Click one, press <kbd>⌘ 1</kbd>, or say "the blue one".
+- **They come back by themselves:** when an agent's background work finishes, it tells you as soon as the call is free, then listens for your reply.
 - **Several agents:** each call is a new session. Several can run at once; only the one in focus speaks, and the others tell you in one line when they're done or need you.
 - **Switch agents:** start a sentence with an agent's name ("Iris, …"), click its name in the panel, or click its column in Mission Control.
 - **Pass it on:** "Nova, ask Claude what it thinks", or "ask Echo to do it" to the agent you're talking to. The other agent gets your words and the last exchange, answers out loud, and the first one hears its answer on its next turn.
-- **Approvals:** when an agent asks before acting, answer by voice, in the panel or from the notification. The first answer wins. Nothing is approved automatically.
+- **Approvals:** when an agent asks before acting, answer by voice, in the panel or from the notification. The first answer wins. Lair never approves by itself; each agent's own approval mode (Claude's Accept edits, Copilot's Allow all…) is in Settings.
 - **Model and thinking:** pick them from the model line, or say "switch to Opus", "think harder", "go fast", "go deep".
 - **Mission Control** (<kbd>⌥ ⌘ L</kbd>): each agent's whole stream side by side, with tool calls, diffs, thinking, timings and cost, a line to type in, and Allow/Deny on approvals.
 - **Show, don't say:** links and paths appear as chips on screen and are never read aloud.
+- **Light or dark, and accessible:** Lair follows your Mac's appearance, with Liquid Glass controls on macOS 26, and respects Reduce Motion, Reduce Transparency, Increase Contrast and VoiceOver.
 
 ## Agents
 
@@ -42,11 +44,7 @@ The first launch downloads the speech models (Parakeet, Kokoro) through [FluidAu
 
 ## Install
 
-Download `Lair-vX.Y.Z.dmg` from [Releases](https://github.com/areguig/lair/releases) and drag Lair to Applications. The app isn't notarized yet, so macOS blocks the first launch. Allow it once in System Settings › Privacy & Security › Open Anyway, or run:
-
-```sh
-xattr -d com.apple.quarantine /Applications/Lair.app
-```
+Download `Lair-vX.Y.Z.dmg` from [Releases](https://github.com/areguig/lair/releases) and drag Lair to Applications. It's signed with a Developer ID and notarized by Apple, so it opens like any other app.
 
 ## Build
 
@@ -56,7 +54,7 @@ scripts/make-dmg.sh       # or wraps it in .build/Lair.dmg
 open ~/Applications/Lair.app
 ```
 
-The script signs the app with your Apple Development certificate if you have one, so the microphone permission survives rebuilds. Set `LAIR_SIGN_IDENTITY` to pick another identity.
+The script signs the app with your Developer ID or Apple Development certificate if you have one, so the microphone permission survives rebuilds; `LAIR_SIGN_IDENTITY` picks another. With notary credentials saved by `xcrun notarytool store-credentials <profile>`, `LAIR_NOTARY_PROFILE=<profile> scripts/make-dmg.sh` also notarizes the disk image.
 
 ```sh
 swift build
