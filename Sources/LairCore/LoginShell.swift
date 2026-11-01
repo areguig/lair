@@ -19,7 +19,10 @@ public enum LoginShell {
         process.standardError = FileHandle.nullDevice
         process.standardInput = FileHandle.nullDevice
         guard (try? process.run()) != nil else { return nil }
-        let data = await Task.detached { output.fileHandleForReading.readDataToEndOfFile() }.value
+        // A blocking read belongs on a system thread, never on one of Swift's task threads.
+        let data = await withCheckedContinuation { continuation in
+            DispatchQueue.global().async { continuation.resume(returning: output.fileHandleForReading.readDataToEndOfFile()) }
+        }
         return parse(String(decoding: data, as: UTF8.self))
     }
 

@@ -1,5 +1,6 @@
 import Foundation
 import LairCore
+import Synchronization
 
 /// Newline-delimited messages to and from an agent.
 public protocol LineChannel: Sendable {
@@ -10,6 +11,9 @@ public protocol LineChannel: Sendable {
 }
 
 /// An agent run as a child process, talking on stdin and stdout; what it prints on stderr goes to its log.
+///
+/// Its output is read by `readabilityHandler`, on a system thread: `FileHandle.bytes` blocks one of Swift's task
+/// threads in `read()` while the agent is quiet, and in an app with one such thread that froze every call.
 public final class ProcessChannel: LineChannel {
     private let process = Process()
     private let input = Pipe()
@@ -24,22 +28,21 @@ public final class ProcessChannel: LineChannel {
         process.standardInput = input
         process.standardOutput = output
         process.standardError = AgentLog.handle(for: errorLog)
-        try AgentLog.run(process)
-        let reading = output.fileHandleForReading
-        lines = AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    for try await line in reading.bytes.lines {
-                        AgentLog.stray(line)
-                        continuation.yield(Data(line.utf8))
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
+        let (lines, continuation) = AsyncThrowingStream<Data, Error>.makeStream()
+        self.lines = lines
+        let splitter = Mutex(LineSplitter())
+        output.fileHandleForReading.readabilityHandler = { handle in
+            let chunk = handle.availableData
+            let complete = splitter.withLock { chunk.isEmpty ? $0.finish() : $0.feed(chunk) }
+            for line in complete {
+                AgentLog.stray(String(decoding: line, as: UTF8.self))
+                continuation.yield(line)
             }
-            continuation.onTermination = { _ in task.cancel() }
+            guard chunk.isEmpty else { return }
+            handle.readabilityHandler = nil
+            continuation.finish()
         }
+        try AgentLog.run(process)
     }
 
     public func send(_ line: Data) throws {
@@ -49,5 +52,29 @@ public final class ProcessChannel: LineChannel {
 
     public func close() {
         process.terminate()
+    }
+}
+
+/// Cuts a byte stream into lines, keeping a partial line until the rest arrives.
+struct LineSplitter {
+    private var pending = Data()
+
+    /// The lines `chunk` completes, without their line ends (`\n` or `\r\n`); empty lines are skipped.
+    mutating func feed(_ chunk: Data) -> [Data] {
+        pending.append(chunk)
+        var lines: [Data] = []
+        while let end = pending.firstIndex(of: UInt8(ascii: "\n")) {
+            var line = pending[pending.startIndex..<end]
+            if line.last == UInt8(ascii: "\r") { line = line.dropLast() }
+            if !line.isEmpty { lines.append(Data(line)) }
+            pending = Data(pending[pending.index(after: end)...])
+        }
+        return lines
+    }
+
+    /// The last line, when the stream ends without a line end.
+    mutating func finish() -> [Data] {
+        defer { pending = Data() }
+        return pending.isEmpty ? [] : [pending]
     }
 }
