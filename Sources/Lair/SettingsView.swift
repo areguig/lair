@@ -188,15 +188,12 @@ private struct AgentForm: View {
 
     var body: some View {
         Form {
-            Section {
+            Section("Identity") {
                 Toggle("On", isOn: Binding(get: { agent.disabled != true }, set: { agent.disabled = $0 ? nil : true }))
                     .help("Off keeps this agent's settings but takes it out of the panel and Mission Control")
                 VStack(alignment: .leading, spacing: 2) {
                     TextField("Name", text: $agent.name, prompt: Text("What you call it by voice"))
                     if let problem = nameProblem(agent.name, others: others) { Helper(problem) }
-                }
-                Picker("Agent", selection: choice) {
-                    ForEach(AgentChoice.all, id: \.self) { Text($0.label).tag($0) }
                 }
                 ColorPicker("Color", selection: Binding(get: { Color(hex: agent.color) }, set: { agent.color = $0.hex }),
                             supportsOpacity: false)
@@ -215,6 +212,9 @@ private struct AgentForm: View {
                 }
             }
             Section {
+                Picker("Type", selection: choice) {
+                    ForEach(AgentChoice.all, id: \.self) { Text($0.label).tag($0) }
+                }
                 switch agent.kind {
                 case .acp:
                     if agent.preset == nil {
@@ -244,6 +244,8 @@ private struct AgentForm: View {
                 case .guest:
                     EmptyView()
                 }
+            } header: {
+                Text("Agent")
             } footer: {
                 Text(footer)
                 .multilineTextAlignment(.leading)
