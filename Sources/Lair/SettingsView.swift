@@ -189,8 +189,10 @@ private struct AgentForm: View {
     var body: some View {
         Form {
             Section("Identity") {
-                Toggle("On", isOn: Binding(get: { agent.disabled != true }, set: { agent.disabled = $0 ? nil : true }))
-                    .help("Off keeps this agent's settings but takes it out of the panel and Mission Control")
+                VStack(alignment: .leading, spacing: 2) {
+                    Toggle("Use this agent", isOn: Binding(get: { agent.disabled != true }, set: { agent.disabled = $0 ? nil : true }))
+                    Hint("Off keeps its settings but takes it out of the panel and Mission Control.")
+                }
                 VStack(alignment: .leading, spacing: 2) {
                     TextField("Name", text: $agent.name, prompt: Text("What you call it by voice"))
                     if let problem = nameProblem(agent.name, others: others) { Helper(problem) }
