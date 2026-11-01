@@ -1,3 +1,4 @@
+import KeyboardShortcuts
 import LairCore
 import LairVoice
 import SwiftUI
@@ -252,9 +253,13 @@ struct RoomView: View {
             RoundButton(symbol: "rectangle.split.3x1", fill: .white.opacity(0.1), size: 42) {
                 MissionControl.toggle(room: room)
             }
-            .help("Mission Control: every agent's whole stream")
-            .accessibilityLabel("Mission Control")
+            .help("Mission Control\(missionControlKey): every agent's whole stream")
+            .accessibilityLabel("Mission Control\(missionControlKey)")
         }
+    }
+
+    private var missionControlKey: String {
+        KeyboardShortcuts.getShortcut(for: .missionControl).map { " (\($0))" } ?? ""
     }
 
     /// What you can say, shown while a call has no words yet.
