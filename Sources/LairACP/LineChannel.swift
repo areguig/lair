@@ -17,6 +17,8 @@ public protocol LineChannel: Sendable {
 public final class ProcessChannel: LineChannel {
     private let process = Process()
     private let input = Pipe()
+    /// Writes in order on a system thread: an agent that stops reading must not stall whoever is sending.
+    private let writer = DispatchQueue(label: "lair.agent.input")
     public let lines: AsyncThrowingStream<Data, Error>
 
     public init(command: [String], directory: URL?, environment: [String: String]?, errorLog: URL?) throws {
@@ -26,6 +28,8 @@ public final class ProcessChannel: LineChannel {
         if let environment { process.environment = environment }
         let output = Pipe()
         process.standardInput = input
+        // Writing after the agent went away fails with an error instead of a SIGPIPE that ends the app.
+        _ = fcntl(input.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
         process.standardOutput = output
         process.standardError = AgentLog.handle(for: errorLog)
         let (lines, continuation) = AsyncThrowingStream<Data, Error>.makeStream()
@@ -45,9 +49,12 @@ public final class ProcessChannel: LineChannel {
         try AgentLog.run(process)
     }
 
+    /// Queues the line; one that can't be written because the agent went away is dropped, and its end of `lines`
+    /// tells the rest.
     public func send(_ line: Data) throws {
         guard process.isRunning else { throw AgentStopped() }
-        try input.fileHandleForWriting.write(contentsOf: line + Data("\n".utf8))
+        let input = input.fileHandleForWriting
+        writer.async { try? input.write(contentsOf: line + Data("\n".utf8)) }
     }
 
     public func close() {
