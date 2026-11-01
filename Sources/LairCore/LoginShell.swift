@@ -14,16 +14,8 @@ public enum LoginShell {
         process.executableURL = URL(fileURLWithPath: shell)
         // Interactive too, as tools often add themselves to PATH only in the rc file.
         process.arguments = ["-ilc", "printf '\(marker)%s' \"$PATH\""]
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = FileHandle.nullDevice
-        process.standardInput = FileHandle.nullDevice
-        guard (try? process.run()) != nil else { return nil }
-        // A blocking read belongs on a system thread, never on one of Swift's task threads.
-        let data = await withCheckedContinuation { continuation in
-            DispatchQueue.global().async { continuation.resume(returning: output.fileHandleForReading.readDataToEndOfFile()) }
-        }
-        return parse(String(decoding: data, as: UTF8.self))
+        guard let result = try? await ProcessRun.run(process) else { return nil }
+        return parse(result.output)
     }
 
     static let marker = "__LAIR_PATH__"

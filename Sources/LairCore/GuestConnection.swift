@@ -123,20 +123,8 @@ public enum GuestConnection {
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = [command] + arguments
         process.environment = environment
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = output
-        process.standardInput = FileHandle.nullDevice
-        return try await withCheckedThrowingContinuation { continuation in
-            process.terminationHandler = { process in
-                let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-                if process.terminationStatus == 0 {
-                    continuation.resume(returning: text)
-                } else {
-                    continuation.resume(throwing: Failure.command(text.trimmingCharacters(in: .whitespacesAndNewlines)))
-                }
-            }
-            do { try process.run() } catch { continuation.resume(throwing: error) }
-        }
+        let result = try await ProcessRun.run(process, includingErrors: true)
+        guard result.status == 0 else { throw Failure.command(result.output.trimmingCharacters(in: .whitespacesAndNewlines)) }
+        return result.output
     }
 }
