@@ -46,6 +46,8 @@ public final class AcpSession: AgentSession {
         var options: [ACPWire.ConfigOption] = []
         var approvals: [String: (id: JSONRPCID, options: [ACPWire.PermissionOption])] = [:]
         var preambleSent = false
+        /// Hung up: what fails from here on is the call ending, not a problem to report.
+        var stopped = false
     }
 
     /// The prompt running; once interrupted its reply is gone and what the agent still sends for it is dropped.
@@ -102,6 +104,8 @@ public final class AcpSession: AgentSession {
                         problemsContinuation.yield("Couldn't choose \(wanted): \(error.localizedDescription)")
                     }
                 }
+            } catch is AgentStopped {
+                // Reported as the agent goes away, before its streams end.
             } catch {
                 problemsContinuation.yield("Couldn't start the call: \(error.localizedDescription)")
             }
@@ -177,11 +181,14 @@ public final class AcpSession: AgentSession {
     }
 
     public func stop() {
+        state.withLock { $0.stopped = true }
         setup.cancel()
         channel.close()
     }
 
     private func closeTurns() {
+        let diedStarting = state.withLock { $0.sessionID == nil && !$0.stopped }
+        if diedStarting { problemsContinuation.yield("Couldn't start the call: the agent stopped. Its log may say why.") }
         state.withLock { state in
             state.prompt?.reply?.finish(throwing: AgentStopped())
             state.prompt = nil

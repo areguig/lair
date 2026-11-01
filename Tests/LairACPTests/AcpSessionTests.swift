@@ -185,6 +185,26 @@ struct AcpSessionTests {
         await #expect(throws: AgentStopped.self) { _ = try await collect(reply) }
     }
 
+    @Test func hangingUpWhileTheAgentStartsIsNotAProblem() async {
+        let agent = FakeAgent()
+        let session = session(agent)
+        _ = await agent.next()
+        session.stop()
+        agent.close()
+        var problems = session.problems.makeAsyncIterator()
+        #expect(await problems.next() == nil)
+    }
+
+    @Test func anAgentThatDiesWhileStartingIsAProblem() async {
+        let agent = FakeAgent()
+        let session = session(agent)
+        _ = await agent.next()
+        var problems = session.problems.makeAsyncIterator()
+        agent.close()
+        #expect(await problems.next()?.hasPrefix("Couldn't start the call") == true)
+        session.stop()
+    }
+
     @Test func answersRequestsItDoesNotSupportWithAnError() async {
         let agent = FakeAgent()
         let session = session(agent)
