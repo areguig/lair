@@ -64,7 +64,8 @@ struct LairApp: App {
         }
         if let i = CommandLine.arguments.firstIndex(of: "--snapshot"), i + 1 < CommandLine.arguments.count {
             let variant = i + 2 < CommandLine.arguments.count ? CommandLine.arguments[i + 2] : "approval"
-            Snapshot.write(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]), variant: variant)
+            let appearance = i + 3 < CommandLine.arguments.count ? CommandLine.arguments[i + 3] : "dark"
+            Snapshot.write(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]), variant: variant, appearance: appearance)
             exit(0)
         }
         if let i = CommandLine.arguments.firstIndex(of: "--island-snapshot"), i + 1 < CommandLine.arguments.count {
@@ -163,10 +164,10 @@ struct MenuBarIcon: View {
     }
 }
 
-/// `Lair --snapshot out.png [approval|chat|reply|empty|micdenied|crowded]` renders the panel in a demo state,
-/// to check the design without clicking around.
+/// `Lair --snapshot out.png [approval|chat|reply|empty|micdenied|crowded] [light|dark]` renders the panel in a demo
+/// state, to check the design without clicking around.
 @MainActor enum Snapshot {
-    static func write(to url: URL, variant: String = "approval") {
+    static func write(to url: URL, variant: String = "approval", appearance: String = "dark") {
         let agents = variant == "empty" ? [] : variant == "crowded"
             ? (1...6).map { AgentConfig(id: "a\($0)", name: ["Claude", "Echo", "Nova", "Research assistant", "Ops", "Docs"][$0 - 1],
                                         preset: .claude, voice: "af_heart", color: AgentConfig.palette[$0 - 1]) }
@@ -230,7 +231,8 @@ struct MenuBarIcon: View {
             }
         }
         let problem = variant == "chat" ? "The config file has an error: line 4 is missing a comma." : nil
-        writePNG(RoomView(room: room, configProblem: problem).environment(\.renderTime, 0), scale: 2, to: url)
+        writePNG(RoomView(room: room, configProblem: problem).environment(\.renderTime, 0)
+            .environment(\.colorScheme, appearance == "light" ? .light : .dark), scale: 2, to: url)
     }
 
     /// Mission Control with a demo exchange, drawn in a hidden window so scroll views render.
