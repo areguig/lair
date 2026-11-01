@@ -17,7 +17,7 @@ public enum AgentLog {
     static let events = Logger(subsystem: Bundle.main.bundleIdentifier ?? "lair", category: "agent")
 
     /// Starts the agent and notes when it exits, so a call that dies quietly leaves a trace.
-    static func run(_ process: Process) throws {
+    public static func run(_ process: Process) throws {
         let name = process.arguments?.first ?? "agent"
         process.terminationHandler = { process in
             let how = process.terminationReason == .uncaughtSignal ? "signal" : "status"
@@ -28,12 +28,12 @@ public enum AgentLog {
     }
 
     /// A line on stdout that isn't the JSON protocol, such as a sign-in or crash message.
-    static func stray(_ line: String) {
+    public static func stray(_ line: String) {
         guard !line.hasPrefix("{"), !line.isEmpty else { return }
         events.notice("stray output: \(line, privacy: .public)")
     }
 
-    static func handle(for url: URL?) -> FileHandle {
+    public static func handle(for url: URL?) -> FileHandle {
         guard let url else { return .nullDevice }
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         FileManager.default.createFile(atPath: url.path, contents: nil)
@@ -42,4 +42,6 @@ public enum AgentLog {
 }
 
 /// The agent's process has exited; whatever it printed is in its log.
-public struct AgentStopped: Error {}
+public struct AgentStopped: Error {
+    public init() {}
+}

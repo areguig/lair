@@ -96,16 +96,22 @@ public struct ApprovalRequest: Equatable, Identifiable, Sendable {
     /// The agent's `permission_suggestions` JSON array, sent back to make an allow permanent.
     let suggestions: Data?
 
-    public var canAlwaysAllow: Bool {
-        guard let suggestions, let list = try? JSONSerialization.jsonObject(with: suggestions) as? [Any] else { return false }
-        return !list.isEmpty
-    }
+    /// Whether "always" is a choice: the agent can remember the answer.
+    public let canAlwaysAllow: Bool
 
-    public init(id: String, tool: String, summary: String, input: Data = Data("{}".utf8), suggestions: Data? = nil) {
+    public init(id: String, tool: String, summary: String, input: Data = Data("{}".utf8), suggestions: Data? = nil,
+                canAlwaysAllow: Bool? = nil) {
         self.id = id
         self.tool = tool
         self.summary = summary
         self.input = input
         self.suggestions = suggestions
+        self.canAlwaysAllow = canAlwaysAllow ?? Self.hasEntries(suggestions)
+    }
+
+    /// Claude Code's stream-json offers "always" through a non-empty `permission_suggestions` array.
+    private static func hasEntries(_ suggestions: Data?) -> Bool {
+        guard let suggestions, let list = try? JSONSerialization.jsonObject(with: suggestions) as? [Any] else { return false }
+        return !list.isEmpty
     }
 }
