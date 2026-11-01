@@ -294,7 +294,9 @@ struct MenuBarIcon: View {
         let link = GuestLink(room: room)
         link.status = config.guests.map { .on($0.url) } ?? .off
         SettingsRoute.shared.tab = agent == "mac" ? .mac : .agents
-        let view = NSHostingView(rootView: SettingsView(store: store, room: room, link: link, selectedAgent: agent))
+        // An agent id, or a preset name for the first demo agent that uses it.
+        let selected = config.agents.first { $0.id == agent || $0.preset == agent }?.id
+        let view = NSHostingView(rootView: SettingsView(store: store, room: room, link: link, selectedAgent: selected))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 660, height: 500), styleMask: [.titled],
                               backing: .buffered, defer: false)
         window.contentView = view
