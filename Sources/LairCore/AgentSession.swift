@@ -29,6 +29,17 @@ public protocol AgentSession: Sendable {
     func setThinking(_ level: String) throws
 }
 
+/// An agent reported that its turn failed.
+public struct AgentFailure: LocalizedError {
+    public let message: String
+
+    public init(message: String) {
+        self.message = message
+    }
+
+    public var errorDescription: String? { message }
+}
+
 /// The agent can't make this change mid-call; it applies from the next call.
 public struct ChangeLater: Error {
     public init() {}
@@ -91,27 +102,13 @@ public struct ApprovalRequest: Equatable, Identifiable, Sendable {
     public let tool: String
     /// What the agent says the action does, in words that can be read aloud.
     public let summary: String
-    /// The tool's input as the agent sent it, returned unchanged when allowed.
-    let input: Data
-    /// The agent's `permission_suggestions` JSON array, sent back to make an allow permanent.
-    let suggestions: Data?
-
     /// Whether "always" is a choice: the agent can remember the answer.
     public let canAlwaysAllow: Bool
 
-    public init(id: String, tool: String, summary: String, input: Data = Data("{}".utf8), suggestions: Data? = nil,
-                canAlwaysAllow: Bool? = nil) {
+    public init(id: String, tool: String, summary: String, canAlwaysAllow: Bool = false) {
         self.id = id
         self.tool = tool
         self.summary = summary
-        self.input = input
-        self.suggestions = suggestions
-        self.canAlwaysAllow = canAlwaysAllow ?? Self.hasEntries(suggestions)
-    }
-
-    /// Claude Code's stream-json offers "always" through a non-empty `permission_suggestions` array.
-    private static func hasEntries(_ suggestions: Data?) -> Bool {
-        guard let suggestions, let list = try? JSONSerialization.jsonObject(with: suggestions) as? [Any] else { return false }
-        return !list.isEmpty
+        self.canAlwaysAllow = canAlwaysAllow
     }
 }

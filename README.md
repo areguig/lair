@@ -21,11 +21,17 @@ A macOS menu-bar app to talk with your coding agents by voice. Speech-to-text an
 
 ## Agents
 
-| Kind | Runs | Needs |
+Lair talks to agents over the [Agent Client Protocol](https://agentclientprotocol.com) (ACP), one process per call. Pick a preset in Settings, or give the command of any other ACP agent.
+
+| Preset | Runs | Needs |
 |---|---|---|
-| `claude-code` | `claude -p`, one process per call | [Claude Code](https://claude.com/claude-code), signed in |
-| `omp` | `omp --mode rpc`, one process per call | [omp](https://github.com/can1357/oh-my-pi), signed in |
-| `hermes` | Hermes' OpenAI-compatible API server | Its address and API key |
+| Claude | `npx @agentclientprotocol/claude-agent-acp` | [Node.js](https://nodejs.org), Claude Code signed in |
+| Codex | `npx @agentclientprotocol/codex-acp` | [Node.js](https://nodejs.org), Codex signed in |
+| Copilot | `copilot --acp` | [GitHub Copilot CLI](https://github.com/github/copilot-cli) |
+| opencode | `opencode acp` | [opencode](https://opencode.ai) |
+| omp | `omp acp` | [omp](https://github.com/can1357/oh-my-pi) |
+| Hermes on this Mac | `hermes acp` | [Hermes Agent](https://github.com/NousResearch/hermes-agent) |
+| Hermes (remote) | Hermes' OpenAI-compatible API server | Its address and API key |
 
 ## Requirements
 

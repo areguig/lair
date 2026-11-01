@@ -168,6 +168,7 @@ struct AcpSessionTests {
                                                                  model: "opus", thinking: "high"))
         await agent.handshake()
         let first = await agent.next()
+        agent.answer(first, #"{"configOptions":\#(FakeAgent.options)}"#)
         let second = await agent.next()
         #expect([first, second].map { $0.params["configId"] as? String } == ["model", "effort"])
         #expect([first, second].map { $0.params["value"] as? String } == ["opus", "high"])

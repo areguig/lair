@@ -95,7 +95,7 @@ public final class AcpSession: AgentSession {
                 for (category, wanted) in [("model", settings.model), ("thought_level", settings.thinking)] {
                     guard let wanted else { continue }
                     do {
-                        try set(category: category, to: wanted)
+                        try await apply(choice(category: category, wanted: wanted))
                     } catch is ChangeLater {
                         // The agent offers no such choice: nothing to apply.
                     } catch {
@@ -277,15 +277,33 @@ public final class AcpSession: AgentSession {
     }
 
     public func setModel(_ model: String) throws {
-        try set(category: "model", to: model)
+        try change(category: "model", to: model)
     }
 
     public func setThinking(_ level: String) throws {
-        try set(category: "thought_level", to: level)
+        try change(category: "thought_level", to: level)
+    }
+
+    /// Checks the choice now; the agent confirms it in the background, and a refusal is reported as a problem.
+    private func change(category: String, to wanted: String) throws {
+        let change = try choice(category: category, wanted: wanted)
+        Task { [self] in
+            do {
+                try await apply(change)
+            } catch {
+                problemsContinuation.yield("Couldn't change the \(change.option.name.lowercased()): \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private struct Choice {
+        let sessionID: String
+        let option: ACPWire.ConfigOption
+        let value: ACPWire.ConfigOption.Value
     }
 
     /// Picks the value by its id or name, exactly, else the first that contains it ("opus" → "Claude Opus 5.5").
-    private func set(category: String, to wanted: String) throws {
+    private func choice(category: String, wanted: String) throws -> Choice {
         let (sessionID, option) = state.withLock { ($0.sessionID, $0.options.first { $0.category == category }) }
         guard let sessionID, let option else { throw ChangeLater() }
         let matches = { (value: ACPWire.ConfigOption.Value) in
@@ -294,16 +312,15 @@ public final class AcpSession: AgentSession {
         guard let value = option.values.first(where: matches)
             ?? option.values.first(where: { $0.name.localizedCaseInsensitiveContains(wanted) || $0.value.localizedCaseInsensitiveContains(wanted) })
         else { throw AgentFailure(message: "The agent has no \(option.name.lowercased()) called \(wanted).") }
-        Task { [self] in
-            do {
-                let result = try await peer.request("session/set_config_option",
-                                                    ACPWire.SetConfigOptionParams(sessionId: sessionID, configId: option.id, value: value.value),
-                                                    as: ACPWire.ConfigOptionsResult.self)
-                show(result.configOptions)
-            } catch {
-                problemsContinuation.yield("Couldn't change the \(option.name.lowercased()): \(error.localizedDescription)")
-            }
-        }
+        return Choice(sessionID: sessionID, option: option, value: value)
+    }
+
+    private func apply(_ choice: Choice) async throws {
+        let result = try await peer.request("session/set_config_option",
+                                            ACPWire.SetConfigOptionParams(sessionId: choice.sessionID, configId: choice.option.id,
+                                                                          value: choice.value.value),
+                                            as: ACPWire.ConfigOptionsResult.self)
+        show(result.configOptions)
     }
 
     /// Keeps the agent's options and tells which model and thinking level it runs.
