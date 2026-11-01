@@ -23,7 +23,7 @@ struct MissionControl: View {
                 .padding(.top, 20)
             if agents.isEmpty {
                 Text("No agents yet. Add one in Settings.")
-                    .foregroundStyle(.white.opacity(0.6))
+                    .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -42,17 +42,16 @@ struct MissionControl: View {
         .frame(minWidth: 900, minHeight: 560)
         .background(
             ZStack {
-                Color(red: 0.045, green: 0.05, blue: 0.065)
+                Color(nsColor: .windowBackgroundColor)
                 RadialGradient(colors: [Color(hex: room.focused?.agent.color ?? "#8A8F98").opacity(0.12), .clear],
                                center: .top, startRadius: 0, endRadius: 700)
             }
             .ignoresSafeArea())
-        .environment(\.colorScheme, .dark)
     }
 
     private var topBar: some View {
         HStack(spacing: 12) {
-            Image(systemName: "circle.circle.fill").foregroundStyle(.white.opacity(0.8))
+            Image(systemName: "circle.circle.fill").foregroundStyle(.secondary)
             Text("Mission Control").font(.system(.headline, design: .rounded, weight: .semibold))
             let waiting = room.calls.filter(\.awaitsYou)
             if !waiting.isEmpty {
@@ -69,13 +68,12 @@ struct MissionControl: View {
             if let shortcut = TalkKey.shared.label {
                 Text("Hold \(shortcut) to talk · type below to write")
                     .font(.system(.caption, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(.secondary)
             }
         }
-        .foregroundStyle(.white)
         .padding(.horizontal, 18)
         .padding(.vertical, 12)
-        .overlay(alignment: .bottom) { Divider().opacity(0.4) }
+        .overlay(alignment: .bottom) { Divider() }
     }
 
     /// Opens the window in front, or closes it when it's already in front.
@@ -91,7 +89,6 @@ struct MissionControl: View {
             window.title = title
             window.titlebarAppearsTransparent = true
             window.isReleasedWhenClosed = false
-            window.appearance = NSAppearance(named: .darkAqua)
             window.contentView = NSHostingView(rootView: MissionControl(room: room))
             window.setFrameAutosaveName("LairMissionControl")
             if !window.setFrameUsingName("LairMissionControl") { window.center() }
@@ -132,7 +129,7 @@ private struct AgentColumn: View {
                         Text(call.guest ? "Nothing yet. \(call.agent.name) talks to you when it needs you."
                                         : "Nothing yet. Talk or type to \(call.agent.name).")
                             .font(.system(.callout, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.4))
+                            .foregroundStyle(.tertiary)
                             .padding(.top, 30)
                             .frame(maxWidth: .infinity)
                     }
@@ -160,9 +157,9 @@ private struct AgentColumn: View {
             }
             if !call.guest { composer(tint: tint) }
         }
-        .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .strokeBorder(focused ? tint.opacity(0.7) : .white.opacity(0.08), lineWidth: focused ? 1.5 : 1))
+            .strokeBorder(focused ? tint.opacity(0.7) : .primary.opacity(0.1), lineWidth: focused ? 1.5 : 1))
         .shadow(color: focused ? tint.opacity(0.25) : .clear, radius: 18)
         .contentShape(Rectangle())
         .onTapGesture { room.focus(call) }
@@ -198,7 +195,7 @@ private struct AgentColumn: View {
                 } else {
                     Text([call.details, stateText].compactMap { $0 }.joined(separator: " · "))
                         .font(.system(.caption, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.55))
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
             }
@@ -216,9 +213,9 @@ private struct AgentColumn: View {
                 Button { room.toggle(call) } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                         .frame(width: 28, height: 28)
-                        .background(.white.opacity(0.12), in: Circle())
+                        .background(.primary.opacity(0.1), in: Circle())
                 }
                 .buttonStyle(.plain)
                 .help("Dismiss \(call.agent.name); it comes back when it next talks to you")
@@ -238,7 +235,6 @@ private struct AgentColumn: View {
                 .accessibilityLabel(call.inCall ? "Hang up \(call.agent.name)" : "Call \(call.agent.name)")
             }
         }
-        .foregroundStyle(.white)
         .padding(12)
     }
 
@@ -258,7 +254,7 @@ private struct AgentColumn: View {
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(.black)
                     .frame(width: 26, height: 26)
-                    .background(draft.isEmpty ? .white.opacity(0.3) : tint, in: Circle())
+                    .background(draft.isEmpty ? .primary.opacity(0.25) : tint, in: Circle())
             }
             .buttonStyle(.plain)
             .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -266,7 +262,7 @@ private struct AgentColumn: View {
             .accessibilityLabel("Send to \(call.agent.name)")
         }
         .padding(10)
-        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .padding(10)
     }
 
@@ -290,14 +286,13 @@ private struct EntryView: View {
                 .textSelection(.enabled)
                 .font(.system(.body, design: .rounded))
                 .padding(.horizontal, 12).padding(.vertical, 8)
-                .background(.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .padding(.leading, 40)
         case .agent(let text):
             Text(Self.reading(text))
                 .textSelection(.enabled)
                 .font(.system(.body))
-                .foregroundStyle(.white.opacity(0.92))
                 .fixedSize(horizontal: false, vertical: true)
         case .thinking(let text):
             ThinkingBlock(text: text)
@@ -306,7 +301,7 @@ private struct EntryView: View {
         case .note(let text):
             Label(text, systemImage: "info.circle")
                 .font(.system(.caption, design: .rounded))
-                .foregroundStyle(.white.opacity(0.55))
+                .foregroundStyle(.secondary)
         case .problem(let text):
             Label(text, systemImage: "exclamationmark.triangle.fill")
                 .font(.system(.caption, design: .rounded))
@@ -358,17 +353,17 @@ private struct ThinkingBlock: View {
                     Text("Thinking").font(.system(.caption, design: .rounded, weight: .semibold))
                     Image(systemName: open ? "chevron.up" : "chevron.down").font(.system(size: 8, weight: .bold))
                 }
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
             Text(text)
                 .font(.system(.callout, design: .serif).italic())
-                .foregroundStyle(.white.opacity(0.48))
+                .foregroundStyle(.secondary)
                 .lineLimit(open ? nil : 2)
                 .textSelection(.enabled)
         }
         .padding(.leading, 10)
-        .overlay(alignment: .leading) { Rectangle().fill(.white.opacity(0.12)).frame(width: 2) }
+        .overlay(alignment: .leading) { Rectangle().fill(.primary.opacity(0.15)).frame(width: 2) }
     }
 }
 
@@ -392,7 +387,7 @@ private struct ToolCard: View {
                     Text(name).font(.system(.caption, design: .monospaced, weight: .semibold))
                     Text(input)
                         .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.65))
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Spacer(minLength: 6)
@@ -404,7 +399,7 @@ private struct ToolCard: View {
             .buttonStyle(.plain)
             .help(input)
             if open, let output, !output.isEmpty {
-                Divider().opacity(0.3)
+                Divider()
                 ScrollView {
                     Output(text: output)
                         .padding(10)
@@ -413,10 +408,9 @@ private struct ToolCard: View {
                 .frame(maxHeight: 240)
             }
         }
-        .foregroundStyle(.white.opacity(0.9))
-        .background(.black.opacity(0.28), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .strokeBorder(failed ? LairColors.problem.opacity(0.5) : .white.opacity(0.08)))
+            .strokeBorder(failed ? LairColors.problem.opacity(0.5) : .primary.opacity(0.12)))
     }
 
     @ViewBuilder private var status: some View {
@@ -426,7 +420,7 @@ private struct ToolCard: View {
             Image(systemName: "xmark.circle.fill").foregroundStyle(LairColors.problem)
         } else {
             Image(systemName: open ? "chevron.up" : "checkmark.circle.fill")
-                .foregroundStyle(open ? .white.opacity(0.5) : .green.opacity(0.85))
+                .foregroundStyle(open ? .secondary : LairColors.call)
         }
     }
 
@@ -462,10 +456,10 @@ private struct Output: View {
     }
 
     private func color(for line: Substring) -> Color {
-        if line.hasPrefix("+") && !line.hasPrefix("+++") { return Color(red: 0.55, green: 0.9, blue: 0.6) }
-        if line.hasPrefix("-") && !line.hasPrefix("---") { return Color(red: 1, green: 0.55, blue: 0.55) }
-        if line.hasPrefix("@@") { return Color(red: 0.55, green: 0.7, blue: 1) }
-        return .white.opacity(0.78)
+        if line.hasPrefix("+") && !line.hasPrefix("+++") { return .adaptive(light: (0.05, 0.4, 0.15), dark: (0.55, 0.9, 0.6)) }
+        if line.hasPrefix("-") && !line.hasPrefix("---") { return .adaptive(light: (0.7, 0.1, 0.1), dark: (1, 0.55, 0.55)) }
+        if line.hasPrefix("@@") { return .adaptive(light: (0.1, 0.3, 0.75), dark: (0.55, 0.7, 1)) }
+        return .primary
     }
 
     private func background(for line: Substring) -> Color {
@@ -487,15 +481,25 @@ private struct Details: View {
                     Text("Details").font(.system(.caption2, design: .rounded, weight: .semibold))
                     Image(systemName: open ? "chevron.up" : "chevron.down").font(.system(size: 8, weight: .bold))
                 }
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
             if open {
                 Text(facts.joined(separator: " · "))
                     .font(.system(.caption2, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.55))
+                    .foregroundStyle(.secondary)
                     .textSelection(.enabled)
             }
         }
+    }
+}
+
+private extension Color {
+    /// One color per appearance, for text that has to read on both.
+    static func adaptive(light: (Double, Double, Double), dark: (Double, Double, Double)) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let c = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+            return NSColor(red: c.0, green: c.1, blue: c.2, alpha: 1)
+        })
     }
 }
