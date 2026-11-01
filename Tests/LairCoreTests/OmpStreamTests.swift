@@ -10,8 +10,16 @@ struct OmpStreamTests {
 
     @Test func ignoresOtherUpdates() {
         #expect(OmpStream.parse(line: #"{"type":"message_update","assistantMessageEvent":{"type":"toolcall_delta","delta":"{"}}"#) == nil)
-        #expect(OmpStream.parse(line: #"{"type":"agent_end"}"#) == nil)
         #expect(OmpStream.parse(line: "not json") == nil)
+    }
+
+    /// From omp 18.13.3: a run omp starts for a background job opens with its notice, not with your prompt.
+    @Test func marksYourPromptEnteringARunAndTheRunsEnd() {
+        let yours = #"{"type":"message_start","message":{"role":"user","content":[{"type":"text","text":"Hi"}]}}"#
+        #expect(OmpStream.parse(line: yours) == .event(.yourMessage))
+        let notice = #"{"type":"message_start","message":{"role":"custom","customType":"async-result","content":"Background job bg_1 has completed."}}"#
+        #expect(OmpStream.parse(line: notice) == nil)
+        #expect(OmpStream.parse(line: #"{"type":"agent_end","messages":[]}"#) == .event(.idle))
     }
 
     @Test func endsTheTurnOnItsPromptResult() {

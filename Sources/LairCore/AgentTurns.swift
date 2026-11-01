@@ -1,70 +1,116 @@
 import Foundation
 import Synchronization
 
-/// Routes a local agent's events to the turn that is running. After an interrupt the old turn keeps
-/// flushing until its end, so everything is dropped until then.
+/// Routes a local agent's events to the turn they belong to. Your turn starts when the agent takes in your
+/// message; whatever the agent says with no turn open is a turn it started itself, published on `ownTurns`.
 final class AgentTurns: Sendable {
+    private struct Turn {
+        let reply: AgentTurn.Continuation
+        let own: Bool
+    }
+
     private struct State {
-        var reply: AsyncThrowingStream<AgentReply, Error>.Continuation?
-        var running = false
+        var current: Turn?
+        /// Asked, not yet taken in by the agent; nil once interrupted, so its events are dropped.
+        var asked: [AgentTurn.Continuation?] = []
         var draining = false
     }
 
     private let state = Mutex(State())
+    let ownTurns: AsyncStream<AgentTurn>
+    private let ownTurnsContinuation: AsyncStream<AgentTurn>.Continuation
 
-    func begin() -> AsyncThrowingStream<AgentReply, Error> {
-        let (reply, continuation) = AsyncThrowingStream<AgentReply, Error>.makeStream()
-        state.withLock {
-            $0.reply = continuation
-            $0.running = true
-        }
+    init() {
+        (ownTurns, ownTurnsContinuation) = AsyncStream<AgentTurn>.makeStream()
+    }
+
+    func begin() -> AgentTurn {
+        let (reply, continuation) = AgentTurn.makeStream()
+        state.withLock { $0.asked.append(continuation) }
         return reply
     }
 
     func receive(_ event: AgentEvent) {
         state.withLock { state in
+            if case .yourMessage = event { return takeIn(&state) }
             if state.draining {
                 switch event {
-                case .finished, .failed: state.draining = false
+                case .finished, .failed, .idle: state.draining = false
                 default: break
                 }
                 return
             }
             switch event {
-            case .textDelta(let text): state.reply?.yield(.text(text))
-            case .approval(let request): state.reply?.yield(.approval(request))
             case .finished:
-                state.reply?.finish()
-                state.reply = nil
-                state.running = false
-            case .details: break
-            case .activity(let activity): state.reply?.yield(.activity(activity))
+                state.current?.reply.finish()
+                state.current = nil
+            case .idle:
+                guard state.current?.own == true else { return }
+                state.current?.reply.finish()
+                state.current = nil
             case .failed(let message):
-                state.reply?.finish(throwing: AgentFailure(message: message))
-                state.reply = nil
-                state.running = false
+                let failure = AgentFailure(message: message)
+                if let current = state.current {
+                    current.reply.finish(throwing: failure)
+                    state.current = nil
+                } else if !state.asked.isEmpty {
+                    // Refused before the agent took it in.
+                    state.asked.removeFirst()?.finish(throwing: failure)
+                }
+            case .textDelta(let text): reply(&state).yield(.text(text))
+            case .approval(let request): reply(&state).yield(.approval(request))
+            case .activity(let activity): reply(&state).yield(.activity(activity))
+            case .details, .yourMessage: break
             }
         }
     }
 
-    /// Ends the current turn here; returns whether Claude Code must be told to stop it too.
+    /// Ends the turn being heard, and any asked turn not yet taken in; returns whether the agent must be told to
+    /// stop too.
     func interrupt() -> Bool {
         state.withLock { state in
-            state.reply?.finish()
-            state.reply = nil
-            guard state.running else { return false }
-            state.running = false
+            let waiting = state.asked.contains { $0 != nil }
+            for index in state.asked.indices {
+                state.asked[index]?.finish()
+                state.asked[index] = nil
+            }
+            guard let current = state.current else { return waiting }
+            current.reply.finish()
+            state.current = nil
             state.draining = true
             return true
         }
     }
 
-    /// The process is gone; a turn still waiting on it fails with `AgentStopped`.
+    /// The process is gone; every turn still open fails with `AgentStopped`.
     func close() {
         state.withLock { state in
-            state.reply?.finish(throwing: AgentStopped())
+            state.current?.reply.finish(throwing: AgentStopped())
+            for reply in state.asked { reply?.finish(throwing: AgentStopped()) }
             state = State()
         }
+        ownTurnsContinuation.finish()
+    }
+
+    /// The agent took in your oldest message: what it says next answers it, even mid-way through its own turn.
+    private func takeIn(_ state: inout State) {
+        state.current?.reply.finish()
+        state.current = nil
+        state.draining = false
+        guard !state.asked.isEmpty else { return }
+        if let reply = state.asked.removeFirst() {
+            state.current = Turn(reply: reply, own: false)
+        } else {
+            state.draining = true
+        }
+    }
+
+    private func reply(_ state: inout State) -> AgentTurn.Continuation {
+        if let current = state.current { return current.reply }
+        let (turn, reply) = AgentTurn.makeStream()
+        state.current = Turn(reply: reply, own: true)
+        ownTurnsContinuation.yield(turn)
+        return reply
     }
 }
 

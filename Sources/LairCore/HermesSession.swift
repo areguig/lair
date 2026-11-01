@@ -6,7 +6,7 @@ import Synchronization
 ///
 /// Work Hermes hands to a background subagent ends the turn early; its result lands in the session history later
 /// and never starts a turn by itself. So after a turn that delegated, the history is watched and each result
-/// is reported on `news`.
+/// starts a turn that tells it, published on `ownTurns` like any agent's own turn.
 public final class HermesSession: AgentSession {
     public struct Credentials: Sendable {
         public var apiKey: String
@@ -48,21 +48,28 @@ public final class HermesSession: AgentSession {
     private let endpoint: URL
     private let poll: Duration
     private let delegations = Mutex(Delegations())
-    public let news: AsyncStream<String>
-    private let newsContinuation: AsyncStream<String>.Continuation
+    public let ownTurns: AsyncStream<AgentTurn>
+    private let ownTurnsContinuation: AsyncStream<AgentTurn>.Continuation
     public let problems: AsyncStream<String>
     private let problemsContinuation: AsyncStream<String>.Continuation
     private let credentials: Credentials
     private let model: Mutex<String>
     private let systemPrompt: String
     private let sessionID = "lair-\(UUID().uuidString.lowercased())"
-    private let currentTurn = Mutex<Task<Void, Never>?>(nil)
+    /// Turns run one at a time, each after the one before: Hermes drops a background result that lands during a
+    /// turn, and its history is one conversation.
+    private struct Turns {
+        var last: Task<Void, Never>?
+        var running: [UUID: Task<Void, Never>] = [:]
+    }
+
+    private let turns = Mutex(Turns())
 
     public init(baseURL: URL, credentials: Credentials, model: String? = nil, systemPrompt: String = VoicePrompt.text,
                 poll: Duration = delegationPoll) {
         self.baseURL = baseURL
         self.poll = poll
-        (news, newsContinuation) = AsyncStream<String>.makeStream()
+        (ownTurns, ownTurnsContinuation) = AsyncStream<AgentTurn>.makeStream()
         (problems, problemsContinuation) = AsyncStream<String>.makeStream()
         endpoint = baseURL.appending(path: "v1/chat/completions")
         self.credentials = credentials
@@ -70,49 +77,63 @@ public final class HermesSession: AgentSession {
         self.systemPrompt = systemPrompt
     }
 
-    public func ask(_ text: String) throws -> AsyncThrowingStream<AgentReply, Error> {
+    public func ask(_ text: String) throws -> AgentTurn {
         let request = try request(for: text)
-        let (reply, continuation) = AsyncThrowingStream<AgentReply, Error>.makeStream()
-        let turn = Task {
-            do {
-                let (bytes, response) = try await URLSession.shared.bytes(for: request, delegate: NoRedirects.shared)
-                let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-                guard status == 200 else { throw Failure.status(status) }
-                var stream = ChatCompletionStream()
-                reading: for try await line in bytes.lines {
-                    switch stream.feed(line) {
-                    case .text(let text): continuation.yield(.text(text))
-                    case .toolStarted(let tool):
-                        if tool == "delegate_task" { delegations.withLock { $0.pending += 1 } }
-                        continuation.yield(.activity(.toolStarted(id: UUID().uuidString, name: tool, input: "")))
-                    case .done: break reading
-                    case .failed(let reason): throw Failure.reply(reason)
-                    case nil: break
-                    }
-                }
-                continuation.finish()
-            } catch {
-                continuation.finish(throwing: error)
+        let (reply, continuation) = AgentTurn.makeStream()
+        let id = UUID()
+        let turn = turns.withLock { turns in
+            let previous = turns.last
+            let turn = Task { [self] in
+                await previous?.value
+                await run(request, into: continuation)
+                self.turns.withLock { $0.running[id] = nil }
+                watchDelegations()
             }
-            watchDelegations()
+            turns.last = turn
+            turns.running[id] = turn
+            return turn
         }
         continuation.onTermination = { _ in turn.cancel() }
-        currentTurn.withLock { $0 = turn }
         return reply
+    }
+
+    private func run(_ request: URLRequest, into continuation: AgentTurn.Continuation) async {
+        guard !Task.isCancelled else { return continuation.finish() }
+        do {
+            let (bytes, response) = try await URLSession.shared.bytes(for: request, delegate: NoRedirects.shared)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard status == 200 else { throw Failure.status(status) }
+            var stream = ChatCompletionStream()
+            reading: for try await line in bytes.lines {
+                switch stream.feed(line) {
+                case .text(let text): continuation.yield(.text(text))
+                case .toolStarted(let tool):
+                    if tool == "delegate_task" { delegations.withLock { $0.pending += 1 } }
+                    continuation.yield(.activity(.toolStarted(id: UUID().uuidString, name: tool, input: "")))
+                case .done: break reading
+                case .failed(let reason): throw Failure.reply(reason)
+                case nil: break
+                }
+            }
+            continuation.finish()
+        } catch {
+            continuation.finish(throwing: error)
+        }
     }
 
     public func setModel(_ model: String) throws {
         self.model.withLock { $0 = model }
     }
 
+    /// Stops the turn in progress and any waiting behind it.
     public func interrupt() {
-        currentTurn.withLock { $0?.cancel() }
+        turns.withLock { $0.running.values.forEach { $0.cancel() } }
     }
 
     public func stop() {
         interrupt()
         delegations.withLock { $0.watcher?.cancel() }
-        newsContinuation.finish()
+        ownTurnsContinuation.finish()
         problemsContinuation.finish()
     }
 
@@ -143,7 +164,7 @@ public final class HermesSession: AgentSession {
                             state.pending = max(0, state.pending - 1)
                             return true
                         }
-                        if isNew { newsContinuation.yield(result.text) }
+                        if isNew, let turn = try? ask(VoicePrompt.backgroundResult) { ownTurnsContinuation.yield(turn) }
                     }
                     if delegations.withLock({ $0.pending == 0 }) { return }
                 }

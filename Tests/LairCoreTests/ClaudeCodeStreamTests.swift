@@ -13,6 +13,15 @@ struct ClaudeCodeStreamTests {
         #expect(ClaudeCodeStream.parse(line: line) == .finished("Hello there."))
     }
 
+    /// From Claude Code 2.1.316: your message comes back when taken in; a tool result or a turn Claude Code
+    /// starts itself after a background task has no replay.
+    @Test func marksYourMessageWhenClaudeCodeTakesItIn() {
+        let replay = #"{"type":"user","message":{"role":"user","content":"Say only: second."},"isReplay":true}"#
+        #expect(ClaudeCodeStream.parseAll(line: replay) == [.yourMessage])
+        let toolResult = #"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}"#
+        #expect(ClaudeCodeStream.parseAll(line: toolResult) == [.activity(.toolFinished(id: "t1", output: "ok", failed: false))])
+    }
+
     @Test func writesOneUserMessagePerLine() throws {
         let line = String(decoding: try ClaudeCodeStream.userMessage("Say \"hi\"\nplease"), as: UTF8.self)
         #expect(line.hasSuffix("}\n"))

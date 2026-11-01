@@ -29,6 +29,12 @@ public enum OmpStream {
             case "thinking_delta": return .event(.activity(.thinking(delta)))
             default: return nil
             }
+        case "message_start":
+            // Your prompt entering the run, which may be one omp started itself for a background job.
+            let message = object["message"] as? [String: Any]
+            return message?["role"] as? String == "user" ? .event(.yourMessage) : nil
+        case "agent_end":
+            return .event(.idle)
         case "message_end":
             // One assistant message, one usage report (the deltas carry none).
             guard let message = object["message"] as? [String: Any], message["role"] as? String == "assistant",

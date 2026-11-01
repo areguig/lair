@@ -30,7 +30,7 @@ import os
     var state = State.offline {
         didSet { if state == .ready, oldValue != .ready { becameReady?() } }
     }
-    /// Set by the room, so news that waited for the call to be free is heard however it got free.
+    /// Set by the room, so a turn the agent took by itself is heard as soon as the call is free, however it got free.
     @ObservationIgnored var becameReady: (@MainActor () -> Void)?
     var lines: [Line] = []
     var pendingApproval: ApprovalRequest?
@@ -52,8 +52,8 @@ import os
     @ObservationIgnored var turn: Task<Void, Never>?
     /// Identifies the running turn, so an interrupted one can't reset the state of the next.
     @ObservationIgnored var turnID: UUID?
-    /// Background work finished while the call was busy; heard as soon as it's ready.
-    @ObservationIgnored var newsWaiting = false
+    /// Turns the agent took by itself while the call was busy, oldest first; heard as soon as it's ready.
+    @ObservationIgnored var ownTurnsWaiting: [AgentTurn] = []
     /// What other agents answered for this one while you talked to them; sent before its next turn.
     @ObservationIgnored var context: [String] = []
     /// The session you started yourself on this Mac that this call is, while it's connected.
@@ -263,11 +263,11 @@ import os
                 }
             }
             Task { for await details in session.details { call.details = details } }
-            Task { for await _ in session.news { hearNews(from: call) } }
+            Task { for await turn in session.ownTurns { hear(turn, from: call) } }
             // After the state change that freed the call has run its course.
             call.becameReady = { [weak self, weak call] in
                 Task { @MainActor in
-                    if let self, let call, call.newsWaiting { self.hearNews(from: call) }
+                    if let self, let call { self.playWaitingTurn(in: call) }
                 }
             }
             Task {
@@ -338,6 +338,7 @@ import os
         if call.pendingApproval != nil { answer(call, decision: .deny) }
         resolveQuestion(of: call, with: nil)
         call.context = []
+        call.ownTurnsWaiting = []
         call.turn?.cancel()
         call.session?.stop()
         call.session = nil
@@ -637,24 +638,37 @@ import os
         return levels[min(max(index + by, 0), levels.count - 1)]
     }
 
-    /// The agent finished work in the background: take a turn so it says what it found.
-    private func hearNews(from call: Call) {
-        guard call.inCall, call.session != nil else { return }
-        guard call.state == .ready, call.pendingApproval == nil else {
-            call.newsWaiting = true
-            return
-        }
-        call.newsWaiting = false
+    /// The agent took a turn by itself, such as telling what its background work found.
+    private func hear(_ turn: AgentTurn, from call: Call) {
+        guard call.inCall else { return }
+        call.ownTurnsWaiting.append(turn)
+        playWaitingTurn(in: call)
+    }
+
+    private func playWaitingTurn(in call: Call) {
+        guard call.inCall, call.state == .ready, call.pendingApproval == nil, !call.ownTurnsWaiting.isEmpty else { return }
+        let turn = call.ownTurnsWaiting.removeFirst()
         call.state = .thinking
         call.turn = Task {
-            await converse(in: call, prompt: VoicePrompt.backgroundResult, speech: 0, start: Self.clock.now,
-                           shown: .init(role: .info, text: "Background task finished"))
+            await play({ turn }, in: call, speech: 0, start: Self.clock.now, opening: .init(role: .info, text: "Back with news"))
         }
     }
 
     /// `shown` replaces the prompt in the transcript when the prompt isn't something you said.
     private func converse(in call: Call, prompt: String, speech: Int, start: ContinuousClock.Instant,
                           shown: Call.Line? = nil, typed: Bool = false) async {
+        guard let session = call.session else { return }
+        call.lines.append(shown ?? .init(role: .you, text: prompt))
+        call.log(shown.map { $0.role == .you ? .you($0.text) : .note($0.text) } ?? .you(prompt))
+        let sent = (call.context + [prompt]).joined(separator: "\n\n")
+        call.context = []
+        await play({ try session.ask(sent) }, in: call, speech: speech, start: start, typed: typed)
+    }
+
+    /// Speaks a turn as it comes, asked or the agent's own. `opening` heads an own turn once it says something;
+    /// one with nothing to say passes silently.
+    private func play(_ turn: () throws -> AgentTurn, in call: Call, speech: Int, start: ContinuousClock.Instant,
+                      typed: Bool = false, opening: Call.Line? = nil) async {
         let turnID = UUID()
         call.turnID = turnID
         call.unheard = []
@@ -663,7 +677,7 @@ import os
         defer {
             if call.inCall, call.turnID == turnID {
                 call.state = .ready
-                if call.newsWaiting { hearNews(from: call) } else if listenAfter { listenForAnswer(in: call) }
+                if !call.ownTurnsWaiting.isEmpty { playWaitingTurn(in: call) } else if listenAfter { listenForAnswer(in: call) }
             }
         }
         let clock = Self.clock
@@ -680,25 +694,24 @@ import os
                 """)
         }
         do {
-            guard let session = call.session, let speaker else { return }
-            call.lines.append(shown ?? .init(role: .you, text: prompt))
-            call.log(shown.map { $0.role == .you ? .you($0.text) : .note($0.text) } ?? .you(prompt))
-            let sent = (call.context + [prompt]).joined(separator: "\n\n")
-            call.context = []
-
+            guard let speaker else { return }
             // Text after an approval starts a new line, so the transcript reads in order.
             var answer: Int?
             var answered = false
             var splitter = SentenceSplitter()
             // Links and paths in <show> tags go to the screen, never to the voice.
             var showing = ShowFilter()
-            for try await reply in try session.ask(sent) {
+            for try await reply in try turn() {
                 guard !Task.isCancelled else { return }
                 switch reply {
                 case .activity(let activity):
                     call.record(activity)
                 case .text(let delta):
                     if firstToken == nil { firstToken = clock.now - start }
+                    if !answered, let opening {
+                        call.lines.append(opening)
+                        call.log(.note(opening.text))
+                    }
                     call.logText(delta)
                     if answer == nil {
                         call.lines.append(.init(role: .agent, text: ""))
@@ -735,7 +748,7 @@ import os
             if let rest = splitter.flush(), try await say(rest, in: call), firstAudio == nil {
                 firstAudio = clock.now - start
             }
-            if !answered {
+            if !answered, opening == nil {
                 report(in: call, .init(role: .problem, text: "\(call.agent.name) didn't answer."))
             }
             if call.id == focusedID {

@@ -86,7 +86,7 @@ struct HermesSessionTests {
 }
 
 extension HermesSessionTests {
-    @Test(.timeLimit(.minutes(1))) func reportsBackgroundWorkThatFinishesAfterTheTurn() async throws {
+    @Test(.timeLimit(.minutes(1))) func tellsBackgroundWorkThatFinishesAfterTheTurnInATurnOfItsOwn() async throws {
         StubServer.replies = [
             "completions": (200, """
                 event: hermes.tool.progress
@@ -112,11 +112,19 @@ extension HermesSessionTests {
 
         let session = HermesSession(baseURL: base, credentials: .init(apiKey: "k"), poll: .milliseconds(20))
         for try await _ in try session.ask("Check the uptime in the background") {}
-        var news = session.news.makeAsyncIterator()
-        let first = await news.next()
-        #expect(first?.hasPrefix("[ASYNC DELEGATION BATCH COMPLETE") == true)
+        StubServer.replies["completions"] = (200, """
+            data: {"choices":[{"delta":{"content":"Up for 3 days."}}]}
+
+            data: [DONE]
+
+            """)
+        var ownTurns = session.ownTurns.makeAsyncIterator()
+        let turn = try #require(await ownTurns.next())
+        var told: [AgentReply] = []
+        for try await reply in turn { told.append(reply) }
+        #expect(told == [.text("Up for 3 days.")])
         session.stop()
-        #expect(await news.next() == nil)
+        #expect(await ownTurns.next() == nil)
     }
 
     @Test(.timeLimit(.minutes(1))) func saysOnceWhenItCantCheckOnBackgroundWorkThenRecovers() async throws {
@@ -142,8 +150,8 @@ extension HermesSessionTests {
         StubServer.replies["messages"] = (200, """
             {"data": [{"id": 3, "role": "user", "content": "[ASYNC DELEGATION BATCH COMPLETE — d] done"}]}
             """)
-        var news = session.news.makeAsyncIterator()
-        #expect(await news.next()?.hasSuffix("done") == true)
+        var ownTurns = session.ownTurns.makeAsyncIterator()
+        #expect(await ownTurns.next() != nil)
         session.stop()
         // One failure streak, one problem: the polls that failed before recovering said nothing more.
         #expect(await problems.next() == nil)

@@ -1,9 +1,12 @@
 import Foundation
 
+/// One turn of the agent's reply, as it comes; it ends with the turn.
+public typealias AgentTurn = AsyncThrowingStream<AgentReply, Error>
+
 /// A live conversation with one agent; a call keeps one for its whole length.
 public protocol AgentSession: Sendable {
-    /// Sends one user turn; the stream yields the reply as it comes and ends with the turn.
-    func ask(_ text: String) throws -> AsyncThrowingStream<AgentReply, Error>
+    /// Sends one user turn and returns its reply.
+    func ask(_ text: String) throws -> AgentTurn
     /// Answers an approval the current turn is waiting on.
     func answer(_ request: ApprovalRequest, decision: ApprovalDecision) throws
     /// Stops the reply in progress; the current `ask` stream ends.
@@ -11,8 +14,8 @@ public protocol AgentSession: Sendable {
     func stop()
     /// What runs the agent, e.g. "gpt-6-luna · low thinking", as soon as the agent tells.
     var details: AsyncStream<String> { get }
-    /// Work the agent finished in the background after the turn that started it ended.
-    var news: AsyncStream<String> { get }
+    /// Turns the agent takes without being asked, such as telling what its background work found.
+    var ownTurns: AsyncStream<AgentTurn> { get }
     /// Something that went wrong between turns, such as background work that can't be checked on.
     var problems: AsyncStream<String> { get }
     /// Models the agent offers, each time it lists them, for the switcher.
@@ -34,7 +37,7 @@ public struct ChangeLater: Error {
 extension AgentSession {
     public func answer(_ request: ApprovalRequest, decision: ApprovalDecision) throws {}
     public var details: AsyncStream<String> { AsyncStream { $0.finish() } }
-    public var news: AsyncStream<String> { AsyncStream { $0.finish() } }
+    public var ownTurns: AsyncStream<AgentTurn> { AsyncStream { $0.finish() } }
     public var problems: AsyncStream<String> { AsyncStream { $0.finish() } }
     public var models: AsyncStream<[String]> { AsyncStream { $0.finish() } }
     public var thinkingLevels: [String] { [] }

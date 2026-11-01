@@ -1,17 +1,7 @@
 import Foundation
 
-public enum AgentEvent: Equatable, Sendable {
-    case textDelta(String)
-    case approval(ApprovalRequest)
-    case finished(String)
-    case failed(String)
-    /// Which model and thinking level the agent runs.
-    case details(String)
-    case activity(Activity)
-}
-
 /// Reads and writes the lines of `claude -p --input-format stream-json --output-format stream-json
-/// --include-partial-messages --permission-prompt-tool stdio`.
+/// --include-partial-messages --replay-user-messages --permission-prompt-tool stdio`.
 public enum ClaudeCodeStream {
     public static func parse(line: String) -> AgentEvent? {
         guard let data = line.data(using: .utf8),
@@ -54,6 +44,8 @@ public enum ClaudeCodeStream {
             // Text arrives as deltas already; only the tool calls are new here.
             return content.filter { $0["type"] as? String == "tool_use" }.flatMap(toolCall)
         case "user":
+            // Your message, echoed when Claude Code takes it in; a turn it starts itself has none.
+            if object["isReplay"] as? Bool == true { return [.yourMessage] }
             return content.filter { $0["type"] as? String == "tool_result" }.compactMap(toolResult)
         case "result":
             return [usage(object)].compactMap { $0 } + [parse(line: line)].compactMap { $0 }

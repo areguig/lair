@@ -7,6 +7,7 @@ public final class OmpSession: AgentSession {
     private let input = Pipe()
     private let turns = AgentTurns()
     public let details: AsyncStream<String>
+    public var ownTurns: AsyncStream<AgentTurn> { turns.ownTurns }
     public let thinkingLevels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
     private let available = Mutex<[OmpModel]>([])
     private let detailsContinuation: AsyncStream<String>.Continuation
@@ -57,7 +58,7 @@ public final class OmpSession: AgentSession {
         modelsContinuation.finish()
     }
 
-    public func ask(_ text: String) throws -> AsyncThrowingStream<AgentReply, Error> {
+    public func ask(_ text: String) throws -> AgentTurn {
         let reply = turns.begin()
         try send(OmpStream.prompt(text, id: "lair-\(UUID().uuidString)"))
         return reply

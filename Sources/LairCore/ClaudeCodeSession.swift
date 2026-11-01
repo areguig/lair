@@ -7,6 +7,7 @@ public final class ClaudeCodeSession: AgentSession {
     private let turns = AgentTurns()
     public let details: AsyncStream<String>
     private let detailsContinuation: AsyncStream<String>.Continuation
+    public var ownTurns: AsyncStream<AgentTurn> { turns.ownTurns }
 
     /// `permissionMode` nil keeps your Claude Code settings; whatever they would ask you about comes to Lair.
     public var models: AsyncStream<[String]> {
@@ -23,7 +24,7 @@ public final class ClaudeCodeSession: AgentSession {
         process.currentDirectoryURL = directory
         if let environment { process.environment = environment }
         process.arguments = ["claude", "-p", "--input-format", "stream-json", "--output-format", "stream-json",
-                             "--verbose", "--include-partial-messages", "--no-session-persistence",
+                             "--verbose", "--include-partial-messages", "--replay-user-messages", "--no-session-persistence",
                              "--permission-prompt-tool", "stdio", "--append-system-prompt", systemPrompt]
             + (model.map { ["--model", $0] } ?? [])
             + (permissionMode.map { ["--permission-mode", $0] } ?? [])
@@ -50,7 +51,7 @@ public final class ClaudeCodeSession: AgentSession {
         detailsContinuation.finish()
     }
 
-    public func ask(_ text: String) throws -> AsyncThrowingStream<AgentReply, Error> {
+    public func ask(_ text: String) throws -> AgentTurn {
         let reply = turns.begin()
         try send(ClaudeCodeStream.userMessage(text))
         return reply
