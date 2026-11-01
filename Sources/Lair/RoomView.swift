@@ -410,8 +410,8 @@ private struct RailAvatar: View {
                 Text(call.agent.name)
                     .font(.system(size: 10, weight: focused ? .semibold : .medium, design: .rounded))
                     .foregroundStyle(.white.opacity(focused ? 0.95 : call.inCall ? 0.7 : 0.45))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
                     .truncationMode(.tail)
                     .frame(width: 60)
             }
