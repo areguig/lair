@@ -446,6 +446,7 @@ import os
     }
 
     func interrupt(_ call: Call) {
+        Self.log.notice("\(call.id, privacy: .public): interrupted")
         if call.id == focusedID { speaker?.stop() }
         call.turnID = nil
         call.turn?.cancel()
@@ -466,6 +467,7 @@ import os
         }
         call.lines.append(.init(role: .info, text: "\(verdict): \(request.summary)"))
         call.log(.note("\(verdict): \(request.summary)"))
+        Self.log.notice("\(call.id, privacy: .public): approval answered, \(verdict, privacy: .public)")
         do {
             try call.session?.answer(request, decision: decision)
             if call.state == .waiting { call.state = .thinking }
@@ -685,6 +687,7 @@ import os
         let turnID = UUID()
         call.turnID = turnID
         call.unheard = []
+        Self.log.notice("\(call.id, privacy: .public): \(opening == nil ? "turn sent" : "agent took a turn of its own", privacy: .public)")
         // The agent spoke to you: listen a few seconds for your reply. Typed turns don't open the mic.
         var listenAfter = false
         defer {
@@ -789,6 +792,7 @@ import os
     private func ask(_ call: Call, to request: ApprovalRequest) async throws {
         call.pendingApproval = request
         call.log(.approval("\(request.tool): \(request.summary)"))
+        Self.log.notice("\(call.id, privacy: .public): approval asked\(call.id == self.focusedID ? "" : " while not in focus", privacy: .public)")
         notifier.post(request, from: call.agent.name)
         speaker?.play(.needsYou)
         if call.id != focusedID {
