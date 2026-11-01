@@ -8,11 +8,7 @@ import os
 
 /// One agent you can call; while in a call it holds a live session.
 @Observable @MainActor final class Call: @MainActor Identifiable {
-    enum State {
-        case offline, ready, listening, thinking, speaking
-        /// Paused on an approval only you can give.
-        case waiting
-    }
+    typealias State = CallState
 
     struct Line: Identifiable {
         /// `info` is what Lair tells you along the way; `problem` is something that went wrong.

@@ -188,7 +188,7 @@ struct IslandView: View {
                         .font(.system(size: 10, weight: .bold, design: .rounded))
                         .foregroundStyle(.black)
                         .frame(width: 18, height: 18)
-                        .background(.orange, in: Circle())
+                        .background(LairColors.attention, in: Circle())
                 } else if working {
                     WorkingDots(tint: tint)
                 } else {
@@ -229,7 +229,7 @@ struct IslandView: View {
     private func caption(_ call: Call) -> String {
         switch call.state {
         case .listening: return room.answering?.callID == call.id ? "Listening for your answer…" : "Listening…"
-        case .thinking: return "Thinking…"
+        case .thinking: return "\(CallState.thinking.label)…"
         default:
             let said = call.lines.last { $0.role == .agent }?.text ?? ""
             return said.isEmpty ? (call.guest ? "Working on its own" : "In a call") : said
