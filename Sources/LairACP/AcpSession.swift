@@ -233,7 +233,7 @@ public final class AcpSession: AgentSession {
                 return
             }
             let summary = request.toolCall.title ?? "use a tool"
-            let approval = ApprovalRequest(id: "\(id)", tool: summary, summary: summary,
+            let approval = ApprovalRequest(id: "\(id)", tool: summary, summary: summary, spoken: request.toolCall.spokenAction,
                                            canAlwaysAllow: request.options.contains { $0.kind == "allow_always" })
             state.withLock { $0.approvals[approval.id] = (id, request.options) }
             deliver(.approval(approval))

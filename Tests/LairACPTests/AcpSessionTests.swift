@@ -114,11 +114,29 @@ struct AcpSessionTests {
             """#)
         guard case .approval(let request) = try await replies.next() else { Issue.record("no approval"); return }
         #expect(request.summary == "rm build")
+        #expect(request.spoken == "use a tool")
         #expect(request.canAlwaysAllow)
         try session.answer(request, decision: .allowAlways)
         let answer = await agent.next()
         #expect(answer.id as? String == "perm-1")
         #expect(answer.result["outcome"] as? [String: String] == ["outcome": "selected", "optionId": "b"])
+        session.stop()
+    }
+
+    @Test func anApprovalIsSpokenByItsKindNotItsCommand() async throws {
+        let agent = FakeAgent()
+        let session = session(agent)
+        await agent.handshake()
+        var replies = try session.ask("Clean up").makeAsyncIterator()
+        _ = await agent.next()
+        agent.say(#"""
+            {"jsonrpc":"2.0","id":"perm-2","method":"session/request_permission","params":{"sessionId":"s1",
+             "toolCall":{"toolCallId":"t2","title":"`cd /work && rm -rf build`","kind":"execute"},
+             "options":[{"optionId":"a","name":"Allow","kind":"allow_once"}]}}
+            """#)
+        guard case .approval(let request) = try await replies.next() else { Issue.record("no approval"); return }
+        #expect(request.summary == "`cd /work && rm -rf build`")
+        #expect(request.spoken == "run a command")
         session.stop()
     }
 
