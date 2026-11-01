@@ -289,7 +289,7 @@ struct IslandView: View {
                 Button("Deny") { room.answer(call, decision: .deny) }
                     .buttonStyle(IslandButtonStyle(fill: .white.opacity(0.12)))
                 if request?.canAlwaysAllow == true {
-                    Button("Always") { room.answer(call, decision: .allowAlways) }
+                    Button("Always allow") { room.answer(call, decision: .allowAlways) }
                         .buttonStyle(IslandButtonStyle(fill: tint.opacity(0.3)))
                 }
                 Spacer()
