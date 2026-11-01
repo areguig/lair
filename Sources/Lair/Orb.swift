@@ -9,12 +9,14 @@ struct Orb: View {
     var meter: LevelMeter?
     @State private var smoothed = Smoothed()
     @Environment(\.renderTime) private var renderTime
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        TimelineView(.animation(paused: state == .offline)) { timeline in
-            let time = renderTime ?? timeline.date.timeIntervalSinceReferenceDate
-            let level = renderTime == nil ? smoothed.next(Double(meter?.level ?? 0)) : Double(meter?.level ?? 0)
-            let scale = scale(time: time, level: level)
+        // Reduce Motion: a still orb; the state shows in the caption and the glow, not in movement.
+        TimelineView(.animation(paused: state == .offline || reduceMotion)) { timeline in
+            let time = reduceMotion ? 0 : renderTime ?? timeline.date.timeIntervalSinceReferenceDate
+            let level = reduceMotion ? 0 : renderTime == nil ? smoothed.next(Double(meter?.level ?? 0)) : Double(meter?.level ?? 0)
+            let scale = reduceMotion && state != .offline ? 1 : scale(time: time, level: level)
             ZStack {
                 Circle()
                     .fill(EllipticalGradient(colors: [color.opacity(0.55), .clear], center: .center,
@@ -28,7 +30,7 @@ struct Orb: View {
             .saturation(state == .offline ? 0.25 : 1)
             .opacity(state == .offline ? 0.6 : 1)
         }
-        .animation(.smooth(duration: 0.5), value: state)
+        .motion(.smooth(duration: 0.5), value: state)
     }
 
     /// Soft clouds of light and shade drifting inside the sphere, like a sky seen through a marble.

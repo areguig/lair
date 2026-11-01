@@ -64,7 +64,8 @@ struct LairApp: App {
         }
         if let i = CommandLine.arguments.firstIndex(of: "--snapshot"), i + 1 < CommandLine.arguments.count {
             let variant = i + 2 < CommandLine.arguments.count ? CommandLine.arguments[i + 2] : "approval"
-            Snapshot.write(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]), variant: variant)
+            let appearance = i + 3 < CommandLine.arguments.count ? CommandLine.arguments[i + 3] : "dark"
+            Snapshot.write(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]), variant: variant, appearance: appearance)
             exit(0)
         }
         if let i = CommandLine.arguments.firstIndex(of: "--island-snapshot"), i + 1 < CommandLine.arguments.count {
@@ -73,7 +74,8 @@ struct LairApp: App {
             exit(0)
         }
         if let i = CommandLine.arguments.firstIndex(of: "--mission-snapshot"), i + 1 < CommandLine.arguments.count {
-            Snapshot.writeMissionControl(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]))
+            let look = i + 2 < CommandLine.arguments.count ? CommandLine.arguments[i + 2] : nil
+            Snapshot.writeMissionControl(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]), look: look)
             exit(0)
         }
         if let i = CommandLine.arguments.firstIndex(of: "--settings-snapshot"), i + 1 < CommandLine.arguments.count {
@@ -163,10 +165,10 @@ struct MenuBarIcon: View {
     }
 }
 
-/// `Lair --snapshot out.png [approval|chat|reply|empty|micdenied|crowded]` renders the panel in a demo state,
-/// to check the design without clicking around.
+/// `Lair --snapshot out.png [approval|chat|reply|empty|micdenied|crowded] [light|dark]` renders the panel in a demo
+/// state, to check the design without clicking around.
 @MainActor enum Snapshot {
-    static func write(to url: URL, variant: String = "approval") {
+    static func write(to url: URL, variant: String = "approval", appearance: String = "dark") {
         let agents = variant == "empty" ? [] : variant == "crowded"
             ? (1...6).map { AgentConfig(id: "a\($0)", name: ["Claude", "Echo", "Nova", "Research assistant", "Ops", "Docs"][$0 - 1],
                                         preset: .claude, voice: "af_heart", color: AgentConfig.palette[$0 - 1]) }
@@ -230,16 +232,17 @@ struct MenuBarIcon: View {
             }
         }
         let problem = variant == "chat" ? "The config file has an error: line 4 is missing a comma." : nil
-        writePNG(RoomView(room: room, configProblem: problem).environment(\.renderTime, 0), scale: 2, to: url)
+        writePNG(RoomView(room: room, configProblem: problem).environment(\.renderTime, 0)
+            .environment(\.colorScheme, appearance == "light" ? .light : .dark), scale: 2, to: url)
     }
 
     /// Mission Control with a demo exchange, drawn in a hidden window so scroll views render.
-    static func writeMissionControl(to url: URL) {
+    static func writeMissionControl(to url: URL, look: String? = nil) {
         let room = Room(config: LairConfig(agents: Array(Demo.agents.prefix(2))))
         room.readiness = .ready
         let claude = room.calls[0]
         claude.state = .speaking
-        claude.details = "claude-haiku-5-5"
+        claude.details = "Haiku 5.5"
         claude.log(.you("What's left before we ship the release?"))
         claude.record(.thinking("The user wants the release status. I should check the changelog and the build number "
             + "before answering, and look at the open TODOs."))
@@ -275,6 +278,8 @@ struct MenuBarIcon: View {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1240, height: 780), styleMask: [.titled],
                               backing: .buffered, defer: false)
         window.contentView = view
+        // "light" or "dark"; anything else follows the system.
+        window.appearance = look.flatMap { NSAppearance(named: $0 == "light" ? .aqua : .darkAqua) }
         view.layoutSubtreeIfNeeded()
         RunLoop.main.run(until: Date().addingTimeInterval(0.8))
         guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
