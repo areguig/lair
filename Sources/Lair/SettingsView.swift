@@ -133,7 +133,7 @@ private struct AgentsSettings: View {
         }
         .onAppear { selection = selection ?? store.config.agents.first?.id }
         .sheet(isPresented: $browsing) {
-            RegistrySheet(store: registry, room: room, added: Set(store.config.agents.compactMap(\.registry)), add: add)
+            RegistrySheet(store: registry, room: room, added: Set(store.config.agents.compactMap(\.registryEntry)), add: add)
         }
         .confirmationDialog("Remove \(removing?.name ?? "this agent")?", isPresented: Binding(
             get: { removing != nil }, set: { if !$0 { removing = nil } }
@@ -246,7 +246,7 @@ private struct AgentForm: View {
                             }
                         }
                     }
-                    if agent.registry != nil || AgentPreset.withID(agent.preset)?.registryID != nil, let command = agent.launchCommand {
+                    if agent.registryEntry != nil, let command = agent.launchCommand {
                         Hint("Runs " + runs(command)).textSelection(.enabled)
                     }
                     FolderField(path: $agent.directory)

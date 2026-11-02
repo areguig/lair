@@ -105,6 +105,15 @@ struct LairConfigTests {
 }
 
 struct AgentRegistryFieldsTests {
+    @Test func aPresetAgentRunsItsPresetsRegistryEntryUnlessAddedFromAnother() {
+        var codex = AgentConfig(id: "c", name: "Codex", preset: .codex, voice: "v", color: "#000000")
+        #expect(codex.registryEntry == "codex-acp")
+        codex.registry = "other"
+        #expect(codex.registryEntry == "other")
+        let omp = AgentConfig(id: "o", name: "omp", preset: .omp, voice: "v", color: "#000000")
+        #expect(omp.registryEntry == nil)
+    }
+
     @Test func unsetFieldsAreNotWrittenAndOldConfigsReadUnchanged() throws {
         let old = Data(##"{"agents":[{"id":"c","name":"C","kind":"acp","voice":"v","color":"#000000"}]}"##.utf8)
         let config = try JSONDecoder().decode(LairConfig.self, from: old)

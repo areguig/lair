@@ -199,6 +199,9 @@ public struct AgentConfig: Codable, Equatable, Identifiable, Sendable {
         return (base ?? [:]).merging(env) { _, own in own }
     }
 
+    /// The registry entry this agent runs: the one it was added from, or its preset's.
+    public var registryEntry: String? { registry ?? AgentPreset.withID(preset)?.registryID }
+
     /// Starts this agent from `entry`, pinned to the entry's version.
     public mutating func follow(_ entry: Registry.Entry) {
         command = entry.command

@@ -18,7 +18,7 @@ public struct Registry: Decodable, Equatable, Sendable {
 
     /// The registry's entry for `agent` when it starts the agent differently from how `agent` does.
     public func update(for agent: AgentConfig) -> Entry? {
-        guard let entry = entry(id: agent.registry ?? AgentPreset.withID(agent.preset)?.registryID),
+        guard let entry = entry(id: agent.registryEntry),
               entry.command != agent.launchCommand else { return nil }
         return entry
     }
