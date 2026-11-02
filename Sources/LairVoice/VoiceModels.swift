@@ -35,6 +35,25 @@ public actor VoiceModels {
 
     public init() {}
 
+    /// The folders holding the models Lair loads, and no others: FluidAudio's cache is shared with other tools.
+    /// Parakeet v2 and Silero VAD sit in Application Support; Kokoro v3 and its English G2P assets in `~/.cache`.
+    public static var folders: [URL] {
+        let tts = ttsCache.appending(path: "Models", directoryHint: .isDirectory)
+        return [
+            AsrModels.defaultCacheDirectory(for: .v2),
+            MLModelConfigurationUtils.defaultModelsDirectory(for: .vad),
+            // KokoroAneV3Assets.swift:71, whatever its revision or language.
+            tts.appending(path: "kokoro-82m-coreml/ANE-v3", directoryHint: .isDirectory),
+            // KokoroAneResourceDownloader.swift:381, the G2P assets and lexicon (`Repo.kokoro.folderName`).
+            tts.appending(path: Repo.kokoro.folderName, directoryHint: .isDirectory),
+        ]
+    }
+
+    /// FluidAudio's text-to-speech root on macOS, which it builds in TtsCacheDirectory.swift:25-38.
+    private static var ttsCache: URL {
+        FileManager.default.homeDirectoryForCurrentUser.appending(path: ".cache/fluidaudio", directoryHint: .isDirectory)
+    }
+
     /// `progress` may be called from any queue.
     public func load(warmUpVoice: String, progress: (@Sendable (Progress) -> Void)? = nil) async throws {
         let asr = AsrManager()
