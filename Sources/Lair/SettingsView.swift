@@ -212,17 +212,21 @@ private struct AgentForm: View {
                 }
                 ColorPicker("Color", selection: Binding(get: { Color(hex: agent.color) }, set: { agent.color = $0.hex }),
                             supportsOpacity: false)
+                Picker("Language", selection: Binding(get: { agent.spokenLanguage }, set: { agent.speak($0) })) {
+                    ForEach(Language.allCases, id: \.self) { Text($0.label).tag($0) }
+                }
+                .hint("Its voice follows it.")
                 HStack {
-                    Picker("Voice", selection: Binding(get: { Voices.resolve(agent.voice) }, set: { agent.voice = $0 })) {
-                        ForEach(Voices.english, id: \.name) { Text($0.label).tag($0.name) }
+                    Picker("Voice", selection: Binding(get: { Voices.resolve(agent.voice, language: agent.spokenLanguage) }, set: { agent.voice = $0 })) {
+                        ForEach(Voices.voices(for: agent.spokenLanguage), id: \.name) { Text($0.label).tag($0.name) }
                     }
                     Button {
-                        room.preview(voice: agent.voice, name: agent.name.isEmpty ? "your agent" : agent.name)
+                        room.preview(voice: agent.voice, language: agent.spokenLanguage, name: agent.name.isEmpty ? "your agent" : agent.name)
                     } label: {
                         Image(systemName: "play.fill")
                     }
                     .help("Hear this voice")
-                    .accessibilityLabel("Hear \(Voices.label(for: agent.voice))")
+                    .accessibilityLabel("Hear \(Voices.label(for: agent.voice, language: agent.spokenLanguage))")
                     .disabled(room.readiness != .ready)
                 }
             }

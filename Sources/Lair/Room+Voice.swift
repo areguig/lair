@@ -14,7 +14,7 @@ extension Room {
             call.unheard.append(sentence)
             return false
         }
-        let samples = try await voice.speech(for: text, voice: call.agent.voice)
+        let samples = try await voice.speech(for: text, voice: call.agent.voice, language: call.agent.spokenLanguage)
         // Hung up while the sentence was being synthesized: setting `.speaking` would bring the call back.
         guard call.inCall, !silent else { return false }
         // Focus may have moved while the sentence was being synthesized.
@@ -34,7 +34,7 @@ extension Room {
         guard !silent else { return }
         Task {
             await waitForTheFloor()
-            guard !silent, let speaker, let samples = try? await voice.speech(for: text, voice: call.agent.voice) else { return }
+            guard !silent, let speaker, let samples = try? await voice.speech(for: text, voice: call.agent.voice, language: call.agent.spokenLanguage) else { return }
             guard !silent else { return }
             speaker.enqueue(samples)
         }
@@ -75,11 +75,11 @@ extension Room {
         speaker?.preview(group.preview)
     }
 
-    /// Says a short line in `voice`, so a voice can be tried before choosing it.
-    func preview(voice: String, name: String) {
+    /// Says a short line in `language`, so a voice can be tried before choosing it.
+    func preview(voice: String, language: Language, name: String) {
         guard readiness == .ready, let speaker else { return }
         Task {
-            guard let samples = try? await self.voice.speech(for: "Hi, I'm \(name).", voice: voice) else { return }
+            guard let samples = try? await self.voice.speech(for: language.introduction(of: name), voice: voice, language: language) else { return }
             speaker.enqueue(samples)
         }
     }

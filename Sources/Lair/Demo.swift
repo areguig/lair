@@ -412,7 +412,7 @@ struct Stage {
     }
 
     func you(_ text: String, to call: Int, transcript: Bool = true) async throws {
-        let samples = try await voice.speech(for: text, voice: Demo.you)
+        let samples = try await voice.speech(for: text, voice: Demo.you, language: .english)
         at { room in
             room.calls[call].state = .listening
             room.focusedID = Demo.agents[call].id
@@ -434,7 +434,7 @@ struct Stage {
                then end: Call.State = .ready) async throws {
         if end != .waiting { at { $0.calls[call].state = .thinking } }
         time += thinking
-        let samples = try await voice.speech(for: text, voice: Demo.agents[call].voice)
+        let samples = try await voice.speech(for: text, voice: Demo.agents[call].voice, language: Demo.agents[call].spokenLanguage)
         at { room in
             room.calls[call].state = .speaking
             if transcript {
@@ -450,7 +450,7 @@ struct Stage {
 
     /// One line from an agent that isn't in focus, in its own voice, as Lair says it.
     func announce(_ call: Int, _ text: String) async throws {
-        let samples = try await voice.speech(for: text, voice: Demo.agents[call].voice)
+        let samples = try await voice.speech(for: text, voice: Demo.agents[call].voice, language: Demo.agents[call].spokenLanguage)
         time += place(samples, at: time) + 0.3
     }
 

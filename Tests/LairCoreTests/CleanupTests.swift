@@ -30,7 +30,7 @@ import Testing
             registryCache: home.appending(path: "Library/Application Support/Lair"),
             logs: home.appending(path: "Library/Logs/Lair"),
             speechModels: [home.appending(path: "Library/Application Support/Lair/pocket"),
-                           home.appending(path: "Library/Application Support/FluidAudio/Models/parakeet-tdt-0.6b-v2")],
+                           home.appending(path: "Library/Application Support/FluidAudio/Models/parakeet-tdt-0.6b-v3")],
             app: withApp ? (appFolder ?? home.appending(path: "Applications")).appending(path: "Lair.app") : nil)
         let trashed = trashed
         let services = Cleanup.Services(
@@ -70,7 +70,7 @@ import Testing
     @Test func uninstallAddsModelsCacheLogsPreferencesAndTheApp() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
         _ = try make("Library/Application Support/Lair/pocket/hub/a.bin", bytes: 4000)
-        _ = try make("Library/Application Support/FluidAudio/Models/parakeet-tdt-0.6b-v2/b.bin", bytes: 4000)
+        _ = try make("Library/Application Support/FluidAudio/Models/parakeet-tdt-0.6b-v3/b.bin", bytes: 4000)
         _ = try make("Library/Application Support/Lair/registry.json")
         _ = try make("Library/Logs/Lair/nova.log")
         try FileManager.default.createDirectory(at: home.appending(path: "Applications/Lair.app"), withIntermediateDirectories: true)
@@ -82,7 +82,7 @@ import Testing
     @Test func foldersCarryTheirSizeAndItAddsUp() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
         _ = try make("Library/Application Support/Lair/pocket/hub/a.bin", bytes: 100_000)
-        _ = try make("Library/Application Support/FluidAudio/Models/parakeet-tdt-0.6b-v2/b.bin", bytes: 200_000)
+        _ = try make("Library/Application Support/FluidAudio/Models/parakeet-tdt-0.6b-v3/b.bin", bytes: 200_000)
         let models = try await cleanup(withApp: false).plan(.uninstall).items.first { $0.label == "Speech models" }
         #expect(models?.bytes ?? 0 >= 300_000)
         #expect(models?.bytes ?? 0 < 400_000)
@@ -101,8 +101,8 @@ import Testing
         try writeConfig()
         let voices = try make("Library/Application Support/Lair/pocket/hub/a.bin")
         let huggingface = try make(".cache/huggingface/hub/p.bin")
-        let other = try make("Library/Application Support/FluidAudio/Models/parakeet-tdt-0.6b-v3/c.bin")
-        let mine = try make("Library/Application Support/FluidAudio/Models/parakeet-tdt-0.6b-v2/b.bin")
+        let other = try make("Library/Application Support/FluidAudio/Models/parakeet-tdt-0.6b-v2/c.bin")
+        let mine = try make("Library/Application Support/FluidAudio/Models/parakeet-tdt-0.6b-v3/b.bin")
         let theirs = try make("Library/Logs/Other/x.log")
         let calls = Calls()
         let cleanup = try cleanup(secrets: ["lair.nova/header:X-Key"], connected: ["Claude Code", "omp"], calls: calls, withApp: false)

@@ -69,6 +69,12 @@ struct PocketLeftoverTests {
         #expect(PocketServer.readPid(from: file) == nil)
     }
 
+    @Test func eachModelKeepsItsOwnPidFileSoOneLeftoverNeverHidesTheOther() {
+        let home = FileManager.default.temporaryDirectory
+        #expect(PocketServer.pidFile(model: "french", in: home) != PocketServer.pidFile(model: "english_18m_2026-10", in: home))
+        #expect(PocketServer.pidFile(model: "french", in: home).lastPathComponent == "serve-french.pid")
+    }
+
     @Test func thisProcessHasAPathAndAnImpossiblePidHasNone() {
         #expect(PocketServer.executablePath(of: getpid()) != nil)
         #expect(PocketServer.executablePath(of: 999_999) == nil)

@@ -68,10 +68,11 @@ struct LairApp: App {
         }
         // `Lair --speak-test "Hello." out.wav [voice]` says a line with the voice engine and no UI, to check it end to end.
         if let i = CommandLine.arguments.firstIndex(of: "--speak-test"), i + 2 < CommandLine.arguments.count {
-            let voice = i + 3 < CommandLine.arguments.count ? CommandLine.arguments[i + 3] : Voices.defaultName()
+            let language = i + 4 < CommandLine.arguments.count ? Language(rawValue: CommandLine.arguments[i + 4]) ?? .english : .english
+            let voice = i + 3 < CommandLine.arguments.count ? CommandLine.arguments[i + 3] : Voices.defaultName(for: language)
             Task { @MainActor in
                 do {
-                    try await Snapshot.writeSpeech(CommandLine.arguments[i + 1], voice: voice, to: URL(fileURLWithPath: CommandLine.arguments[i + 2]))
+                    try await Snapshot.writeSpeech(CommandLine.arguments[i + 1], voice: voice, language: language, to: URL(fileURLWithPath: CommandLine.arguments[i + 2]))
                     exit(0)
                 } catch {
                     print("Speak test failed: \(error.localizedDescription)")
@@ -226,11 +227,11 @@ struct MenuBarIcon: View {
 /// state, to check the design without clicking around.
 @MainActor enum Snapshot {
     /// Speaks `text` and writes the 24 kHz mono result, printing how long the first start and the whole took.
-    static func writeSpeech(_ text: String, voice: String, to url: URL) async throws {
+    static func writeSpeech(_ text: String, voice: String, language: Language, to url: URL) async throws {
         let engine = VoiceModels()
         defer { engine.stopSpeech() }
         let start = ContinuousClock.now
-        let samples = try await engine.speech(for: text, voice: voice)
+        let samples = try await engine.speech(for: text, voice: voice, language: language)
         let format = AVAudioFormat(standardFormatWithSampleRate: 24_000, channels: 1)!
         let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count))!
         buffer.frameLength = AVAudioFrameCount(samples.count)
@@ -428,6 +429,7 @@ struct MenuBarIcon: View {
         hermes.model = "hermes-agent"
         hermes.headers = ["X-Access-Token"]
         var config = LairConfig(agents: Demo.agents + [hermes])
+        if agent == "french" { config.agents[0].speak(.french) }
         if agent == "mac" { config.guests = .standard }
         if agent == "general" { config.sounds = SoundSettings(volume: 0.7, off: [.done]) }
         if agent == "update" {
@@ -445,6 +447,7 @@ struct MenuBarIcon: View {
         SettingsRoute.shared.tab = agent == "mac" ? .mac : agent == "general" ? .general : .agents
         // An agent id, or a preset name for the first demo agent that uses it.
         let selected = config.agents.first { $0.id == agent || $0.preset == agent }?.id
+            ?? (agent == "french" ? config.agents.first?.id : nil)
             ?? (agent == "update" ? config.agents.last?.id : nil)
         let registry = RegistryStore(registry: registryDemo)
         // A folder holding `npx` stands in for the login shell's PATH: Node.js is installed, uv isn't.
