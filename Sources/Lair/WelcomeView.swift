@@ -166,8 +166,9 @@ struct WelcomeView: View {
     private func setUsing(_ preset: AgentPreset, _ on: Bool) {
         var config = store.config
         if on {
-            var agent = config.newAgent(named: preset.name, voices: VoiceModels.voices)
-            AgentChoice.preset(preset.id).apply(to: &agent)
+            let choice = AgentChoice.preset(preset.id)
+            var agent = config.newAgent(named: choice.label, voices: VoiceModels.voices)
+            choice.apply(to: &agent)
             config.agents.append(agent)
         } else {
             config.agents.removeAll { $0.preset == preset.id }
@@ -235,20 +236,23 @@ private struct AgentLine: View {
     let installed: Bool?
     @Binding var isOn: Bool
 
+    /// Named as Settings names it, so "Hermes on this Mac" reads the same in both.
+    private var name: String { AgentChoice.preset(preset.id).label }
+
     var body: some View {
         HStack(spacing: 8) {
-            Text(preset.name)
+            Text(name)
             Spacer(minLength: 8)
             switch installed {
             case true?:
-                Toggle("Use \(preset.name)", isOn: $isOn).labelsHidden().toggleStyle(.switch).controlSize(.small)
+                Toggle("Use \(name)", isOn: $isOn).labelsHidden().toggleStyle(.switch).controlSize(.small)
             case false?:
                 Text("Needs \(preset.needs)").font(.subheadline).foregroundStyle(.secondary)
                 Link("Get", destination: preset.installURL)
                     .font(.subheadline)
                     .accessibilityLabel("Get \(preset.needs)")
             case nil:
-                ProgressView().controlSize(.small).accessibilityLabel("Looking for \(preset.name)")
+                ProgressView().controlSize(.small).accessibilityLabel("Looking for \(name)")
             }
         }
         .padding(.vertical, 6)
