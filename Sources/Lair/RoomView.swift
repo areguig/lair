@@ -12,6 +12,11 @@ struct RoomView: View {
     var updates: Updates?
     @Environment(\.openWindow) private var openWindow
     @Environment(\.renderTime) private var renderTime
+    /// Whether the rail has more above and below what shows, so its edges fade only when there's something to scroll to.
+    @State private var railMore = (above: false, below: false)
+    /// Snapshots can't scroll, so they compare the list's height with its box instead.
+    @State private var railContent = CGFloat.zero
+    @State private var railBox = CGFloat.zero
     /// With a call the panel is this tall and the transcript scrolls, so a long exchange never grows it off the screen.
     private static let height: CGFloat = 580
 
@@ -140,12 +145,34 @@ struct RoomView: View {
         return Group {
             if renderTime == nil {
                 ScrollView(showsIndicators: false) { content }
+                    .onScrollGeometryChange(for: RailEdges.self) {
+                        RailEdges(above: $0.contentOffset.y > 1,
+                                  below: $0.contentOffset.y + $0.containerSize.height < $0.contentSize.height - 1)
+                    } action: { _, edges in railMore = (edges.above, edges.below) }
             } else {
-                Color.clear.overlay(alignment: .top) { content }.clipped()
+                Color.clear.overlay(alignment: .top) {
+                    content.fixedSize(horizontal: false, vertical: true)
+                        .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { railContent = $0 }
+                }
+                .clipped()
+                .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { railBox = $0 }
             }
         }
+        .mask(railFade)
+        .onChange(of: railContent > railBox + 1) { railMore.below = railContent > railBox + 1 }
         .frame(width: 62)
         .frame(maxHeight: .infinity)
+    }
+
+    /// Opaque in the middle, fading out over the last 20 pt of an edge that has more behind it.
+    private var railFade: some View {
+        GeometryReader { geometry in
+            let fade = min(20 / max(geometry.size.height, 1), 0.5)
+            LinearGradient(stops: [.init(color: .black.opacity(railMore.above ? 0 : 1), location: 0),
+                                   .init(color: .black, location: fade), .init(color: .black, location: 1 - fade),
+                                   .init(color: .black.opacity(railMore.below ? 0 : 1), location: 1)],
+                           startPoint: .top, endPoint: .bottom)
+        }
     }
 
     private func avatar(_ call: Call) -> some View {
@@ -470,4 +497,10 @@ private struct RoundButton: View {
         }
         .buttonStyle(.plain)
     }
+}
+
+/// Which edges of the rail have more behind them.
+private struct RailEdges: Equatable {
+    let above: Bool
+    let below: Bool
 }
