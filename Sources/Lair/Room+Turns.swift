@@ -160,8 +160,8 @@ extension Room {
             var stream = SpokenStream()
             func deliver(_ piece: SpokenStream.Piece, to line: Int?) async throws {
                 if let line {
+                    call.lines[line].shown += Shown.place(piece, after: call.lines[line].text)
                     call.lines[line].text += piece.text
-                    call.lines[line].shown += piece.shown
                 }
                 for sentence in piece.sentences where try await say(sentence, in: call) && firstAudio == nil {
                     firstAudio = clock.now - start

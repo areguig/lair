@@ -1,7 +1,7 @@
 import LairCore
 import SwiftUI
 
-/// One agent in the rail: its orb, alive with its state; a ring while it speaks; a badge when it needs you.
+/// One agent in the rail: its orb in its own color, alive with its state; a ring while it speaks; a dot when it needs you.
 struct RailAvatar: View {
     let call: Call
     let focused: Bool
@@ -10,33 +10,34 @@ struct RailAvatar: View {
     var body: some View {
         let tint = Color(hex: call.agent.color)
         Button(action: select) {
-            VStack(spacing: 5) {
+            VStack(spacing: 4) {
                 ZStack {
-                    Circle().fill(Color.primary.opacity(focused ? 0.09 : 0))
-                    Orb(color: tint, state: call.state).frame(width: 32, height: 32)
+                    Orb(color: tint, state: call.state, offlineSaturation: 0.55).frame(width: 30, height: 30)
                     if call.state == .speaking { SpeakingRing(tint: tint) }
-                    Circle().strokeBorder(tint.opacity(focused ? 0.85 : 0), lineWidth: 1.5)
                 }
-                .frame(width: 46, height: 46)
-                .overlay(alignment: .topTrailing) { badge }
+                .frame(width: 38, height: 38)
+                .overlay(alignment: .topTrailing) { dot }
                 .overlay(alignment: .bottomTrailing) {
                     if call.guest {
                         Image(systemName: "laptopcomputer")
-                            .font(.system(size: 7, weight: .bold))
+                            .font(.system(size: 6, weight: .bold))
                             .foregroundStyle(.primary)
-                            .frame(width: 15, height: 15)
+                            .frame(width: 12, height: 12)
                             .background(Color.inverse, in: Circle())
                             .overlay(Circle().strokeBorder(.separator, lineWidth: 0.5))
                     }
                 }
                 Text(call.agent.name)
-                    .font(.system(size: 10, weight: focused ? .semibold : .medium, design: .rounded))
+                    .font(.system(.caption, design: .rounded, weight: focused ? .semibold : .regular))
                     .foregroundStyle(focused || call.inCall ? .primary : .secondary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
+                    .lineLimit(1)
                     .truncationMode(.tail)
-                    .frame(width: 60)
+                    .frame(width: 56)
             }
+            .padding(.vertical, 5)
+            .frame(width: 62)
+            .background(Color.primary.opacity(focused ? 0.08 : 0), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .outlined(RoundedRectangle(cornerRadius: 12, style: .continuous), opacity: 0)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -45,17 +46,14 @@ struct RailAvatar: View {
         .accessibilityValue(summary)
     }
 
-    @ViewBuilder private var badge: some View {
-        if call.questionText != nil || call.pendingApproval != nil {
-            Image(systemName: call.questionText != nil ? "questionmark" : "hand.raised.fill")
-                .font(.system(size: 8, weight: .heavy))
-                .foregroundStyle(.black)
-                .frame(width: 16, height: 16)
-                .background(LairColors.attention, in: Circle())
-                .overlay(Circle().strokeBorder(.black.opacity(0.4), lineWidth: 1))
+    /// Orange when it needs you, blue when it has news; the words are in the VoiceOver value and the tooltip.
+    @ViewBuilder private var dot: some View {
+        if call.awaitsYou || (call.unread && !focused) {
+            Circle()
+                .fill(call.awaitsYou ? LairColors.attention : LairColors.unread)
+                .frame(width: 10, height: 10)
+                .overlay(Circle().strokeBorder(Color.inverse, lineWidth: 1.5))
                 .transition(.scale.combined(with: .opacity))
-        } else if call.unread && !focused {
-            Circle().fill(LairColors.unread).frame(width: 9, height: 9).padding(3)
         }
     }
 
@@ -137,7 +135,7 @@ struct ElsewhereBar: View {
     }
 }
 
-/// The model line under the name, during a call: click it to switch model or thinking for this call.
+/// The model beside the name, during a call: click it to switch model or thinking for this call.
 struct ModelSwitcher: View {
     let call: Call
     let room: Room
@@ -206,15 +204,16 @@ struct HoldToTalk: View {
     let active: Bool
     let tint: Color
     var answering: Room.Answering?
+    var size: CGFloat = 64
     let onPress: () -> Void
     let onRelease: () -> Void
     @State private var pressed = false
 
     var body: some View {
         Image(systemName: "mic.fill")
-            .font(.system(size: 22, weight: .semibold))
+            .font(.system(size: size * 0.34, weight: .semibold))
             .foregroundStyle(active ? Color.inverse : .primary)
-            .frame(width: 64, height: 64)
+            .frame(width: size, height: size)
             .background(active ? AnyShapeStyle(.primary) : AnyShapeStyle(Color.primary.opacity(0.14)), in: Circle())
             .outlined(Circle(), opacity: 0)
             .overlay {

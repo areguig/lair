@@ -207,11 +207,11 @@ struct MenuBarIcon: View {
     }
 }
 
-/// `Lair --snapshot out.png [approval|chat|reply|empty|micdenied|crowded] [light|dark]` renders the panel in a demo
+/// `Lair --snapshot out.png [approval|chat|reply|empty|micdenied|crowded|busy|silent] [light|dark]` renders the panel in a demo
 /// state, to check the design without clicking around.
 @MainActor enum Snapshot {
     static func write(to url: URL, variant: String = "approval", appearance: String = "dark") {
-        let agents = variant == "empty" ? [] : variant == "crowded"
+        let agents = variant == "empty" ? [] : variant == "busy" ? busyAgents : variant == "crowded"
             ? (1...6).map { AgentConfig(id: "a\($0)", name: ["Claude", "Echo", "Nova", "Research assistant", "Ops", "Docs"][$0 - 1],
                                         preset: .claude, voice: "af_heart", color: AgentConfig.palette[$0 - 1]) }
             : [AgentConfig(id: "claude", name: "Claude", preset: .claude, voice: "af_heart", color: "#D97757", directory: "~"),
@@ -237,11 +237,13 @@ struct MenuBarIcon: View {
                 call.lines += [
                     .init(role: .you, text: "Yes, go ahead."),
                     .init(role: .info, text: "Always allowed: Bump the build number in Info.plist and commit it"),
-                    .init(role: .agent, text: "Done. The changelog is updated and the build number is bumped.",
-                          shown: ["~/dev/app/CHANGELOG.md", "https://github.com/example/app/pull/42"]),
+                    agentLine("Done. I updated <show>~/dev/app/CHANGELOG.md</show> and bumped the build number. "
+                        + "The pull request is <show>https://github.com/example/app/pull/42</show>."),
                 ]
                 room.calls[1].lines = [.init(role: .problem, text: "Echo needs an API key. Add it in Settings › Agents.",
                                              action: .openSettings)]
+            case "busy":
+                stageBusy(room, call)
             case "silent":
                 room.setSilent(true)
                 call.state = .thinking
@@ -279,6 +281,52 @@ struct MenuBarIcon: View {
         let problem = variant == "chat" ? "The config file has an error: line 4 is missing a comma." : nil
         writePNG(RoomView(room: room, configProblem: problem).environment(\.renderTime, 0)
             .environment(\.colorScheme, appearance == "light" ? .light : .dark), scale: 2, to: url)
+    }
+
+    /// An agent's line as the app stores it: the `<show>` items taken out of the text, each with where it sat.
+    private static func agentLine(_ reply: String) -> Call.Line {
+        var stream = SpokenStream()
+        var line = Call.Line(role: .agent, text: "")
+        for piece in [stream.feed(reply, after: ""), stream.finish()] {
+            line.shown += Shown.place(piece, after: line.text)
+            line.text += piece.text
+        }
+        return line
+    }
+
+    /// Eight agents of mixed presets and colors, as a busy day looks.
+    private static var busyAgents: [AgentConfig] {
+        let palette = AgentConfig.palette
+        func agent(_ id: String, _ name: String, _ preset: AgentPreset, _ color: String) -> AgentConfig {
+            AgentConfig(id: id, name: name, preset: preset, voice: "af_heart", color: color, directory: "~")
+        }
+        return [agent("claude", "Claude", .claude, palette[0]), agent("cypher", "Cypher", .claude, palette[1]),
+                agent("reno", "Reno", .claude, palette[2]), agent("lair", "Lair", .claude, palette[3]),
+                agent("copilot", "Copilot", .copilot, palette[4]), agent("opencode", "opencode", .opencode, palette[5]),
+                agent("codex", "Codex", .codex, "#10A37F"), agent("pi", "pi ACP", .omp, "#8E8E93")]
+    }
+
+    /// A long exchange with a link in an answer, a guest and a streaming reply: the screenshot that sent the panel back to design.
+    private static func stageBusy(_ room: Room, _ call: Call) {
+        call.state = .speaking
+        call.details = "Haiku 5.5 · Default thinking"
+        call.lines = [
+            .init(role: .you, text: "Claude, what's the weather like in Lyon this weekend?"),
+            agentLine("It looks mild: around 18 degrees on Saturday with some cloud, and a few showers on Sunday "
+                + "afternoon. I checked a couple of forecasts and they agree to within a degree, so I'd plan on a light jacket "
+                + "for the real current conditions. The source is "
+                + "<show>[Predictwind's Paris weather](https://www.predictwind.com/weather/france/paris)</show>."),
+            .init(role: .you, text: "Claude, could you tell me the weather in Paris? I'm flying there on Friday and I'd "
+                + "like to know whether I should pack an umbrella or just a jacket."),
+            .init(role: .info, text: "Allowed once: Fetch the forecast page"),
+            .init(role: .agent, text: "Paris is cloudy right now at 12 degrees, with rain expected from the early evening."),
+        ]
+        let guest = room.call(for: Guest(id: "omp", name: "omp", client: "omp-coding-agent",
+                                         folder: URL(fileURLWithPath: "/Users/me/dev/landing-page")))
+        guest.state = .thinking
+        room.calls[1].state = .thinking
+        room.calls[2].unread = true
+        room.calls[4].state = .ready
     }
 
     /// Mission Control with a demo exchange, drawn in a hidden window so scroll views render.

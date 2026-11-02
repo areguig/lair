@@ -19,11 +19,14 @@ public struct ShowFilter: Sendable {
     private var inTag = false
     private var lastSpoken: Character?
     private var afterTag = false  // a tag was just removed, so collapse doubled spaces
+    /// Where each item of the last `feed` or `flush` sat in its spoken text, in characters, so the screen can put it back.
+    public private(set) var offsets: [Int] = []
 
     public init() {}
 
     public mutating func feed(_ delta: String) -> Output {
         pending += Array(delta)
+        offsets = []
         var out = Output()
         var i = 0
         scan: while i < pending.count {
@@ -42,7 +45,10 @@ public struct ShowFilter: Sendable {
                 i = lt + tag.count
                 if inTag {
                     let item = content.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !item.isEmpty { out.shown.append(item) }
+                    if !item.isEmpty {
+                        out.shown.append(item)
+                        offsets.append(out.spoken.count)
+                    }
                     content = ""
                     afterTag = true
                 }
@@ -58,14 +64,19 @@ public struct ShowFilter: Sendable {
 
     public mutating func flush() -> Output {
         var out = Output()
+        var marks: [Int] = []
         if inTag {
             // Forgotten close tag: show the content, never speak it.
             let item = content.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !item.isEmpty { out.shown.append(item) }
+            if !item.isEmpty {
+                out.shown.append(item)
+                marks.append(0)
+            }
         } else {
             take(pending[...], into: &out)
         }
         self = ShowFilter()
+        offsets = marks
         return out
     }
 
