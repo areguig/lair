@@ -90,12 +90,6 @@ extension Room {
         calls.first { !$0.guest && $0.agent.name.caseInsensitiveCompare(name) == .orderedSame }
     }
 
-    private func step(_ by: Int, from current: String?, in levels: [String]) -> String? {
-        guard !levels.isEmpty else { return nil }
-        let index = current.flatMap { levels.firstIndex(of: $0) } ?? levels.firstIndex(of: "medium") ?? levels.count / 2
-        return levels[min(max(index + by, 0), levels.count - 1)]
-    }
-
     /// The agent took a turn by itself, such as telling what its background work found.
     func hear(_ turn: AgentTurn, from call: Call) {
         guard call.inCall else { return }
@@ -123,8 +117,6 @@ extension Room {
         await play({ try session.ask(sent) }, in: call, speech: speech, start: start, typed: typed)
     }
 
-    /// Speaks a turn as it comes, asked or the agent's own. `opening` heads an own turn once it says something;
-    /// one with nothing to say passes silently.
     /// Speaks a turn as it comes, asked or the agent's own. `opening` heads an own turn once it says something;
     /// one with nothing to say passes silently.
     private func play(_ turn: () throws -> AgentTurn, in call: Call, speech: Int, start: ContinuousClock.Instant,
@@ -159,9 +151,17 @@ extension Room {
             // Text after an approval starts a new line, so the transcript reads in order.
             var answer: Int?
             var answered = false
-            var splitter = SentenceSplitter()
             // Links and paths in <show> tags go to the screen, never to the voice.
-            var showing = ShowFilter()
+            var stream = SpokenStream()
+            func deliver(_ piece: SpokenStream.Piece, to line: Int?) async throws {
+                if let line {
+                    call.lines[line].text += piece.text
+                    call.lines[line].shown += piece.shown
+                }
+                for sentence in piece.sentences where try await say(sentence, in: call) && firstAudio == nil {
+                    firstAudio = clock.now - start
+                }
+            }
             for try await reply in try turn() {
                 guard !Task.isCancelled else { return }
                 switch reply {
@@ -179,37 +179,18 @@ extension Room {
                         call.lines.append(.init(role: .agent, text: ""))
                         answer = call.lines.count - 1
                     }
-                    let visible = showing.feed(delta)
-                    let spoken = Speakable.gap(after: call.lines[answer!].text, before: visible.spoken) + visible.spoken
-                    call.lines[answer!].text += spoken
-                    call.lines[answer!].shown += visible.shown
+                    let piece = stream.feed(delta, after: call.lines[answer!].text)
                     answered = true
-                    for sentence in splitter.feed(spoken) where try await say(sentence, in: call) && firstAudio == nil {
-                        firstAudio = clock.now - start
-                    }
+                    try await deliver(piece, to: answer)
                 case .approval(let request):
-                    let visible = showing.flush()
-                    if let answer {
-                        call.lines[answer].text += visible.spoken
-                        call.lines[answer].shown += visible.shown
-                    }
-                    for sentence in splitter.feed(visible.spoken) { _ = try await say(sentence, in: call) }
-                    if let rest = splitter.flush() { _ = try await say(rest, in: call) }
+                    try await deliver(stream.finish(), to: answer)
                     answer = nil
                     try await ask(call, to: request)
                 }
             }
             // Cutting in ends the stream as if the turn were over; it was stopped, not silent.
             guard !Task.isCancelled, call.turnID == turnID else { return }
-            let visible = showing.flush()
-            if let answer {
-                call.lines[answer].text += visible.spoken
-                call.lines[answer].shown += visible.shown
-            }
-            for sentence in splitter.feed(visible.spoken) { _ = try await say(sentence, in: call) }
-            if let rest = splitter.flush(), try await say(rest, in: call), firstAudio == nil {
-                firstAudio = clock.now - start
-            }
+            try await deliver(stream.finish(), to: answer)
             if !answered, opening == nil {
                 report(in: call, .init(role: .problem, text: "\(call.agent.name) didn't answer."))
             }
@@ -306,7 +287,7 @@ extension Room {
             case .thinking(let level):
                 confirmation = try setThinking(level, in: call, session: session)
             case .thinkMore, .thinkLess:
-                guard let level = step(command == .thinkMore ? 1 : -1, from: call.thinking, in: session.thinkingLevels)
+                guard let level = ThinkingLevels.step(command == .thinkMore ? 1 : -1, from: call.thinking, in: session.thinkingLevels)
                 else { throw ChangeLater() }
                 confirmation = try setThinking(level, in: call, session: session)
             case .fast, .deep:
