@@ -11,6 +11,10 @@ public struct AgentPreset: Equatable, Identifiable, Sendable {
     public let installURL: URL
     /// How the agent's own sessions introduce themselves when they join Lair over MCP.
     public let mcpClientName: String?
+    /// The agent's entry in the ACP Registry, when its command there is the one Lair tested.
+    public var registryID: String? { Self.registryIDs[id] }
+
+    private static let registryIDs = ["claude": "claude-acp", "codex": "codex-acp"]
 
     public static let all: [AgentPreset] = [claude, codex, copilot, opencode, omp, hermes]
 
@@ -41,7 +45,12 @@ public struct AgentPreset: Equatable, Identifiable, Sendable {
     /// Whether the command's program is in one of `path`'s folders, as `/usr/bin/env` will look for it.
     public func isInstalled(path: String?) -> Bool {
         guard let program = command.first else { return false }
-        return (path ?? "").split(separator: ":").contains { folder in
+        return Self.isInstalled(program, path: path)
+    }
+
+    /// Whether `program` is in one of `path`'s folders.
+    public static func isInstalled(_ program: String, path: String?) -> Bool {
+        (path ?? "").split(separator: ":").contains { folder in
             FileManager.default.isExecutableFile(atPath: "\(folder)/\(program)")
         }
     }

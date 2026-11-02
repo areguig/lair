@@ -687,7 +687,7 @@ enum AgentChoice: Hashable {
         agent.preset = if case .preset(let id) = self { id } else { nil }
         agent.directory = agent.kind == .hermes ? nil : (agent.directory ?? "~")
         if agent.kind != .hermes { agent.url = nil; agent.headers = nil }
-        if self != .command { agent.command = nil }
+        if self != .command { agent.command = nil; agent.env = nil; agent.registry = nil }
     }
 }
 

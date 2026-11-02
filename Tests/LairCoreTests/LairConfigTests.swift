@@ -104,6 +104,33 @@ struct LairConfigTests {
     }
 }
 
+struct AgentRegistryFieldsTests {
+    @Test func unsetFieldsAreNotWrittenAndOldConfigsReadUnchanged() throws {
+        let old = Data(##"{"agents":[{"id":"c","name":"C","kind":"acp","voice":"v","color":"#000000"}]}"##.utf8)
+        let config = try JSONDecoder().decode(LairConfig.self, from: old)
+        #expect(config.agents[0].env == nil && config.agents[0].registry == nil)
+        let written = String(decoding: try JSONEncoder().encode(config), as: UTF8.self)
+        #expect(!written.contains("env") && !written.contains("registry"))
+    }
+
+    @Test func envAndRegistrySurviveASaveAndLoad() throws {
+        var agent = AgentConfig(id: "c", name: "C", kind: .acp, voice: "v", color: "#000000")
+        agent.env = ["A": "1"]
+        agent.registry = "auggie"
+        let data = try JSONEncoder().encode(LairConfig(agents: [agent]))
+        #expect(try JSONDecoder().decode(LairConfig.self, from: data).agents[0] == agent)
+    }
+
+    @Test func theAgentsEnvironmentGoesOverTheShells() {
+        var agent = AgentConfig(id: "c", name: "C", kind: .acp, voice: "v", color: "#000000")
+        #expect(agent.launchEnvironment(over: ["PATH": "/bin"]) == ["PATH": "/bin"])
+        #expect(agent.launchEnvironment(over: nil) == nil)
+        agent.env = ["PATH": "/mine", "X": "1"]
+        #expect(agent.launchEnvironment(over: ["PATH": "/bin", "HOME": "/h"]) == ["PATH": "/mine", "X": "1", "HOME": "/h"])
+        #expect(agent.launchEnvironment(over: nil) == ["PATH": "/mine", "X": "1"])
+    }
+}
+
 struct AgentLogTests {
     @Test func readsTheFirstLineOfAnAgentsLog() throws {
         let id = "test-\(UUID().uuidString)"

@@ -30,7 +30,8 @@ struct SessionMaker {
             if let preset = AgentPreset.withID(agent.preset), !preset.isInstalled(path: environment?["PATH"]) {
                 throw SetupError.missingProgram(preset)
             }
-            let channel = try ProcessChannel(command: command, directory: agent.directoryURL, environment: environment,
+            let channel = try ProcessChannel(command: command, directory: agent.directoryURL,
+                                             environment: agent.launchEnvironment(over: environment),
                                              errorLog: AgentLog.url(for: agent.id))
             let folder = agent.directoryURL ?? FileManager.default.homeDirectoryForCurrentUser
             return AcpSession(channel: channel, settings: .init(directory: folder.path, preamble: prompt,

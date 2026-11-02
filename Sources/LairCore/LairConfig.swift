@@ -122,6 +122,10 @@ public struct AgentConfig: Codable, Equatable, Identifiable, Sendable {
     public var command: [String]?
     /// ACP: the agent's other choices to make as a call starts, by option id: e.g. `{"mode": "acceptEdits"}`.
     public var options: [String: String]?
+    /// ACP: environment variables set for the agent's command, over your shell's.
+    public var env: [String: String]?
+    /// ACP: the ACP Registry entry this agent was added from or follows (`Registry.Entry.id`).
+    public var registry: String?
     /// Hermes: base URL of its API server, e.g. `http://hermes.local:8642` at home or a public address away.
     public var url: String?
     /// Turned off: kept in the file and in Settings, but not in the panel, Mission Control or by name.
@@ -172,6 +176,8 @@ public struct AgentConfig: Codable, Equatable, Identifiable, Sendable {
         thinking = try container.decodeIfPresent(String.self, forKey: .thinking)
         command = try container.decodeIfPresent([String].self, forKey: .command)
         options = try container.decodeIfPresent([String: String].self, forKey: .options)
+        env = try container.decodeIfPresent([String: String].self, forKey: .env)
+        registry = try container.decodeIfPresent(String.self, forKey: .registry)
         url = try container.decodeIfPresent(String.self, forKey: .url)
         disabled = try container.decodeIfPresent(Bool.self, forKey: .disabled)
         headers = try container.decodeIfPresent([String].self, forKey: .headers)
@@ -179,12 +185,25 @@ public struct AgentConfig: Codable, Equatable, Identifiable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, kind, voice, color, model, directory, thinking, preset, command, options, url, disabled, headers, answers
+        case id, name, kind, voice, color, model, directory, thinking, preset, command, options, env, registry, url, disabled, headers, answers
     }
 
     /// What starts an ACP agent: its own command, else its preset's.
     public var launchCommand: [String]? {
         command ?? AgentPreset.withID(preset)?.command
+    }
+
+    /// The environment the agent starts with: `base` with this agent's `env` over it.
+    public func launchEnvironment(over base: [String: String]?) -> [String: String]? {
+        guard let env else { return base }
+        return (base ?? [:]).merging(env) { _, own in own }
+    }
+
+    /// Starts this agent from `entry`, pinned to the entry's version.
+    public mutating func follow(_ entry: Registry.Entry) {
+        command = entry.command
+        env = entry.env.isEmpty ? nil : entry.env
+        registry = entry.id
     }
 
     /// Keychain service holding this agent's secrets: `api-key`, and one `header:<name>` per extra header.
