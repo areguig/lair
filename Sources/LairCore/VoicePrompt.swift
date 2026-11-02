@@ -2,8 +2,9 @@
 public enum VoicePrompt {
     /// The voice rules, plus who the agent is on this call: the name the user calls it, the other agents the user
     /// can reach through Lair and, when it has one, its soul.
-    public static func forCall(name: String?, soul: String?, others: [String] = []) -> String {
-        var prompt = text
+    public static func forCall(name: String?, soul: String?, others: [String] = [],
+                               answers: AgentConfig.Answers = .normal) -> String {
+        var prompt = rules(answers)
         if let name, !name.isEmpty { prompt += "\n\nOn this call the user calls you \(name)." }
         if !others.isEmpty {
             // Without this, an agent asked to "send it to Claude" goes looking for a tool that doesn't exist.
@@ -15,6 +16,23 @@ public enum VoicePrompt {
         }
         if let soul { prompt += "\n\nYour personality, written by the user:\n\(soul)" }
         return prompt
+    }
+
+    /// How long to answer, as the one rule in the voice rules.
+    static func rule(_ answers: AgentConfig.Answers) -> String {
+        switch answers {
+        case .brief: "Be very brief: one short sentence with the result. Give details only when the user asks."
+        case .normal: "Be concise: one to three short sentences, unless the user asks for more. Lead with the answer."
+        case .detailed: """
+            Explain fully when it helps: a few sentences on what you did and why, still as spoken prose, never lists. \
+            Lead with the answer.
+            """
+        }
+    }
+
+    /// Put before the next turn when the user changes the answer length during a call.
+    public static func answers(_ answers: AgentConfig.Answers) -> String {
+        "From now on in this call: \(rule(answers))"
     }
 
     /// Sent when work an agent handed to the background has finished, so the result is heard.
@@ -50,10 +68,14 @@ public enum VoicePrompt {
         text.count > limit ? text.prefix(limit) + "…" : text
     }
 
-    public static let text = """
+    /// The voice rules with the normal answer length.
+    public static let text = rules(.normal)
+
+    private static func rules(_ answers: AgentConfig.Answers) -> String {
+        """
         This conversation is a live voice call through Lair: the user speaks, a speech-to-text model writes it down, \
         and everything you write is read aloud by a text-to-speech voice. Talk like a person on the phone.
-        - Be concise: one to three short sentences, unless the user asks for more. Lead with the answer.
+        - \(rule(answers))
         - No markdown, lists, tables, headings, emoji or code blocks: they can't be heard.
         - Never read out URLs, file paths, commands, code, hashes, IDs or long numbers. Say what they are instead, \
         like "the config file in your home folder" or "the link I found on the Apple docs".
@@ -64,4 +86,5 @@ public enum VoicePrompt {
         then give the result.
         - If the request was likely misheard, ask a short question instead of guessing.
         """
+    }
 }
