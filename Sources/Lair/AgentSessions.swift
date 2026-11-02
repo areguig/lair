@@ -39,13 +39,28 @@ struct SessionMaker {
                                                                 thinking: thinking, options: agent.options ?? [:]))
         case .hermes:
             guard let url = agent.url.flatMap(URL.init(string:)), url.host() != nil else { throw SetupError.missingAddress }
-            let secret = { Keychain.password(service: agent.keychainService, account: $0) }
-            guard let apiKey = secret("api-key") else { throw SetupError.missingKey }
-            var headers: [String: String] = [:]
-            for name in agent.headers ?? [] { headers[name] = secret(AgentConfig.headerAccount(name)) }
-            return HermesSession(baseURL: url, credentials: .init(apiKey: apiKey, headers: headers), model: agent.model)
+            guard let credentials = agent.hermesCredentials() else { throw SetupError.missingKey }
+            return HermesSession(baseURL: url, credentials: credentials, model: agent.model)
         case .guest:
             throw SetupError.guest
         }
+    }
+}
+
+extension AgentConfig {
+    /// The key and extra headers a Hermes call sends, from the Keychain; nil without a key.
+    func hermesCredentials() -> HermesSession.Credentials? {
+        let secret = { Keychain.password(service: keychainService, account: $0) }
+        guard let apiKey = secret("api-key") else { return nil }
+        var headers: [String: String] = [:]
+        for name in self.headers ?? [] { headers[name] = secret(AgentConfig.headerAccount(name)) }
+        return .init(apiKey: apiKey, headers: headers)
+    }
+
+    /// Asks the Hermes address as saved whether a call would get through.
+    func checkConnection() async -> ConnectionCheck {
+        guard let url = url.flatMap(URL.init(string:)), url.host() != nil else { return .noAddress }
+        guard let credentials = hermesCredentials() else { return .noKey }
+        return await HermesSession.check(baseURL: url, credentials: credentials)
     }
 }

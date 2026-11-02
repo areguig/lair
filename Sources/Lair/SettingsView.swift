@@ -56,6 +56,8 @@ struct SettingsView: View {
 @Observable @MainActor final class SettingsRoute {
     static let shared = SettingsRoute()
     var tab = SettingsView.Tab.agents
+    /// A test result to show before any test is run, for the settings snapshot.
+    var stagedCheck: ConnectionCheck?
 }
 
 // MARK: - Agents
@@ -282,6 +284,7 @@ private struct AgentForm: View {
                         .hint("Address and model apply from the next call.")
                     SecretField(title: "API key", service: agent.keychainService, account: "api-key")
                         .hint("Keys stay in your Keychain, never in the config file.")
+                    ConnectionTest(agent: agent).id(agent.id)
                 case .guest:
                     EmptyView()
                 }
@@ -397,6 +400,41 @@ private extension View {
         VStack(alignment: .leading, spacing: 2) {
             accessibilityHint(text)
             Hint(text).accessibilityHidden(true)
+        }
+    }
+}
+
+/// Tries the address, key and extra headers as typed and says what came back, so a mistake shows before the first call.
+private struct ConnectionTest: View {
+    let agent: AgentConfig
+    @State private var result = SettingsRoute.shared.stagedCheck
+    @State private var running = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button("Test connection", action: test)
+                .disabled(running)
+                .accessibilityLabel("Test connection to \(agent.name)")
+            if running {
+                ProgressView().controlSize(.small).accessibilityLabel("Testing")
+            } else if let result {
+                Label(result.message, systemImage: result.isConnected ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(result.isConnected ? .green : .red)
+                    .font(.callout)
+                    .textSelection(.enabled)
+            }
+        }
+    }
+
+    private func test() {
+        running = true
+        result = nil
+        let agent = agent
+        Task {
+            let outcome = await agent.checkConnection()
+            result = outcome
+            running = false
+            AccessibilityNotification.Announcement(outcome.message).post()
         }
     }
 }
