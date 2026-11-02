@@ -102,6 +102,38 @@ struct LairConfigTests {
         try LairConfig(agents: [agent]).save(to: url)
         #expect(try LairConfig.load(from: url).agents[0].answers == answers)
     }
+
+    @Test func anOldConfigSpeaksEnglishAndIsWrittenBackWithoutALanguage() throws {
+        let url = temporaryURL()
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(##"{"agents":[{"id":"c","name":"C","kind":"acp","voice":"fantine","color":"#000000"}]}"##.utf8).write(to: url)
+        let config = try LairConfig.load(from: url)
+        #expect(config.agents[0].language == nil)
+        #expect(config.agents[0].spokenLanguage == .english)
+        try config.save(to: url)
+        #expect(!(try String(contentsOf: url, encoding: .utf8)).contains("language"))
+    }
+
+    @Test func aFrenchAgentIsSavedAsFrAndReadBack() throws {
+        let url = temporaryURL()
+        var agent = AgentConfig(id: "c", name: "C", kind: .acp, voice: "estelle", color: "#000000")
+        agent.language = .french
+        try LairConfig(agents: [agent]).save(to: url)
+        #expect(try String(contentsOf: url, encoding: .utf8).contains(#""language" : "fr""#))
+        #expect(try LairConfig.load(from: url).agents[0].spokenLanguage == .french)
+    }
+
+    @Test func switchingLanguageKeepsAVoiceBothHaveAndOtherwiseTakesTheDefault() {
+        var agent = AgentConfig(id: "c", name: "C", kind: .acp, voice: "eve", color: "#000000")
+        agent.speak(.french)
+        #expect(agent.language == .french && agent.voice == "eve")
+        agent.voice = "estelle"
+        agent.speak(.english)
+        #expect(agent.language == nil && agent.voice == "fantine")
+        agent.voice = "george"
+        agent.speak(.french)
+        #expect(agent.voice == "estelle")
+    }
 }
 
 struct AgentRegistryFieldsTests {
