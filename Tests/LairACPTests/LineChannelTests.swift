@@ -42,7 +42,8 @@ struct ProcessChannelTests {
     @Test func quietAgentsDoNotHoldUpTheOthers() async throws {
         let quiet = try (0..<16).map { _ in try ProcessChannel(command: ["cat"], directory: nil, environment: nil, errorLog: nil) }
         defer { quiet.forEach { $0.close() } }
-        for channel in quiet { Task { for try await _ in channel.lines {} } }
+        // Only there to keep reading; they end with an error when closed, which this test doesn't care about.
+        for channel in quiet { _ = Task { for try await _ in channel.lines {} } }
         try await withThrowingTaskGroup(of: String?.self) { group in
             for index in 0..<4 {
                 group.addTask {
