@@ -6,9 +6,10 @@ A macOS menu-bar app to talk with your coding agents by voice. Speech-to-text an
 
 ## What it does
 
+- **First launch:** a welcome window downloads the voices (with progress), asks for the microphone and lists the agents it found on your Mac.
 - **Talk:** hold <kbd>⌥ Space</kbd>, speak, let go. The agent answers out loud. Talking over it cuts it off.
 - **Just reply:** after the agent answers, Lair listens for a few seconds (a ring empties on the talk button). Talk, and it sends when you stop. Turn it off in Settings › General.
-- **The island:** Lair grows out of the notch when an agent talks or needs you, with its choices and OKs right there, and gets out of the way after. It never steals focus.
+- **The island:** Lair grows out of the notch when an agent talks or needs you, with its choices and OKs right there, and gets out of the way after. It never steals focus. In silent mode it shows read-along captions.
 - **Agents in your terminal:** connect Claude Code or omp in Settings › On this Mac. Every session you start yourself can then speak to you and ask you out loud. Any other MCP agent can join too: Lair is a local MCP server with two tools, speak and ask.
 - **Choices:** a question can come with choices, read out and shown as numbered buttons. Click one, press <kbd>⌘ 1</kbd>, or say "the blue one".
 - **They come back by themselves:** when an agent's background work finishes, it tells you as soon as the call is free, then listens for your reply.
@@ -18,12 +19,15 @@ A macOS menu-bar app to talk with your coding agents by voice. Speech-to-text an
 - **Approvals:** when an agent asks before acting, answer by voice, in the panel or from the notification. The first answer wins. Lair never approves by itself; each agent's own approval mode (Claude's Accept edits, Copilot's Allow all…) is in Settings.
 - **Model and thinking:** pick them from the model line, or say "switch to Opus", "think harder", "go fast", "go deep".
 - **Mission Control** (<kbd>⌥ ⌘ L</kbd>): each agent's whole stream side by side, with tool calls, diffs, thinking, timings and cost, a line to type in, and Allow/Deny on approvals.
-- **Show, don't say:** links and paths appear as chips on screen and are never read aloud.
+- **Show, don't say:** links and paths sit inside the agent's sentence, clickable, and are never read aloud.
+- **Silent mode:** Lair writes instead of speaking. Switch it in the ⋯ menu or Settings, or say "go silent" and "speak again".
+- **Answer length:** brief, normal or detailed for each agent, or say "be brief" or "more detail" during a call.
+- **Sounds:** volume, and on or off for each kind, in Settings › General.
 - **Light or dark, and accessible:** Lair follows your Mac's appearance, with Liquid Glass controls on macOS 26, and respects Reduce Motion, Reduce Transparency, Increase Contrast and VoiceOver.
 
 ## Agents
 
-Lair talks to agents over the [Agent Client Protocol](https://agentclientprotocol.com) (ACP), one process per call. Pick a preset in Settings, or give the command of any other ACP agent.
+Lair talks to agents over the [Agent Client Protocol](https://agentclientprotocol.com) (ACP), one process per call. Pick a preset in Settings, give the command of any other ACP agent, or add one from the [ACP Registry](https://agentclientprotocol.com) (Settings › + › More agents…). Registry agents stay on the version you added until you click **Update**.
 
 | Preset | Runs | Needs |
 |---|---|---|
@@ -46,7 +50,7 @@ The first launch downloads the speech models (Parakeet, Kokoro) through [FluidAu
 
 Download `Lair-vX.Y.Z.dmg` from [Releases](https://github.com/areguig/lair/releases) and drag Lair to Applications. It's signed with a Developer ID and notarized by Apple, so it opens like any other app.
 
-From 0.2.1 on, Lair updates itself: when a new version is out, an **Update** button shows in the panel.
+From 0.2.1 on, Lair updates itself: when a new version is out, an **Update** button shows in the panel. **Reset** and **Uninstall** are in Settings › General; your files go to the Trash.
 
 ## Build
 
@@ -82,12 +86,15 @@ Use **Settings…** in the panel, or edit `~/.config/lair/config.json`, which La
 |---|---|
 | `voice` | A Kokoro English voice: `af_*`, `am_*` (American), `bf_*`, `bm_*` (British) |
 | `model`, `thinking` | Starting model and thinking level; unset uses the agent's own default |
+| `answers` | `brief`, `normal` or `detailed`: how much the agent says out loud; unset means normal |
+| `registry` | The ACP Registry agent this one was added from; Lair keeps it on that version until you update |
+| `env` | Environment variables for an ACP agent's command, over your shell's |
 | `directory` | Working folder for Claude Code and omp sessions |
 | `permissionMode` | Claude Code's `--permission-mode`; unset keeps your Claude Code settings |
 | `url`, `headers` | Hermes: API address, and names of extra headers such as a proxy token |
 | `disabled` | `true` turns the agent off: it keeps its settings but leaves the panel and Mission Control (the **On** switch in Settings) |
 
-At the top level, `"listenForAnswers": false` stops Lair listening for your reply after each answer.
+At the top level, `"listenForAnswers": false` stops Lair listening for your reply after each answer, and `"silent": true` makes Lair write instead of speak. `"sounds": { "volume": 0.5, "off": ["listening"] }` sets the volume (0 to 1) and switches off kinds: `listening`, `done`, `needsYou`, `problems`.
 
 Secrets (API keys, header values) live in the Keychain, never in the file. A soul, which is extra instructions for one Claude Code or omp agent, is a Markdown file at `~/.config/lair/souls/<id>.md`.
 
