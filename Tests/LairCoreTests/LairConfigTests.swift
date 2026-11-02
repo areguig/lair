@@ -175,14 +175,14 @@ struct LairConfigSavingTests {
 }
 
 struct NewAgentTests {
-    private let voices = ["af_heart", "am_adam", "bf_emma"]
+    private let voices = ["fantine", "george", "jane"]
 
     @Test func firstAgentKeepsItsLabelAndTakesTheFirstVoiceAndColor() {
         let agent = LairConfig.initial.newAgent(named: "Claude", voices: voices)
         #expect(agent.name == "Claude")
         #expect(agent.id == "claude")
         #expect(agent.kind == .acp)
-        #expect(agent.voice == "af_heart")
+        #expect(agent.voice == "fantine")
         #expect(agent.color == AgentConfig.palette[0])
     }
 
@@ -198,15 +198,15 @@ struct NewAgentTests {
     @Test func eachAgentGetsTheFirstVoiceNobodyUses() {
         var config = LairConfig.initial
         for _ in 0..<2 { config.agents.append(config.newAgent(named: "Codex", voices: voices)) }
-        #expect(config.agents.map(\.voice) == ["af_heart", "am_adam"])
+        #expect(config.agents.map(\.voice) == ["fantine", "george"])
         config.agents.removeFirst()
-        #expect(config.newAgent(named: "Codex", voices: voices).voice == "af_heart")
+        #expect(config.newAgent(named: "Codex", voices: voices).voice == "fantine")
     }
 
     @Test func fallsBackToTheDefaultVoiceWhenAllAreUsed() {
         var config = LairConfig.initial
         config.agents.append(config.newAgent(named: "A", voices: ["x"]))
-        #expect(config.newAgent(named: "B", voices: ["x"]).voice == "af_heart")
+        #expect(config.newAgent(named: "B", voices: ["x"]).voice == "fantine")
     }
 
     @Test func colorsCycleThroughThePalette() {

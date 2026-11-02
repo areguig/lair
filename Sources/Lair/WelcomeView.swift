@@ -75,7 +75,7 @@ struct WelcomeView: View {
         case .loading:
             switch room.voiceProgress {
             case .recognition(let fraction): "Downloading speech recognition · \(Int(fraction * 100))%"
-            case .voices: "Preparing the voices…"
+            case .voices: "Getting the voice ready… the first launch downloads it once."
             case nil: "Getting ready…"
             }
         case .ready: "Ready. They run on this Mac, so nothing you say leaves it."
@@ -167,7 +167,7 @@ struct WelcomeView: View {
         var config = store.config
         if on {
             let choice = AgentChoice.preset(preset.id)
-            var agent = config.newAgent(named: choice.label, voices: VoiceModels.voices)
+            var agent = config.newAgent(named: choice.label, voices: Voices.names())
             choice.apply(to: &agent)
             config.agents.append(agent)
         } else {
