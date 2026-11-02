@@ -4,24 +4,17 @@ import Foundation
 import Testing
 
 struct VoiceModelsTests {
-    @Test func listsOnlyTheModelFoldersLairLoads() {
+    /// Explicit OS versions: CI runs macOS 27 and a developer's Mac may run 26.
+    @Test func listsOnlyTheModelFoldersTheChainForThisOSLoads() {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let folders = VoiceModels.folders.map { $0.path.replacingOccurrences(of: home, with: "~") }
-        #expect(folders == [
-            "~/Library/Application Support/FluidAudio/Models/parakeet-tdt-0.6b-v2",
-            "~/Library/Application Support/FluidAudio/Models/silero-vad",
-            "~/.cache/fluidaudio/Models/kokoro-82m-coreml/ANE-v3",
-        ])
-    }
-
-    @Test func uninstallListsTheChainThisOSLoads() {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        func kokoro(_ major: Int) -> String {
+        func folders(_ major: Int) -> [String] {
             VoiceModels.folders(for: OperatingSystemVersion(majorVersion: major, minorVersion: 0, patchVersion: 0))
-                .last!.path.replacingOccurrences(of: home, with: "~")
+                .map { $0.path.replacingOccurrences(of: home, with: "~") }
         }
-        #expect(kokoro(26) == "~/.cache/fluidaudio/Models/kokoro-82m-coreml/ANE-v3")
-        #expect(kokoro(27) == "~/.cache/fluidaudio/Models/kokoro-82m-coreml/ANE")
+        let shared = ["~/Library/Application Support/FluidAudio/Models/parakeet-tdt-0.6b-v2",
+                      "~/Library/Application Support/FluidAudio/Models/silero-vad"]
+        #expect(folders(26) == shared + ["~/.cache/fluidaudio/Models/kokoro-82m-coreml/ANE-v3"])
+        #expect(folders(27) == shared + ["~/.cache/fluidaudio/Models/kokoro-82m-coreml/ANE"])
     }
 
     @Test func macOS27AndLaterAvoidTheGpuBoundChain() {
