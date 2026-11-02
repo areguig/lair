@@ -466,7 +466,7 @@ footer a { color: var(--dim); }
     <div class="center reveal">
       <div class="kicker">Built on the Agent Client Protocol</div>
       <h2>Every agent you use.<br>One voice.</h2>
-      <p class="sub">Lair speaks <a href="https://agentclientprotocol.com">ACP</a>, the open standard from Zed. Pick an agent in Settings, or give any ACP agent's command. Same calls, same approvals, same island, whichever you choose.</p>
+      <p class="sub">Lair speaks <a href="https://agentclientprotocol.com">ACP</a>, the open standard from Zed. Pick an agent in Settings, add one from the ACP Registry, or give any ACP agent's command. Same calls, same approvals, same island, whichever you choose.</p>
     </div>
     <div class="agents">
       <div class="agent reveal" style="--c: var(--coral)"><div class="head"><span class="orb"></span><h3>Claude</h3></div>
@@ -499,7 +499,7 @@ footer a { color: var(--dim); }
       </ul>
     </div>
     <div class="stage portrait coral reveal">
-      <img src="img/reply-dark.jpg" alt="Lair's panel: agents down a rail, Claude in focus after answering, and Lair listening for your reply" loading="lazy" width="848" height="1130">
+      <img src="img/reply-dark.jpg" alt="Lair's panel: agents down a rail, Claude in focus after answering, and Lair listening for your reply" loading="lazy" width="848" height="1160">
     </div>
   </div>
 </section>
@@ -540,7 +540,7 @@ footer a { color: var(--dim); }
       </ul>
     </div>
     <div class="stage portrait green reveal">
-      <img src="img/asks-dark.jpg" alt="A Claude Code session from the terminal asks a question with two choices in Lair's panel, while another agent waits for an OK" loading="lazy" width="848" height="1546">
+      <img src="img/asks-dark.jpg" alt="A Claude Code session from the terminal asks a question with two choices in Lair's panel, while another agent waits for an OK" loading="lazy" width="848" height="1160">
     </div>
   </div>
 </section>
@@ -572,8 +572,8 @@ footer a { color: var(--dim); }
     </div>
     <div class="stage reveal" style="--a: rgba(255,255,255,.22); --b: rgba(123,92,255,.45)">
       <div class="pair">
-        <img src="img/approval-light.jpg" alt="Lair's panel in light mode, with Claude asking for an OK" loading="lazy" width="848" height="1366">
-        <img src="img/approval-dark.jpg" alt="The same panel in dark mode" loading="lazy" width="848" height="1366">
+        <img src="img/approval-light.jpg" alt="Lair's panel in light mode, with Claude asking for an OK" loading="lazy" width="848" height="1160">
+        <img src="img/approval-dark.jpg" alt="The same panel in dark mode" loading="lazy" width="848" height="1160">
       </div>
     </div>
   </div>
@@ -589,15 +589,21 @@ footer a { color: var(--dim); }
       <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24"><path d="M12 3v18M7 8v8M17 6v12M2 11v2M22 10v4"/></svg></div>
         <h3>Each voice says who it is</h3><p>A new speaker introduces itself: “Sage says…”. Every agent has its own voice and colour.</p></div>
       <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h6"/><path d="m15 16 2 2 4-4"/></svg></div>
-        <h3>Shown, not read aloud</h3><p>Links, paths and commands appear as chips you can click. The voice never spells out a URL.</p></div>
+        <h3>Shown, not read aloud</h3><p>Links and paths sit inside the agent's sentence, clickable. The voice never spells out a URL.</p></div>
       <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg></div>
         <h3>Model and effort by voice</h3><p>“Switch to Opus”, “think harder”, “go fast”, or pick from the model line under the name.</p></div>
       <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24"><path d="M12 21s-7-4.4-7-11a7 7 0 0 1 14 0c0 6.6-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg></div>
         <h3>A soul per agent</h3><p>Give each agent a short Markdown file: who it is and what it's for. It's in every call's prompt.</p></div>
       <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg></div>
-        <h3>Sounds that mean something</h3><p>Short earcons for listening, sent, needs you, done and problems, so you know without looking.</p></div>
+        <h3>Sounds that mean something</h3><p>Short earcons for listening, needs you, done and problems, so you know without looking. Set the volume, or switch each kind off, in Settings.</p></div>
       <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M8 10h8M8 14h5"/></svg></div>
         <h3>Answer from anywhere</h3><p>Notifications carry the same choices and an answer field, for when you're in another app.</p></div>
+      <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg></div>
+        <h3>More agents, from the Registry</h3><p>Add any agent from the ACP Registry in Settings. It stays on the version you picked until you click Update.</p></div>
+      <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24"><path d="M4 8h16M4 12h10M4 16h16"/></svg></div>
+        <h3>Short or detailed answers</h3><p>Brief, normal or detailed for each agent, or say “be brief” or “more detail” during a call.</p></div>
+      <div class="card reveal"><div class="ic"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="m17 9 4 6M21 9l-4 6"/></svg></div>
+        <h3>Silent when you need it</h3><p>Lair writes instead of speaking, with read-along captions on the island. Say “go silent” and “speak again”.</p></div>
     </div>
   </div>
 </section>
