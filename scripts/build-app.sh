@@ -15,9 +15,24 @@ if strings "$bin/Lair" | grep -q "$bin/.*\.bundle"; then
   exit 1
 fi
 
+# Kyutai's Pocket TTS speaks for the agents. Pinned to a release and its SHA-256 (from the release's SHA256SUMS);
+# the download is kept in .build so rebuilds don't fetch it again.
+pocket_release="v4.0.1"
+pocket_archive="pocket-tts-3.3.0-aarch64-apple-darwin.tar.gz"
+pocket_sha256="ee9ca6c7c000ee72c5846e3a8ba01d08f56636d94a614d2259c3f12b8fd69afa"
+pocket_download="$repo/.build/pocket-tts-download"
+pocket_matches() { [ -f "$pocket_download/$pocket_archive" ] && [ "$(shasum -a 256 "$pocket_download/$pocket_archive" | cut -d' ' -f1)" = "$pocket_sha256" ]; }
+if ! pocket_matches; then
+  mkdir -p "$pocket_download"
+  curl -fsSL -o "$pocket_download/$pocket_archive" \
+    "https://github.com/kyutai-labs/pocket-tts/releases/download/$pocket_release/$pocket_archive"
+  pocket_matches || { rm -f "$pocket_download/$pocket_archive"; echo "error: $pocket_archive does not match its pinned SHA-256" >&2; exit 1; }
+fi
+
 rm -rf "$app"
-mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$app/Contents/Helpers"
 cp "$bin/Lair" "$app/Contents/MacOS/$name"
+tar -xzf "$pocket_download/$pocket_archive" -C "$app/Contents/Helpers" --strip-components=1 --include='*/pocket-tts'
 # Sparkle's XPC services are only for sandboxed apps.
 sparkle="$app/Contents/Frameworks/Sparkle.framework"
 ditto "$bin/Sparkle.framework" "$sparkle"
@@ -65,9 +80,10 @@ identity=${identity:--}
 # The hardened runtime and a secure timestamp are what notarization asks for; ad hoc signatures can't be timestamped.
 timestamp=--timestamp
 [ "$identity" = - ] && timestamp=--timestamp=none
-# Inside out, without --deep, as Sparkle's docs ask.
+# Inside out, without --deep, as Sparkle's docs ask; the voice engine is signed like the app.
 for part in "$sparkle/Versions/B/Autoupdate" "$sparkle/Versions/B/Updater.app" "$sparkle"; do
   codesign --force --options runtime "$timestamp" --sign "$identity" "$part"
 done
+codesign --force --options runtime "$timestamp" --sign "$identity" "$app/Contents/Helpers/pocket-tts"
 codesign --force --options runtime "$timestamp" --entitlements "$repo/scripts/Lair.entitlements" --sign "$identity" "$app"
 echo "Built $app"
