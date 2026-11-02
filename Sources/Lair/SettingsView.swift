@@ -229,7 +229,7 @@ private struct AgentForm: View {
                     }
                     .pickerStyle(.segmented)
                     .accessibilityLabel("Answer length")
-                    .hint("How long spoken answers are. Code and links always stay on screen.")
+                    .hint("Applies from the next call. During a call, say “be brief” or “more detail”. Code and links always stay on screen.")
                     ForEach(room.knownOptions[agent.id] ?? []) { option in
                         Picker(option.name, selection: chosen(option.id)) {
                             Text("Default").tag(String?.none)
