@@ -2,6 +2,7 @@
 import KeyboardShortcuts
 import LairCore
 import LairMCP
+import LairVoice
 import SwiftUI
 
 extension KeyboardShortcuts.Name {
@@ -84,6 +85,12 @@ struct LairApp: App {
             Snapshot.writeSettings(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]), agent: agent)
             exit(0)
         }
+        if let i = CommandLine.arguments.firstIndex(of: "--welcome-snapshot"), i + 1 < CommandLine.arguments.count {
+            let variant = i + 2 < CommandLine.arguments.count ? CommandLine.arguments[i + 2] : "loading"
+            let appearance = i + 3 < CommandLine.arguments.count ? CommandLine.arguments[i + 3] : "dark"
+            Snapshot.writeWelcome(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]), variant: variant, appearance: appearance)
+            exit(0)
+        }
         if let i = CommandLine.arguments.firstIndex(of: "--icon"), i + 1 < CommandLine.arguments.count {
             Snapshot.writeIcon(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]))
             exit(0)
@@ -124,6 +131,7 @@ struct LairApp: App {
             RoomView(room: room, configProblem: store.problem, updates: updates)
         } label: {
             MenuBarIcon(room: room, updates: updates)
+                .modifier(OpensWelcome(show: store.isNew))
         }
         .menuBarExtraStyle(.window)
 
@@ -131,6 +139,26 @@ struct LairApp: App {
             SettingsView(store: store, room: room, link: link)
         }
         .windowResizability(.contentSize)
+
+        Window(WelcomeView.title, id: WelcomeView.id) {
+            WelcomeView(store: store, room: room)
+        }
+        .windowResizability(.contentSize)
+    }
+}
+
+/// Opens the welcome window as the app starts, when there was no config yet. The menu bar icon is the one view that
+/// exists at launch, so it carries the call.
+private struct OpensWelcome: ViewModifier {
+    let show: Bool
+    @Environment(\.openWindow) private var openWindow
+
+    func body(content: Content) -> some View {
+        content.task {
+            guard show else { return }
+            openWindow(id: WelcomeView.id)
+            SettingsView.bringForward(titled: WelcomeView.title)
+        }
     }
 }
 
@@ -363,6 +391,50 @@ struct MenuBarIcon: View {
         .frame(width: Island.canvas.width, height: Island.canvas.height)
         .environment(\.renderTime, 0)
         writePNG(view, scale: 2, to: url)
+    }
+
+    /// The welcome window in `loading`, `ready` or `denied`, drawn in a hidden window so native controls render.
+    static func writeWelcome(to url: URL, variant: String, appearance: String) {
+        let file = FileManager.default.temporaryDirectory.appending(path: "lair-welcome-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: file) }
+        // A folder holding `npx` and `omp` stands in for the login shell's PATH: Claude, Codex and omp are installed.
+        let programs = file.appending(path: "bin")
+        try? FileManager.default.createDirectory(at: programs, withIntermediateDirectories: true)
+        for program in ["npx", "omp"] {
+            FileManager.default.createFile(atPath: programs.appending(path: program).path, contents: Data(),
+                                           attributes: [.posixPermissions: 0o755])
+        }
+        var config = LairConfig.initial
+        if variant == "ready" {
+            var agent = config.newAgent(named: "Claude", voices: VoiceModels.voices)
+            AgentChoice.preset(AgentPreset.claude.id).apply(to: &agent)
+            config.agents.append(agent)
+        }
+        let configURL = file.appending(path: "config.json")
+        try? config.save(to: configURL)
+        let store = ConfigStore(url: configURL)
+        let room = Room(config: store.config)
+        room.environment = ["PATH": programs.path]
+        switch variant {
+        case "ready": room.readiness = .ready
+        case "denied": room.readiness = .microphoneDenied
+        default:
+            room.readiness = .loading
+            room.voiceProgress = .recognition(0.42)
+        }
+        let view = NSHostingView(rootView: WelcomeView(store: store, room: room)
+            .background(Color(nsColor: .windowBackgroundColor))
+            .environment(\.colorScheme, appearance == "light" ? .light : .dark)
+            .environment(\.renderTime, 0))
+        let window = NSWindow(contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = view
+        window.appearance = NSAppearance(named: appearance == "light" ? .aqua : .darkAqua)
+        window.setContentSize(view.fittingSize)
+        view.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        try? rep.representation(using: .png, properties: [:])?.write(to: url)
     }
 
     /// `Lair --icon out.png`: the 1024px app icon, drawn from the orb.
