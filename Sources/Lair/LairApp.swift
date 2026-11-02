@@ -32,6 +32,7 @@ struct LairApp: App {
     private let store: ConfigStore
     private let island: Island
     private let updates: Updates
+    private let registry: RegistryStore
 
     init() {
         // An agent process that exits must not take Lair down with it: writing to it then just throws.
@@ -119,11 +120,14 @@ struct LairApp: App {
         self.room = room
         self.link = link
         self.island = island
+        let registry = RegistryStore()
+        self.registry = registry
         updates = Updates()
         KeyboardShortcuts.onKeyDown(for: .pushToTalk) { room.pressTalk() }
         KeyboardShortcuts.onKeyUp(for: .pushToTalk) { room.releaseTalk() }
         KeyboardShortcuts.onKeyDown(for: .missionControl) { MissionControl.toggle(room: room) }
         Task { await room.start() }
+        Task { await registry.refresh() }
     }
 
     var body: some Scene {
@@ -136,7 +140,8 @@ struct LairApp: App {
         .menuBarExtraStyle(.window)
 
         Window(SettingsView.title, id: SettingsView.id) {
-            SettingsView(store: store, room: room, link: link)
+            SettingsView(store: store, room: room, link: link, registry: registry)
+                .task { await registry.refresh() }
         }
         .windowResizability(.contentSize)
 
@@ -319,6 +324,11 @@ struct MenuBarIcon: View {
         try? rep.representation(using: .png, properties: [:])?.write(to: url)
     }
 
+    /// A few real entries of the ACP Registry, so snapshots need no network.
+    private static let registryDemo = try! JSONDecoder().decode(Registry.self, from: Data(##"""
+    {"agents":[{"id":"auggie","name":"Auggie CLI","version":"0.36.0","description":"Augment Code's powerful software agent, backed by industry-leading context engine","license":"proprietary","website":"https://www.augmentcode.com/","icon":"https://cdn.agentclientprotocol.com/registry/v1/latest/auggie.svg","distribution":{"npx":{"package":"@augmentcode/auggie@0.36.0","args":["--acp"],"env":{"AUGMENT_DISABLE_AUTO_UPDATE":"1"}}}},{"id":"cline","name":"Cline","version":"3.0.74","description":"Autonomous coding agent CLI - capable of creating/editing files, running commands, using the browser, and more","license":"Apache-2.0","website":"https://cline.bot/cli","icon":"https://cdn.agentclientprotocol.com/registry/v1/latest/cline.svg","distribution":{"npx":{"package":"cline@3.0.74","args":["--acp"]}}},{"id":"codex-acp","name":"Codex","version":"2.5.0","description":"ACP adapter for OpenAI's coding assistant","license":"Apache-2.0","icon":"https://cdn.agentclientprotocol.com/registry/v1/latest/codex-acp.svg","distribution":{"npx":{"package":"@agentclientprotocol/codex-acp@2.5.0"}}},{"id":"fast-agent","name":"fast-agent","version":"0.10.1","description":"Code and build agents with comprehensive multi-provider support","license":"Apache 2.0","website":"https://fast-agent.ai","icon":"https://cdn.agentclientprotocol.com/registry/v1/latest/fast-agent.svg","distribution":{"uvx":{"package":"fast-agent-acp==0.10.1","args":["-x"],"env":{"FAST_AGENT_MODEL":"codexplan"}}}},{"id":"gemini","name":"Gemini CLI","version":"0.66.0","description":"Google's official CLI for Gemini","license":"Apache-2.0","website":"https://geminicli.com","icon":"https://cdn.agentclientprotocol.com/registry/v1/latest/gemini.svg","distribution":{"npx":{"package":"@google/gemini-cli@0.66.0","args":["--acp"]}}},{"id":"github-copilot-cli","name":"Copilot","version":"1.0.105","description":"GitHub's AI pair programmer","license":"proprietary","website":"https://github.com/features/copilot/cli/","icon":"https://cdn.agentclientprotocol.com/registry/v1/latest/github-copilot-cli.svg","distribution":{"npx":{"package":"@github/copilot@1.0.105","args":["--acp"]}}},{"id":"qwen-code","name":"Qwen Code","version":"0.26.5","description":"Alibaba's Qwen coding assistant","license":"Apache-2.0","website":"https://qwenlm.github.io/qwen-code-docs/en/users/overview","icon":"https://cdn.agentclientprotocol.com/registry/v1/latest/qwen-code.svg","distribution":{"npx":{"package":"@qwen-code/qwen-code@0.26.5","args":["--acp","--experimental-skills"]}}}]}
+    """##.utf8))
+
     /// The settings window with demo agents, drawn in a hidden window so native controls render.
     static func writeSettings(to url: URL, agent: String? = nil) {
         let file = FileManager.default.temporaryDirectory.appending(path: "lair-settings-\(UUID().uuidString).json")
@@ -329,6 +339,13 @@ struct MenuBarIcon: View {
         hermes.headers = ["X-Access-Token"]
         var config = LairConfig(agents: Demo.agents + [hermes])
         if agent == "mac" { config.guests = .standard }
+        if agent == "update" {
+            var pinned = config.newAgent(named: "Auggie CLI", voices: VoiceModels.voices)
+            pinned.follow(registryDemo.entry(id: "auggie")!)
+            pinned.command = ["npx", "-y", "@augmentcode/auggie@0.35.0", "--acp"]
+            pinned.directory = "~"
+            config.agents.append(pinned)
+        }
         try? config.save(to: file)
         let store = ConfigStore(url: file)
         let room = Room(config: store.config)
@@ -337,7 +354,20 @@ struct MenuBarIcon: View {
         SettingsRoute.shared.tab = agent == "mac" ? .mac : .agents
         // An agent id, or a preset name for the first demo agent that uses it.
         let selected = config.agents.first { $0.id == agent || $0.preset == agent }?.id
-        let view = NSHostingView(rootView: SettingsView(store: store, room: room, link: link, selectedAgent: selected))
+            ?? (agent == "update" ? config.agents.last?.id : nil)
+        let registry = RegistryStore(registry: registryDemo)
+        // A folder holding `npx` stands in for the login shell's PATH: Node.js is installed, uv isn't.
+        let programs = file.deletingLastPathComponent().appending(path: "lair-settings-bin-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: programs) }
+        try? FileManager.default.createDirectory(at: programs, withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: programs.appending(path: "npx").path, contents: Data(),
+                                       attributes: [.posixPermissions: 0o755])
+        room.environment = ["PATH": programs.path]
+        let settings = SettingsView(store: store, room: room, link: link, registry: registry, selectedAgent: selected)
+        // The "More agents…" sheet's content alone, as a sheet isn't part of the window's view.
+        let view = NSHostingView(rootView: agent == "registry"
+            ? AnyView(RegistrySheet(store: registry, room: room, added: ["cline"], add: { _ in }).background(Color(nsColor: .windowBackgroundColor)))
+            : AnyView(settings))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 660, height: 500), styleMask: [.titled],
                               backing: .buffered, defer: false)
         window.contentView = view
