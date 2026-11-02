@@ -115,7 +115,7 @@ struct IslandView: View {
         guard let call = subject else { return .hidden }
         if call.questionText != nil { return .asking }
         if call.pendingApproval != nil { return .approving }
-        if call.state == .speaking || call.state == .listening || room.answering != nil { return .live }
+        if call.state == .speaking || call.state == .listening || room.answering != nil || reading(call) { return .live }
         guard room.calls.contains(where: { $0.inCall }) else { return .hidden }
         return model.hovering ? .live : .resting
     }
@@ -182,7 +182,7 @@ struct IslandView: View {
         case .asking: return "\(call.agent.name) asks: \(call.questionText ?? "")"
         case .approving: return "\(call.agent.name) needs your OK: \(call.pendingApproval?.summary ?? "")"
         case .live: return "\(call.agent.name), \(call.state.label): \(caption(call))"
-        default: return "\(call.agent.name), \(call.state.label)"
+        default: return "\(call.agent.name), \(call.state.label)" + (room.silent ? ", silent mode" : "")
         }
     }
 
@@ -213,7 +213,8 @@ struct IslandView: View {
                 .accessibilityAddTraits(.isButton)
                 .accessibilityAction { room.toggleTalk() }
             Spacer(minLength: model.metrics.notch ? model.metrics.width : 8)
-            Group {
+            HStack(spacing: 4) {
+                if room.silent { silentMark }
                 if waiting > 0 {
                     Text("\(waiting)")
                         .font(.system(size: 10, weight: .bold, design: .rounded))
@@ -241,6 +242,7 @@ struct IslandView: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(call.agent.name).font(.system(.caption, design: .rounded, weight: .bold)).foregroundStyle(tint)
+                    if room.silent { silentMark }
                     if call.guest { Image(systemName: "laptopcomputer").font(.system(size: 9)).foregroundStyle(dim(0.45)).accessibilityLabel("On this Mac") }
                 }
                 Text(caption(call))
@@ -258,10 +260,22 @@ struct IslandView: View {
         .padding(.horizontal, 16).padding(.vertical, 12)
     }
 
+    /// Nothing is said in silent mode, so the answer is shown as it arrives.
+    private func reading(_ call: Call) -> Bool {
+        guard room.silent, call.lines.last?.role == .agent else { return false }
+        return call.state == .thinking || (call.state == .ready && room.holding == call.id)
+    }
+
+    private var silentMark: some View {
+        Image(systemName: "speaker.slash.fill").font(.system(size: 9)).foregroundStyle(dim(0.5)).accessibilityLabel("Silent mode")
+    }
+
+    /// While speaking, the sentence being said; otherwise the agent's last line.
     private func caption(_ call: Call) -> String {
         switch call.state {
         case .listening: return room.answering?.callID == call.id ? "Listening for your answer…" : "Listening…"
-        case .thinking: return "\(CallState.thinking.label)…"
+        case .thinking where !reading(call): return "\(CallState.thinking.label)…"
+        case .speaking where call.id == room.focusedID && room.speaking != nil: return room.speaking ?? ""
         default:
             let said = call.lines.last { $0.role == .agent }?.text ?? ""
             return said.isEmpty ? (call.guest ? "Working on its own" : "In a call") : said

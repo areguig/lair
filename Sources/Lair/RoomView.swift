@@ -50,6 +50,13 @@ struct RoomView: View {
                     .foregroundStyle(.secondary)
                     .contentTransition(.numericText())
             }
+            if room.silent {
+                Image(systemName: "speaker.slash.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .help("Silent mode: Lair writes instead of speaking")
+                    .accessibilityLabel("Silent mode")
+            }
             Spacer()
             if let updates, let version = updates.reminder.version {
                 Button { updates.install() } label: {
@@ -64,6 +71,7 @@ struct RoomView: View {
             }
             Menu {
                 Button("Mission Control…") { MissionControl.toggle(room: room) }
+                Toggle("Silent mode", isOn: Binding(get: { room.silent }, set: { room.setSilent($0) }))
                 Button("Settings…") { openSettings(.agents) }
                 Button("Connect agents on this Mac…") { openSettings(.mac) }
                 Divider()

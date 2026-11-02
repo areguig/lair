@@ -1,4 +1,5 @@
 import Testing
+import LairCore
 import LairVoice
 
 @Suite struct EarconsTests {
@@ -15,5 +16,18 @@ import LairVoice
     @Test func earconsAreDistinct() {
         let all = Earcon.allCases.map { Earcons.samples(for: $0) }
         for i in all.indices { for j in all.indices where j > i { #expect(all[i] != all[j]) } }
+    }
+}
+
+@Suite struct SoundGroupTests {
+    @Test func everyEarconBelongsToTheGroupItsSwitchNames() {
+        #expect([Earcon.listening, .sent, .yourTurn].allSatisfy { $0.group == .listening })
+        #expect(Earcon.done.group == .done)
+        #expect(Earcon.needsYou.group == .needsYou)
+        #expect(Earcon.problem.group == .problems)
+    }
+
+    @Test func eachGroupPreviewsWithASoundOfItsOwn() {
+        for group in SoundGroup.allCases { #expect(group.preview.group == group) }
     }
 }

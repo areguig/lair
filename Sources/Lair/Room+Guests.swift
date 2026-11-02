@@ -146,7 +146,7 @@ extension Room {
 
     private func leave(_ call: Call, note: String) {
         resolveQuestion(of: call, with: nil, note: "\(call.agent.name) left before you answered.")
-        if call.state == .speaking { speaker?.stop() }
+        if call.state == .speaking { stopSpeaking() }
         if call.state == .listening { _ = try? microphone.stopCapture() }
         call.visitor = nil
         call.state = .offline
@@ -159,7 +159,7 @@ extension Room {
     /// Dismissed from the panel: out of the room now, and back on its next word.
     func dismiss(_ call: Call) {
         resolveQuestion(of: call, with: nil, note: "Dismissed.")
-        if call.state == .speaking { speaker?.stop() }
+        if call.state == .speaking { stopSpeaking() }
         if call.state == .listening { _ = try? microphone.stopCapture() }
         call.visitor = nil
         call.state = .offline

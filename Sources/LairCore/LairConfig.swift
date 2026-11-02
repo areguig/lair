@@ -9,6 +9,10 @@ public struct LairConfig: Codable, Equatable, Sendable {
     public var island: Bool?
     /// Agents on this Mac may speak and ask you things through Lair; unset means off.
     public var guests: GuestSettings?
+    /// How loud the short sounds are and which are off; unset means all on at full volume.
+    public var sounds: SoundSettings?
+    /// Lair writes instead of speaking; unset means off.
+    public var silent: Bool?
 
     public init(agents: [AgentConfig]) {
         self.agents = agents
@@ -16,6 +20,8 @@ public struct LairConfig: Codable, Equatable, Sendable {
 
     public var listensForAnswers: Bool { listenForAnswers != false }
     public var showsIsland: Bool { island != false }
+    public var soundSettings: SoundSettings { sounds ?? SoundSettings() }
+    public var isSilent: Bool { silent == true }
 
     /// The agents you can call: turned-off ones keep their settings but stay out of the room.
     public var enabledAgents: [AgentConfig] { agents.filter { $0.disabled != true } }

@@ -17,7 +17,7 @@ let package = Package(
     targets: [
         .target(name: "LairCore"),
         .target(name: "LairACP", dependencies: ["LairCore"]),
-        .target(name: "LairVoice", dependencies: [.product(name: "FluidAudio", package: "FluidAudio")]),
+        .target(name: "LairVoice", dependencies: ["LairCore", .product(name: "FluidAudio", package: "FluidAudio")]),
         .target(name: "LairMCP", dependencies: [
             .product(name: "MCP", package: "swift-sdk"),
             .product(name: "Hummingbird", package: "hummingbird"),
@@ -31,7 +31,7 @@ let package = Package(
         ),
         .testTarget(name: "LairCoreTests", dependencies: ["LairCore"]),
         .testTarget(name: "LairACPTests", dependencies: ["LairACP", "LairCore"]),
-        .testTarget(name: "LairVoiceTests", dependencies: ["LairVoice"]),
+        .testTarget(name: "LairVoiceTests", dependencies: ["LairVoice", "LairCore"]),
         .testTarget(name: "LairMCPTests", dependencies: ["LairMCP", .product(name: "MCP", package: "swift-sdk")]),
     ]
 )

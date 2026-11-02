@@ -18,6 +18,7 @@ extension Room {
         // An agent waiting on your OK takes the answer, even if another one is in focus.
         if focused?.state != .waiting, let waiting = calls.first(where: { $0.state == .waiting }) { focus(waiting) }
         guard let call = focused else { return show(hint: "Add an agent in Settings first.") }
+        releaseHold()
         if !call.inCall { summon(call) }
         // Talking over the agent cuts it off.
         if call.pendingApproval == nil, call.state == .speaking || call.state == .thinking {
@@ -62,6 +63,7 @@ extension Room {
         if let decision = SpokenAnswer.parse(heard) {
             answer(call, decision: decision)
         } else {
+            if silent { show(hint: "Didn't catch that; say yes or no, or use the buttons.") }
             _ = try? await say("Sorry, say" + (call.pendingApproval?.canAlwaysAllow == true ? " yes, always, or no." : " yes or no."), in: call)
             call.state = .waiting
             await speaker?.waitUntilDone()
@@ -72,7 +74,7 @@ extension Room {
     /// The microphone opens on its own after the agent speaks and sends once you've answered; silence closes it.
     /// Opening only after the voice has finished keeps the agent from hearing itself.
     func listenForAnswer(in call: Call) {
-        guard listensForAnswers else { return }
+        guard listensForAnswers, !silent else { return }
         Task {
             guard var detector = await voice.detector(), readiness == .ready, call.id == focusedID,
                   call.state == .ready || call.state == .waiting, !microphone.isCapturing
@@ -110,6 +112,7 @@ extension Room {
     func type(_ text: String, to call: Call) {
         guard readiness == .ready else { return show(hint: "Still getting the voices ready…") }
         focus(call)
+        releaseHold()
         if !call.inCall { summon(call) }
         if let request = call.pendingApproval {
             guard let decision = SpokenAnswer.parse(text) else {
