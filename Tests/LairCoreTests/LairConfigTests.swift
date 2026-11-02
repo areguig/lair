@@ -9,8 +9,14 @@ struct LairConfigTests {
 
     @Test func writesTheInitialConfigWhenMissing() throws {
         let url = temporaryURL()
+        #expect(!LairConfig.exists(at: url))
         #expect(try LairConfig.load(from: url) == .initial)
+        #expect(LairConfig.exists(at: url))
         #expect(try LairConfig.load(from: url) == .initial)
+    }
+
+    @Test func aFirstLaunchHasNoAgentsYet() {
+        #expect(LairConfig.initial.agents.isEmpty)
     }
 
     @Test func readsAgentsWithOptionalFields() throws {
@@ -94,7 +100,7 @@ struct AgentLogTests {
 struct LairConfigSavingTests {
     @Test func savesAndReadsBackTheSameConfig() throws {
         let url = FileManager.default.temporaryDirectory.appending(path: "lair-\(UUID().uuidString)/config.json")
-        var config = LairConfig.initial
+        var config = LairConfig(agents: [AgentConfig(id: "claude", name: "Claude", preset: .claude, voice: "af_heart", color: "#D97757")])
         config.agents.append(AgentConfig(id: "echo", name: "Echo", kind: .hermes, voice: "bf_emma", color: "#7B5CFF",
                                          url: "http://hermes.local:8642"))
         try config.save(to: url)
@@ -105,11 +111,56 @@ struct LairConfigSavingTests {
     }
 
     @Test func givesNewAgentsUniqueReadableIDs() {
-        let config = LairConfig.initial
+        let config = LairConfig(agents: [AgentConfig(id: "claude", name: "Claude", preset: .claude, voice: "af_heart", color: "#D97757")])
         #expect(config.newAgentID(for: "Claude") == "claude2")
         #expect(config.newAgentID(for: "My Agent!") == "myagent")
         #expect(config.newAgentID(for: "Écho") == "cho")
         #expect(config.newAgentID(for: "") == "agent")
+    }
+}
+
+struct NewAgentTests {
+    private let voices = ["af_heart", "am_adam", "bf_emma"]
+
+    @Test func firstAgentKeepsItsLabelAndTakesTheFirstVoiceAndColor() {
+        let agent = LairConfig.initial.newAgent(named: "Claude", voices: voices)
+        #expect(agent.name == "Claude")
+        #expect(agent.id == "claude")
+        #expect(agent.kind == .acp)
+        #expect(agent.voice == "af_heart")
+        #expect(agent.color == AgentConfig.palette[0])
+    }
+
+    @Test func namesAndIDsStayUniqueEvenWhenCaseDiffers() {
+        var config = LairConfig.initial
+        config.agents.append(config.newAgent(named: "Claude", voices: voices))
+        config.agents.append(config.newAgent(named: "claude", voices: voices))
+        config.agents.append(config.newAgent(named: "Claude", voices: voices))
+        #expect(config.agents.map(\.name) == ["Claude", "claude 2", "Claude 3"])
+        #expect(Set(config.agents.map(\.id)).count == 3)
+    }
+
+    @Test func eachAgentGetsTheFirstVoiceNobodyUses() {
+        var config = LairConfig.initial
+        for _ in 0..<2 { config.agents.append(config.newAgent(named: "Codex", voices: voices)) }
+        #expect(config.agents.map(\.voice) == ["af_heart", "am_adam"])
+        config.agents.removeFirst()
+        #expect(config.newAgent(named: "Codex", voices: voices).voice == "af_heart")
+    }
+
+    @Test func fallsBackToTheDefaultVoiceWhenAllAreUsed() {
+        var config = LairConfig.initial
+        config.agents.append(config.newAgent(named: "A", voices: ["x"]))
+        #expect(config.newAgent(named: "B", voices: ["x"]).voice == "af_heart")
+    }
+
+    @Test func colorsCycleThroughThePalette() {
+        var config = LairConfig.initial
+        for i in 0...AgentConfig.palette.count {
+            let agent = config.newAgent(named: "Agent", voices: voices)
+            #expect(agent.color == AgentConfig.palette[i % AgentConfig.palette.count])
+            config.agents.append(agent)
+        }
     }
 }
 

@@ -13,7 +13,7 @@ struct SettingsView: View {
     /// A menu-bar app isn't the active app when its panel is clicked, so polite activation leaves the window
     /// behind others: raise it explicitly once it exists, then make it key.
     /// The window may not exist yet right after `openWindow`, so this waits for it, up to a second.
-    @MainActor static func bringForward() {
+    @MainActor static func bringForward(titled title: String = title) {
         Task { @MainActor in
             for _ in 0..<20 {
                 if let window = NSApp.windows.first(where: { $0.title == title && $0.isVisible }) {
@@ -156,16 +156,7 @@ private struct AgentsSettings: View {
 
     private func add(_ choice: AgentChoice) {
         var config = store.config
-        let used = Set(config.agents.map(\.voice))
-        // "Claude", then "Claude 2"…: two new agents never share a name.
-        let taken = Set(config.agents.map { $0.name.lowercased() })
-        var name = choice.label
-        var n = 2
-        while taken.contains(name.lowercased()) { name = "\(choice.label) \(n)"; n += 1 }
-        var agent = AgentConfig(
-            id: config.newAgentID(for: choice.label), name: name, kind: .acp,
-            voice: VoiceModels.voices.first { !used.contains($0) } ?? "af_heart",
-            color: AgentConfig.palette[config.agents.count % AgentConfig.palette.count])
+        var agent = config.newAgent(named: choice.label, voices: VoiceModels.voices)
         choice.apply(to: &agent)
         config.agents.append(agent)
         store.save(config)
@@ -687,10 +678,6 @@ enum AgentChoice: Hashable {
         if agent.kind != .hermes { agent.url = nil; agent.headers = nil }
         if self != .command { agent.command = nil }
     }
-}
-
-extension AgentConfig {
-    static let palette = ["#D97757", "#7B5CFF", "#3FB68B", "#E5B93C", "#4BA3E3", "#E35D8F"]
 }
 
 extension Color {

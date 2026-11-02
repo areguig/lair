@@ -7,6 +7,12 @@ public actor VoiceModels {
         case notLoaded
     }
 
+    /// Where loading is: speech recognition downloads with a fraction (0...1), then the voices, which report none.
+    public enum Progress: Equatable, Sendable {
+        case recognition(Double)
+        case voices
+    }
+
     private var asr: AsrManager?
     private var tts: KokoroAneManager?
     private var vad: VadManager?
@@ -29,9 +35,13 @@ public actor VoiceModels {
 
     public init() {}
 
-    public func load(warmUpVoice: String) async throws {
+    /// `progress` may be called from any queue.
+    public func load(warmUpVoice: String, progress: (@Sendable (Progress) -> Void)? = nil) async throws {
         let asr = AsrManager()
-        try await asr.loadModels(try await AsrModels.downloadAndLoad(version: .v2))
+        progress?(.recognition(0))
+        let models = try await AsrModels.downloadAndLoad(version: .v2) { progress?(.recognition($0.fractionCompleted)) }
+        try await asr.loadModels(models)
+        progress?(.voices)
         let tts = KokoroAneManager(version: .v3)
         try await tts.initialize()
         // The first synthesis compiles the models; pay for it now rather than on the first reply.

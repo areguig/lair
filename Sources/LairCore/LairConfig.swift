@@ -23,13 +23,16 @@ public struct LairConfig: Codable, Equatable, Sendable {
     public static let defaultURL = FileManager.default.homeDirectoryForCurrentUser
         .appending(path: ".config/lair/config.json")
 
-    public static let initial = LairConfig(agents: [
-        AgentConfig(id: "claude", name: "Claude", preset: .claude, voice: "af_heart", color: "#D97757",
-                    model: "haiku", directory: "~"),
-    ])
+    /// What a first launch writes: nobody yet, the welcome window has you pick.
+    public static let initial = LairConfig(agents: [])
+
+    /// Whether there is a config file, so a first launch can be told from the ones after it.
+    public static func exists(at url: URL = defaultURL) -> Bool {
+        FileManager.default.fileExists(atPath: url.path)
+    }
 
     public static func load(from url: URL = defaultURL) throws -> LairConfig {
-        guard FileManager.default.fileExists(atPath: url.path) else {
+        guard exists(at: url) else {
             try initial.save(to: url)
             return initial
         }
@@ -55,6 +58,20 @@ public struct LairConfig: Codable, Equatable, Sendable {
             suffix += 1
         }
         return id
+    }
+
+    /// A new agent for `label`, not yet added: a name no other agent has ("Claude", "Claude 2"…), a free id, the first
+    /// of `voices` nobody uses, and the next color of the palette.
+    public func newAgent(named label: String, voices: [String]) -> AgentConfig {
+        let usedNames = Set(agents.map { $0.name.lowercased() })
+        var name = label
+        var n = 2
+        while usedNames.contains(name.lowercased()) { name = "\(label) \(n)"; n += 1 }
+        let usedVoices = Set(agents.map(\.voice))
+        return AgentConfig(
+            id: newAgentID(for: label), name: name, kind: .acp,
+            voice: voices.first { !usedVoices.contains($0) } ?? "af_heart",
+            color: AgentConfig.palette[agents.count % AgentConfig.palette.count])
     }
 }
 
@@ -84,6 +101,9 @@ public struct AgentConfig: Codable, Equatable, Identifiable, Sendable {
         /// An agent on this Mac that joined over MCP; never saved in the config.
         case guest
     }
+
+    /// The avatar colors new agents take in turn.
+    public static let palette = ["#D97757", "#7B5CFF", "#3FB68B", "#E5B93C", "#4BA3E3", "#E35D8F"]
 
     public var id: String
     public var name: String

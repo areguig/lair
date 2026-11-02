@@ -14,6 +14,8 @@ import os
     }
 
     var readiness = Readiness.loading
+    /// How far the voices are while they load; nil otherwise.
+    var voiceProgress: VoiceModels.Progress?
     /// Models each agent offered on its last call, offered again in Settings.
     private(set) var knownModels: [String: [String]] = [:]
     /// Thinking levels each agent offered on its last call, for Settings.
@@ -42,7 +44,8 @@ import os
     @ObservationIgnored private(set) var speaker: Speaker?
     /// Drives the orb instead of the live microphone and speaker, for the demo video.
     @ObservationIgnored var meterOverride: LevelMeter?
-    @ObservationIgnored private var environment: [String: String]?
+    /// The login shell's environment; settable so snapshots can stage which agents are installed.
+    var environment: [String: String]?
 
     /// Whether a preset's program is found on your login shell's PATH; unknown until that PATH is read.
     func isInstalled(_ preset: AgentPreset) -> Bool? {
@@ -116,8 +119,12 @@ import os
             readiness = .microphoneDenied
             return
         }
+        defer { voiceProgress = nil }
         do {
-            try await voice.load(warmUpVoice: calls.first?.agent.voice ?? "af_heart")
+            try await voice.load(warmUpVoice: calls.first?.agent.voice ?? "af_heart") { progress in
+                // A report that lands after loading ended is stale.
+                Task { @MainActor in if self.readiness == .loading { self.voiceProgress = progress } }
+            }
             if speaker == nil { speaker = try Speaker() }
             readiness = .ready
         } catch {

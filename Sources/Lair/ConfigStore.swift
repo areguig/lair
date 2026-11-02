@@ -7,6 +7,8 @@ import os
 @Observable @MainActor final class ConfigStore {
     private(set) var config: LairConfig
     private(set) var problem: String?
+    /// There was no config file when Lair started: this is the first launch.
+    let isNew: Bool
     @ObservationIgnored var onChange: ((LairConfig) -> Void)?
     @ObservationIgnored private let url: URL
     @ObservationIgnored private var modified: Date?
@@ -20,6 +22,7 @@ import os
 
     init(url: URL = LairConfig.defaultURL) {
         self.url = url
+        isNew = !LairConfig.exists(at: url)
         do {
             config = try LairConfig.load(from: url)
         } catch {
