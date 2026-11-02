@@ -41,7 +41,7 @@ extension Room {
         let used = Set(calls.map(\.agent.voice)), colors = Set(calls.map(\.agent.color))
         let agent = AgentConfig(id: "guest-" + guest.id, name: Visitors.name(match?.name ?? guest.name, taken: Set(calls.map(\.agent.name))),
                                 kind: .guest,
-                                voice: match?.voice ?? VoiceModels.voices.first { !used.contains($0) } ?? "af_heart",
+                                voice: match?.voice ?? Voices.names().first { !used.contains($0) } ?? Voices.defaultName(),
                                 color: match?.color ?? AgentConfig.palette.first { !colors.contains($0) }
                                     ?? AgentConfig.palette[calls.count % AgentConfig.palette.count])
         let call = Call(agent: agent)

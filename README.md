@@ -44,7 +44,7 @@ Lair talks to agents over the [Agent Client Protocol](https://agentclientprotoco
 - macOS 15 or later on Apple Silicon
 - Swift 6.4 (Xcode 27), only to build it yourself
 
-The first launch downloads the speech models (Parakeet, Kokoro) through [FluidAudio](https://github.com/FluidInference/FluidAudio).
+The first launch downloads the speech models: Parakeet through [FluidAudio](https://github.com/FluidInference/FluidAudio), and the voice from Hugging Face (about 110 MB).
 
 ## Install
 
@@ -84,7 +84,7 @@ Use **Settings…** in the panel, or edit `~/.config/lair/config.json`, which La
 
 | Field | Meaning |
 |---|---|
-| `voice` | A Kokoro English voice: `af_*`, `am_*` (American), `bf_*`, `bm_*` (British) |
+| `voice` | One of Pocket TTS's English voices, such as `fantine` (the default), `alba`, `george` or `jane`; Settings lists them all. An unknown name uses the default |
 | `model`, `thinking` | Starting model and thinking level; unset uses the agent's own default |
 | `answers` | `brief`, `normal` or `detailed`: how much the agent says out loud; unset means normal |
 | `registry` | The ACP Registry agent this one was added from; Lair keeps it on that version until you update |
@@ -107,9 +107,10 @@ Secrets (API keys, header values) live in the Keychain, never in the file. A sou
 
 ## Credits
 
-- [FluidAudio](https://github.com/FluidInference/FluidAudio) (Apache 2.0) runs the speech models on the Neural Engine.
+- [FluidAudio](https://github.com/FluidInference/FluidAudio) (Apache 2.0) runs speech recognition and voice detection on the Neural Engine.
 - [Parakeet TDT 0.6B v2](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2) by NVIDIA (CC-BY-4.0) for speech-to-text.
-- [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) (Apache 2.0) for the voices.
+- [Pocket TTS](https://github.com/kyutai-labs/pocket-tts) by Kyutai (MIT) speaks for your agents; Lair ships its `pocket-tts` program.
+- The [voices](https://huggingface.co/kyutai/tts-voices): the VCTK corpus voices (and alba) are CC BY 4.0 (University of Edinburgh for VCTK), Kyutai's own recordings and voice donations are CC0.
 - [KeyboardShortcuts](https://github.com/sindresorhus/KeyboardShortcuts) (MIT) for the global shortcuts.
 
 The models download on first launch; they're not part of this repository.

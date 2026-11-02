@@ -76,7 +76,7 @@ public struct LairConfig: Codable, Equatable, Sendable {
         let usedVoices = Set(agents.map(\.voice))
         return AgentConfig(
             id: newAgentID(for: label), name: name, kind: .acp,
-            voice: voices.first { !usedVoices.contains($0) } ?? "af_heart",
+            voice: voices.first { !usedVoices.contains($0) } ?? Voices.defaultName(),
             color: AgentConfig.palette[agents.count % AgentConfig.palette.count])
     }
 }

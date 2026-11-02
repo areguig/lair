@@ -167,7 +167,7 @@ private struct AgentsSettings: View {
 
     private func add(_ choice: AgentChoice) {
         var config = store.config
-        var agent = config.newAgent(named: choice.label, voices: VoiceModels.voices)
+        var agent = config.newAgent(named: choice.label, voices: Voices.names())
         choice.apply(to: &agent)
         config.agents.append(agent)
         store.save(config)
@@ -176,7 +176,7 @@ private struct AgentsSettings: View {
 
     private func add(_ entry: Registry.Entry) {
         var config = store.config
-        var agent = config.newAgent(named: entry.name, voices: VoiceModels.voices)
+        var agent = config.newAgent(named: entry.name, voices: Voices.names())
         agent.directory = "~"
         agent.follow(entry)
         config.agents.append(agent)
@@ -213,8 +213,8 @@ private struct AgentForm: View {
                 ColorPicker("Color", selection: Binding(get: { Color(hex: agent.color) }, set: { agent.color = $0.hex }),
                             supportsOpacity: false)
                 HStack {
-                    Picker("Voice", selection: $agent.voice) {
-                        ForEach(VoiceModels.voices, id: \.self) { Text(voiceLabel($0)).tag($0) }
+                    Picker("Voice", selection: Binding(get: { Voices.resolve(agent.voice) }, set: { agent.voice = $0 })) {
+                        ForEach(Voices.english, id: \.name) { Text($0.label).tag($0.name) }
                     }
                     Button {
                         room.preview(voice: agent.voice, name: agent.name.isEmpty ? "your agent" : agent.name)
@@ -222,7 +222,7 @@ private struct AgentForm: View {
                         Image(systemName: "play.fill")
                     }
                     .help("Hear this voice")
-                    .accessibilityLabel("Hear \(voiceLabel(agent.voice))")
+                    .accessibilityLabel("Hear \(Voices.label(for: agent.voice))")
                     .disabled(room.readiness != .ready)
                 }
             }
@@ -339,15 +339,6 @@ private struct AgentForm: View {
     /// An empty field means "not set", so the agent's own default applies.
     private func optional(_ value: Binding<String?>) -> Binding<String> {
         Binding(get: { value.wrappedValue ?? "" }, set: { value.wrappedValue = $0.isEmpty ? nil : $0 })
-    }
-
-    /// "bf_emma" → "Emma · British female".
-    private func voiceLabel(_ voice: String) -> String {
-        let parts = voice.split(separator: "_", maxSplits: 1)
-        guard parts.count == 2, parts[0].count == 2 else { return voice }
-        let accent = parts[0].first == "b" ? "British" : "American"
-        let gender = parts[0].last == "m" ? "male" : "female"
-        return "\(parts[1].capitalized) · \(accent) \(gender)"
     }
 }
 

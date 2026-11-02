@@ -1,4 +1,5 @@
 // Lair: a menu-bar room where you call your agents and talk to them by voice.
+import AVFoundation
 import KeyboardShortcuts
 import LairCore
 import LairMCP
@@ -60,6 +61,20 @@ struct LairApp: App {
                     exit(0)
                 } catch {
                     print("Demo frame failed: \(error)")
+                    exit(1)
+                }
+            }
+            RunLoop.main.run()
+        }
+        // `Lair --speak-test "Hello." out.wav [voice]` says a line with the voice engine and no UI, to check it end to end.
+        if let i = CommandLine.arguments.firstIndex(of: "--speak-test"), i + 2 < CommandLine.arguments.count {
+            let voice = i + 3 < CommandLine.arguments.count ? CommandLine.arguments[i + 3] : Voices.defaultName()
+            Task { @MainActor in
+                do {
+                    try await Snapshot.writeSpeech(CommandLine.arguments[i + 1], voice: voice, to: URL(fileURLWithPath: CommandLine.arguments[i + 2]))
+                    exit(0)
+                } catch {
+                    print("Speak test failed: \(error.localizedDescription)")
                     exit(1)
                 }
             }
@@ -210,12 +225,26 @@ struct MenuBarIcon: View {
 /// `Lair --snapshot out.png [approval|chat|reply|empty|micdenied|crowded|busy|silent] [light|dark]` renders the panel in a demo
 /// state, to check the design without clicking around.
 @MainActor enum Snapshot {
+    /// Speaks `text` and writes the 24 kHz mono result, printing how long the first start and the whole took.
+    static func writeSpeech(_ text: String, voice: String, to url: URL) async throws {
+        let engine = VoiceModels()
+        defer { engine.stopSpeech() }
+        let start = ContinuousClock.now
+        let samples = try await engine.speech(for: text, voice: voice)
+        let format = AVAudioFormat(standardFormatWithSampleRate: 24_000, channels: 1)!
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count))!
+        buffer.frameLength = AVAudioFrameCount(samples.count)
+        samples.withUnsafeBufferPointer { buffer.floatChannelData![0].update(from: $0.baseAddress!, count: samples.count) }
+        try AVAudioFile(forWriting: url, settings: format.settings).write(from: buffer)
+        print("Spoke \(Double(samples.count) / 24_000) s of audio in \(ContinuousClock.now - start) (engine start included)")
+    }
+
     static func write(to url: URL, variant: String = "approval", appearance: String = "dark") {
         let agents = variant == "empty" ? [] : variant == "busy" ? busyAgents : variant == "crowded"
             ? (1...6).map { AgentConfig(id: "a\($0)", name: ["Claude", "Echo", "Nova", "Research assistant", "Ops", "Docs"][$0 - 1],
-                                        preset: .claude, voice: "af_heart", color: AgentConfig.palette[$0 - 1]) }
-            : [AgentConfig(id: "claude", name: "Claude", preset: .claude, voice: "af_heart", color: "#D97757", directory: "~"),
-               AgentConfig(id: "echo", name: "Echo", kind: .hermes, voice: "bf_emma", color: "#7B5CFF")]
+                                        preset: .claude, voice: Voices.defaultName(), color: AgentConfig.palette[$0 - 1]) }
+            : [AgentConfig(id: "claude", name: "Claude", preset: .claude, voice: Voices.defaultName(), color: "#D97757", directory: "~"),
+               AgentConfig(id: "echo", name: "Echo", kind: .hermes, voice: "jane", color: "#7B5CFF")]
         let room = Room(config: LairConfig(agents: agents))
         room.readiness = variant == "micdenied" ? .microphoneDenied : .ready
         if let call = room.calls.first {
@@ -298,7 +327,7 @@ struct MenuBarIcon: View {
     private static var busyAgents: [AgentConfig] {
         let palette = AgentConfig.palette
         func agent(_ id: String, _ name: String, _ preset: AgentPreset, _ color: String) -> AgentConfig {
-            AgentConfig(id: id, name: name, preset: preset, voice: "af_heart", color: color, directory: "~")
+            AgentConfig(id: id, name: name, preset: preset, voice: Voices.defaultName(), color: color, directory: "~")
         }
         return [agent("claude", "Claude", .claude, palette[0]), agent("cypher", "Cypher", .claude, palette[1]),
                 agent("reno", "Reno", .claude, palette[2]), agent("lair", "Lair", .claude, palette[3]),
@@ -394,7 +423,7 @@ struct MenuBarIcon: View {
         let agent = staged[agent ?? ""] == nil ? agent : "hermes"
         let file = FileManager.default.temporaryDirectory.appending(path: "lair-settings-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: file) }
-        var hermes = AgentConfig(id: "hermes", name: "Hermes", kind: .hermes, voice: "am_adam", color: "#4BA3E3")
+        var hermes = AgentConfig(id: "hermes", name: "Hermes", kind: .hermes, voice: "george", color: "#4BA3E3")
         hermes.url = "http://hermes.local:8642"
         hermes.model = "hermes-agent"
         hermes.headers = ["X-Access-Token"]
@@ -402,7 +431,7 @@ struct MenuBarIcon: View {
         if agent == "mac" { config.guests = .standard }
         if agent == "general" { config.sounds = SoundSettings(volume: 0.7, off: [.done]) }
         if agent == "update" {
-            var pinned = config.newAgent(named: "Auggie CLI", voices: VoiceModels.voices)
+            var pinned = config.newAgent(named: "Auggie CLI", voices: Voices.names())
             pinned.follow(registryDemo.entry(id: "auggie")!)
             pinned.command = ["npx", "-y", "@augmentcode/auggie@0.35.0", "--acp"]
             pinned.directory = "~"
@@ -508,7 +537,7 @@ struct MenuBarIcon: View {
         }
         var config = LairConfig.initial
         if variant == "ready" {
-            var agent = config.newAgent(named: "Claude", voices: VoiceModels.voices)
+            var agent = config.newAgent(named: "Claude", voices: Voices.names())
             AgentChoice.preset(AgentPreset.claude.id).apply(to: &agent)
             config.agents.append(agent)
         }
@@ -520,6 +549,9 @@ struct MenuBarIcon: View {
         switch variant {
         case "ready": room.readiness = .ready
         case "denied": room.readiness = .microphoneDenied
+        case "voice":
+            room.readiness = .loading
+            room.voiceProgress = .voices
         default:
             room.readiness = .loading
             room.voiceProgress = .recognition(0.42)
