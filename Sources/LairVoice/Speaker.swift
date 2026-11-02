@@ -9,6 +9,9 @@ import LairCore
     private let format = AVAudioFormat(standardFormatWithSampleRate: 24_000, channels: 1)!
     private let pending = DispatchGroup()
     public let meter = LevelMeter()
+    private var started = PlayQueue<@MainActor () -> Void>()
+    /// Changes on `stop()`, so buffers dropped by it can't move the queue on.
+    private var generation = 0
 
     /// Which earcons play and how loud; speech is not affected.
     public var sounds = SoundSettings() {
@@ -27,13 +30,24 @@ import LairCore
         earconNode.play()
     }
 
-    public func enqueue(_ samples: [Float]) {
+    /// `onStart` runs when this buffer begins to play, which is when the previous one has finished.
+    public func enqueue(_ samples: [Float], onStart: (@MainActor () -> Void)? = nil) {
         guard !samples.isEmpty else { return }
         let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count))!
         buffer.frameLength = AVAudioFrameCount(samples.count)
         samples.withUnsafeBufferPointer { buffer.floatChannelData![0].update(from: $0.baseAddress!, count: samples.count) }
         pending.enter()
-        node.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { @Sendable [pending] _ in pending.leave() }
+        let epoch = generation
+        if let start = started.add(onStart ?? {}) { start() }
+        node.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { @Sendable [pending, weak self] _ in
+            pending.leave()
+            Task { @MainActor in self?.bufferEnded(epoch) }
+        }
+    }
+
+    private func bufferEnded(_ epoch: Int) {
+        guard epoch == generation else { return }
+        started.finish()?()
     }
 
     /// Plays on its own node: never queued with speech, never cut by `stop()`. Skipped while its group is off.
@@ -57,6 +71,8 @@ import LairCore
 
     /// Drops what is queued; pending waits end as the buffers are released.
     public func stop() {
+        generation += 1
+        started.clear()
         node.stop()
         node.play()
         meter.set(0)
