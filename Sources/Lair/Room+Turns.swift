@@ -124,14 +124,17 @@ extension Room {
         let turnID = UUID()
         call.turnID = turnID
         call.unheard = []
+        releaseHold()
         Self.log.notice("\(call.id, privacy: .public): \(opening == nil ? "turn sent" : "agent took a turn of its own", privacy: .public)")
         // The agent spoke to you: listen a few seconds for your reply. Typed turns don't open the mic.
         var listenAfter = false
+        var readAfter: String?
         defer {
             if call.inCall, call.turnID == turnID {
                 speaking = nil
                 call.turnID = nil
                 call.state = .ready
+                if let readAfter { hold(call, answer: readAfter) }
                 if !call.ownTurnsWaiting.isEmpty { playWaitingTurn(in: call) } else if listenAfter { listenForAnswer(in: call) }
             }
         }
@@ -199,6 +202,7 @@ extension Room {
             if call.id == focusedID {
                 await speaker.waitUntilDone()
                 listenAfter = answered && !typed
+                if silent, answered { readAfter = call.lines.last { $0.role == .agent && !$0.text.isEmpty }?.text }
             } else if !Task.isCancelled {
                 call.unread = true
                 speaker.play(.done)
@@ -229,6 +233,7 @@ extension Room {
     /// Puts the request in front of you three ways at once; the turn stays paused until `answer`.
     private func ask(_ call: Call, to request: ApprovalRequest) async throws {
         call.pendingApproval = request
+        releaseHold()
         call.log(.approval("\(request.tool): \(request.summary)"))
         Self.log.notice("\(call.id, privacy: .public): approval asked\(call.id == self.focusedID ? "" : " while not in focus", privacy: .public)")
         notifier.post(request, from: call.agent.name)

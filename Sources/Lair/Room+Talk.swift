@@ -18,6 +18,7 @@ extension Room {
         // An agent waiting on your OK takes the answer, even if another one is in focus.
         if focused?.state != .waiting, let waiting = calls.first(where: { $0.state == .waiting }) { focus(waiting) }
         guard let call = focused else { return show(hint: "Add an agent in Settings first.") }
+        releaseHold()
         if !call.inCall { summon(call) }
         // Talking over the agent cuts it off.
         if call.pendingApproval == nil, call.state == .speaking || call.state == .thinking {
@@ -111,6 +112,7 @@ extension Room {
     func type(_ text: String, to call: Call) {
         guard readiness == .ready else { return show(hint: "Still getting the voices ready…") }
         focus(call)
+        releaseHold()
         if !call.inCall { summon(call) }
         if let request = call.pendingApproval {
             guard let decision = SpokenAnswer.parse(text) else {

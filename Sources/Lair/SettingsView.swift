@@ -668,16 +668,18 @@ private struct GeneralSettings: View {
                 .foregroundStyle(.secondary)
             }
             Section {
-                HStack(spacing: 8) {
-                    Image(systemName: "speaker.fill").foregroundStyle(.secondary).accessibilityHidden(true)
-                    Slider(value: $volume, in: 0...1) { editing in
-                        guard !editing else { return }
-                        change { $0.setLevel(volume) }
-                        room.preview(sound: .done)
+                LabeledContent("Volume") {
+                    HStack(spacing: 8) {
+                        Image(systemName: "speaker.fill").foregroundStyle(.secondary).accessibilityHidden(true)
+                        Slider(value: $volume, in: 0...1) { editing in
+                            guard !editing else { return }
+                            change { $0.setLevel(volume) }
+                            room.preview(sound: .done)
+                        }
+                        .accessibilityLabel("Sound volume")
+                        .accessibilityValue("\(Int((volume * 100).rounded())) percent")
+                        Image(systemName: "speaker.wave.3.fill").foregroundStyle(.secondary).accessibilityHidden(true)
                     }
-                    .accessibilityLabel("Sound volume")
-                    .accessibilityValue("\(Int((volume * 100).rounded())) percent")
-                    Image(systemName: "speaker.wave.3.fill").foregroundStyle(.secondary).accessibilityHidden(true)
                 }
                 ForEach(SoundGroup.allCases, id: \.self) { group in
                     Toggle(group.label, isOn: Binding(

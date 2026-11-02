@@ -42,6 +42,9 @@ import os
     private(set) var silent: Bool
     /// The sentence being said now by the agent in focus, for the island's read-along caption.
     var speaking: String?
+    /// Silent mode: the call whose answer the island keeps showing for a reading time after its turn.
+    private(set) var holding: String?
+    @ObservationIgnored private var holdTask: Task<Void, Never>?
     @ObservationIgnored private var sounds: SoundSettings
 
     @ObservationIgnored let voice = VoiceModels()
@@ -169,6 +172,7 @@ import os
     func focus(_ call: Call) {
         call.unread = false
         guard call.id != focusedID else { return }
+        releaseHold()
         defer { replayUnheard(call) }
         if let previous = focused {
             if previous.state == .listening {
@@ -254,6 +258,7 @@ import os
         call.context = []
         call.ownTurnsWaiting = []
         call.turn?.cancel()
+        if holding == call.id { releaseHold() }
         call.session?.stop()
         call.session = nil
         if call.state == .speaking { stopSpeaking() }
@@ -263,6 +268,23 @@ import os
         call.unread = false
         call.unheard = []
         closeMicrophoneIfUnused()
+    }
+
+    /// Keeps the island on `call`'s answer for as long as it takes to read.
+    func hold(_ call: Call, answer: String) {
+        releaseHold()
+        holding = call.id
+        holdTask = Task {
+            try? await Task.sleep(for: ReadingTime.duration(for: answer))
+            if !Task.isCancelled { holding = nil }
+        }
+    }
+
+    /// You spoke, a new turn began or the floor moved: the island goes back to its usual rhythm.
+    func releaseHold() {
+        holdTask?.cancel()
+        holdTask = nil
+        holding = nil
     }
 
     /// Cuts the voice off and forgets the sentence it was on.

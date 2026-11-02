@@ -262,7 +262,8 @@ struct IslandView: View {
 
     /// Nothing is said in silent mode, so the answer is shown as it arrives.
     private func reading(_ call: Call) -> Bool {
-        room.silent && call.state == .thinking && call.lines.last?.role == .agent
+        guard room.silent, call.lines.last?.role == .agent else { return false }
+        return call.state == .thinking || (call.state == .ready && room.holding == call.id)
     }
 
     private var silentMark: some View {
