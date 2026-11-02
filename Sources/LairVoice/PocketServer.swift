@@ -74,6 +74,47 @@ public final class PocketServer: Sendable {
             return state.running?.process
         }
         process?.terminate()
+        try? FileManager.default.removeItem(at: Self.pidFile(model: model))
+    }
+
+    // MARK: Leftovers
+
+    /// Remembers the child's pid, so the next launch can end an engine a crash or force-quit left running.
+    static func pidFile(model: String, in home: URL = home) -> URL {
+        home.appending(path: "serve-\(model).pid")
+    }
+
+    static func write(pid: Int32, to file: URL) throws {
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("\(pid)".utf8).write(to: file)
+    }
+
+    static func readPid(from file: URL) -> Int32? {
+        (try? String(contentsOf: file, encoding: .utf8)).flatMap { Int32($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+    }
+
+    /// Only a process that is still running our engine: a pid the system has since given to another program stays alone.
+    static func shouldStop(pid: Int32, pathOfPid: (Int32) -> String?, expectedBinary: URL) -> Bool {
+        // The system reports the real path (`/private/var/…`), the binary may be named through a symlink (`/var/…`).
+        guard let path = pathOfPid(pid) else { return false }
+        return URL(fileURLWithPath: path).resolvingSymlinksInPath() == expectedBinary.resolvingSymlinksInPath()
+    }
+
+    static func executablePath(of pid: Int32) -> String? {
+        var buffer = [CChar](repeating: 0, count: 4096)
+        let length = proc_pidpath(pid, &buffer, UInt32(buffer.count))
+        guard length > 0 else { return nil }
+        return String(decoding: buffer.prefix(Int(length)).map { UInt8(bitPattern: $0) }, as: UTF8.self)
+    }
+
+    /// Ends the engine a previous Lair left behind, then forgets it.
+    private func stopLeftover(binary: URL) {
+        let file = Self.pidFile(model: model)
+        defer { try? FileManager.default.removeItem(at: file) }
+        guard let pid = Self.readPid(from: file),
+              Self.shouldStop(pid: pid, pathOfPid: Self.executablePath(of:), expectedBinary: binary) else { return }
+        Self.log.info("Stopping a voice engine left running (pid \(pid))")
+        kill(pid, SIGTERM)
     }
 
     // MARK: Pure parts
@@ -113,6 +154,7 @@ public final class PocketServer: Sendable {
         guard let binary = Self.binary(app: Bundle.main.bundleURL, environment: ProcessInfo.processInfo.environment) else {
             throw Failure.binaryMissing
         }
+        stopLeftover(binary: binary)
         let port = try Self.freePort()
         let url = URL(string: "http://127.0.0.1:\(port)")!
         let process = Process()
@@ -129,9 +171,15 @@ public final class PocketServer: Sendable {
         }
         process.terminationHandler = { [weak self] process in
             Self.log.info("pocket-tts exited with status \(process.terminationStatus)")
-            self?.state.withLock { if $0.running?.process === process { $0.running = nil } }
+            guard let self else { return }
+            let ours = state.withLock { state -> Bool in
+                defer { if state.running?.process === process { state.running = nil } }
+                return state.running?.process === process
+            }
+            if ours { try? FileManager.default.removeItem(at: Self.pidFile(model: model)) }
         }
         try process.run()
+        try? Self.write(pid: process.processIdentifier, to: Self.pidFile(model: model))
         // Registered before waiting, so a quit during the model download still stops it.
         let stopped = state.withLock { state -> Bool in
             if !state.stopped { state.running = Running(process: process, url: url) }
