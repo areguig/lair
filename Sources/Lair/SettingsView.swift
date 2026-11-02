@@ -44,7 +44,7 @@ struct SettingsView: View {
             GuestSettingsView(store: store, link: link)
                 .tabItem { Label("On this Mac", systemImage: "laptopcomputer") }
                 .tag(Tab.mac)
-            GeneralSettings(store: store)
+            GeneralSettings(store: store, room: room)
                 .tabItem { Label("General", systemImage: "gearshape") }
                 .tag(Tab.general)
         }
@@ -619,8 +619,17 @@ private struct SecretField: View {
 
 private struct GeneralSettings: View {
     let store: ConfigStore
+    let room: Room
+    /// The slider's own value while it is dragged; the config is written when it's let go.
+    @State private var volume: Double
     @State private var opensAtLogin = SMAppService.mainApp.status == .enabled
     private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "lair", category: "login")
+
+    init(store: ConfigStore, room: Room) {
+        self.store = store
+        self.room = room
+        _volume = State(initialValue: store.config.soundSettings.level)
+    }
 
     var body: some View {
         Form {
@@ -640,6 +649,13 @@ private struct GeneralSettings: View {
                         config.island = on ? nil : false
                         store.save(config)
                     }))
+                Toggle("Silent mode: Lair writes instead of speaking", isOn: Binding(
+                    get: { store.config.isSilent },
+                    set: { on in
+                        var config = store.config
+                        config.silent = on ? true : nil
+                        store.save(config)
+                    }))
                 Toggle("Open at login", isOn: Binding(get: { opensAtLogin }, set: { setOpensAtLogin($0) }))
             } footer: {
                 VStack(alignment: .leading, spacing: 2) {
@@ -650,6 +666,33 @@ private struct GeneralSettings: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            }
+            Section {
+                HStack(spacing: 8) {
+                    Image(systemName: "speaker.fill").foregroundStyle(.secondary).accessibilityHidden(true)
+                    Slider(value: $volume, in: 0...1) { editing in
+                        guard !editing else { return }
+                        change { $0.setLevel(volume) }
+                        room.preview(sound: .done)
+                    }
+                    .accessibilityLabel("Sound volume")
+                    .accessibilityValue("\(Int((volume * 100).rounded())) percent")
+                    Image(systemName: "speaker.wave.3.fill").foregroundStyle(.secondary).accessibilityHidden(true)
+                }
+                ForEach(SoundGroup.allCases, id: \.self) { group in
+                    Toggle(group.label, isOn: Binding(
+                        get: { store.config.soundSettings.isOn(group) },
+                        set: { on in
+                            change { $0.set(group, on: on) }
+                            if on { room.preview(sound: group) }
+                        }))
+                }
+            } header: {
+                Text("Sounds")
+            } footer: {
+                Text("Short sounds when Lair listens, finishes, needs you or hits a problem. Voices follow your Mac's volume.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             Section {
                 LabeledContent("Config file") {
@@ -676,6 +719,15 @@ private struct GeneralSettings: View {
         .formStyle(.grouped)
     }
 
+    /// Writes the sound settings, leaving the key out of the file while they are the default.
+    private func change(_ edit: (inout SoundSettings) -> Void) {
+        var config = store.config
+        var sounds = config.soundSettings
+        edit(&sounds)
+        config.sounds = sounds.isDefault ? nil : sounds
+        store.save(config)
+    }
+
     private static var version: String {
         let info = Bundle.main.infoDictionary
         guard let short = info?["CFBundleShortVersionString"] as? String else { return "Lair, development build" }
@@ -689,6 +741,17 @@ private struct GeneralSettings: View {
             Self.log.error("login item: \(error.localizedDescription, privacy: .public)")
         }
         opensAtLogin = SMAppService.mainApp.status == .enabled
+    }
+}
+
+private extension SoundGroup {
+    var label: String {
+        switch self {
+        case .listening: "Listening"
+        case .done: "Done"
+        case .needsYou: "Needs you"
+        case .problems: "Problems"
+        }
     }
 }
 

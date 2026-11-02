@@ -62,6 +62,7 @@ extension Room {
         if let decision = SpokenAnswer.parse(heard) {
             answer(call, decision: decision)
         } else {
+            if silent { show(hint: "Didn't catch that; say yes or no, or use the buttons.") }
             _ = try? await say("Sorry, say" + (call.pendingApproval?.canAlwaysAllow == true ? " yes, always, or no." : " yes or no."), in: call)
             call.state = .waiting
             await speaker?.waitUntilDone()
@@ -72,7 +73,7 @@ extension Room {
     /// The microphone opens on its own after the agent speaks and sends once you've answered; silence closes it.
     /// Opening only after the voice has finished keeps the agent from hearing itself.
     func listenForAnswer(in call: Call) {
-        guard listensForAnswers else { return }
+        guard listensForAnswers, !silent else { return }
         Task {
             guard var detector = await voice.detector(), readiness == .ready, call.id == focusedID,
                   call.state == .ready || call.state == .waiting, !microphone.isCapturing

@@ -129,6 +129,8 @@ extension Room {
         var listenAfter = false
         defer {
             if call.inCall, call.turnID == turnID {
+                speaking = nil
+                call.turnID = nil
                 call.state = .ready
                 if !call.ownTurnsWaiting.isEmpty { playWaitingTurn(in: call) } else if listenAfter { listenForAnswer(in: call) }
             }
@@ -267,7 +269,7 @@ extension Room {
 
     func interrupt(_ call: Call) {
         Self.log.notice("\(call.id, privacy: .public): interrupted")
-        if call.id == focusedID { speaker?.stop() }
+        if call.id == focusedID { stopSpeaking() }
         call.turnID = nil
         call.turn?.cancel()
         call.session?.interrupt()
@@ -293,6 +295,9 @@ extension Room {
             case .fast, .deep:
                 guard local else { throw ChangeLater() }
                 confirmation = try setThinking(command == .fast ? "low" : "high", in: call, session: session)
+            case .silent(let on):
+                setSilent(on)
+                confirmation = on ? "Silent mode: I'll write instead of speaking." : "Speaking again."
             case .answers(let level):
                 // Only this call: the line goes out with the next turn, the config stays as it is.
                 call.context.append(VoicePrompt.answers(level))

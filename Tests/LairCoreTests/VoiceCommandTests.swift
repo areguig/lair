@@ -40,6 +40,11 @@ import Testing
         ("Longer answers", .answers(.detailed)),
         ("Be more detailed", .answers(.detailed)),
         ("Normal answers", .answers(.normal)),
+        ("Go silent", .silent(true)),
+        ("Silent mode.", .silent(true)),
+        ("Okay, go silent please", .silent(true)),
+        ("Speak again", .silent(false)),
+        ("Talk to me again.", .silent(false)),
     ])
     func positives(_ input: String, _ expected: VoiceCommand) {
         #expect(VoiceCommand.parse(input) == expected)
@@ -59,6 +64,12 @@ import Testing
         "Normal answers?",
         "Can you use sonnet?",
         "How do I switch to opus",
+        "Go silent on the logger tests",
+        "Why go silent?",
+        "Is silent mode on",
+        "Speak again later about the migration",
+        "Silent",
+        "Talk to me",
         "",
     ])
     func negatives(_ input: String) {

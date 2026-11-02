@@ -106,6 +106,11 @@ struct LairApp: App {
             store.save(config)
             return agent
         }
+        room.saveSilent = { on in
+            var config = store.config
+            config.silent = on ? true : nil
+            store.save(config)
+        }
         let link = GuestLink(room: room)
         link.apply(store.config.guests)
         let island = Island(room: room)
@@ -237,6 +242,9 @@ struct MenuBarIcon: View {
                 ]
                 room.calls[1].lines = [.init(role: .problem, text: "Echo needs an API key. Add it in Settings › Agents.",
                                              action: .openSettings)]
+            case "silent":
+                room.setSilent(true)
+                call.state = .thinking
             case "reply":
                 call.state = .listening
                 room.answering = .init(callID: call.id, since: .now)
@@ -339,6 +347,7 @@ struct MenuBarIcon: View {
         hermes.headers = ["X-Access-Token"]
         var config = LairConfig(agents: Demo.agents + [hermes])
         if agent == "mac" { config.guests = .standard }
+        if agent == "general" { config.sounds = SoundSettings(volume: 0.7, off: [.done]) }
         if agent == "update" {
             var pinned = config.newAgent(named: "Auggie CLI", voices: VoiceModels.voices)
             pinned.follow(registryDemo.entry(id: "auggie")!)
@@ -351,7 +360,7 @@ struct MenuBarIcon: View {
         let room = Room(config: store.config)
         let link = GuestLink(room: room)
         link.status = config.guests.map { .on($0.url) } ?? .off
-        SettingsRoute.shared.tab = agent == "mac" ? .mac : .agents
+        SettingsRoute.shared.tab = agent == "mac" ? .mac : agent == "general" ? .general : .agents
         // An agent id, or a preset name for the first demo agent that uses it.
         let selected = config.agents.first { $0.id == agent || $0.preset == agent }?.id
             ?? (agent == "update" ? config.agents.last?.id : nil)
@@ -373,6 +382,12 @@ struct MenuBarIcon: View {
         window.contentView = view
         view.layoutSubtreeIfNeeded()
         RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+        // The General tab is taller than the window: show its end, where the Sounds are.
+        if agent == "general", let scroll = view.firstDescendant(ofType: NSScrollView.self), let page = scroll.documentView {
+            scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, page.frame.height - scroll.contentView.bounds.height)))
+            scroll.reflectScrolledClipView(scroll.contentView)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        }
         guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
         view.cacheDisplay(in: view.bounds, to: rep)
         try? rep.representation(using: .png, properties: [:])?.write(to: url)
@@ -405,6 +420,10 @@ struct MenuBarIcon: View {
             guest.questionDeadline = .now + 100
             guest.state = .waiting
             room.focus(guest)
+        case "silent":
+            room.setSilent(true)
+            claude.state = .thinking
+            claude.lines = [.init(role: .agent, text: "Two things are left: the changelog needs the voice section, and the build number hasn't been bumped yet.")]
         case "approving":
             claude.state = .waiting
             claude.pendingApproval = ApprovalRequest(id: "demo", tool: "Bash", summary: "Bump the build number in Info.plist and commit it", canAlwaysAllow: true)
@@ -479,6 +498,13 @@ struct MenuBarIcon: View {
               let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:])
         else { return }
         try? png.write(to: url)
+    }
+}
+
+private extension NSView {
+    func firstDescendant<T: NSView>(ofType type: T.Type) -> T? {
+        for child in subviews { if let found = child as? T ?? child.firstDescendant(ofType: type) { return found } }
+        return nil
     }
 }
 

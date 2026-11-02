@@ -38,6 +38,11 @@ import os
     var answering: Answering?
     /// Off in General settings: you always press the key.
     @ObservationIgnored var listensForAnswers: Bool
+    /// Lair writes instead of speaking; set from the config, the panel's menu or by voice.
+    private(set) var silent: Bool
+    /// The sentence being said now by the agent in focus, for the island's read-along caption.
+    var speaking: String?
+    @ObservationIgnored private var sounds: SoundSettings
 
     @ObservationIgnored let voice = VoiceModels()
     @ObservationIgnored let microphone = Microphone()
@@ -65,6 +70,8 @@ import os
         calls = config.enabledAgents.map(Call.init)
         focusedID = config.enabledAgents.first?.id ?? ""
         listensForAnswers = config.listensForAnswers
+        silent = config.isSilent
+        sounds = config.soundSettings
         guestSettings = config.guests
     }
 
@@ -91,6 +98,9 @@ import os
         calls = next + calls.filter(\.stranger)
         if !calls.contains(where: { $0.id == focusedID }) { focusedID = calls.first?.id ?? "" }
         listensForAnswers = config.listensForAnswers
+        sounds = config.soundSettings
+        speaker?.sounds = sounds
+        update(silent: config.isSilent)
         if guestSettings != config.guests {
             guestSettings = config.guests
             sweepIdleGuests()
@@ -129,7 +139,11 @@ import os
                 // A report that lands after loading ended is stale.
                 Task { @MainActor in if self.readiness == .loading { self.voiceProgress = progress } }
             }
-            if speaker == nil { speaker = try Speaker() }
+            if speaker == nil {
+                let speaker = try Speaker()
+                speaker.sounds = sounds
+                self.speaker = speaker
+            }
             readiness = .ready
         } catch {
             readiness = .failed("Couldn't load the voices: \(error.localizedDescription)")
@@ -162,7 +176,7 @@ import os
                 previous.state = previous.idle
             }
             if previous.state == .speaking {
-                speaker?.stop()
+                stopSpeaking()
                 previous.state = .thinking
             }
         }
@@ -242,13 +256,37 @@ import os
         call.turn?.cancel()
         call.session?.stop()
         call.session = nil
-        if call.state == .speaking { speaker?.stop() }
+        if call.state == .speaking { stopSpeaking() }
         // Other calls keep the microphone open; this one's capture must still end.
         if call.state == .listening { _ = try? microphone.stopCapture() }
         call.state = .offline
         call.unread = false
         call.unheard = []
         closeMicrophoneIfUnused()
+    }
+
+    /// Cuts the voice off and forgets the sentence it was on.
+    func stopSpeaking() {
+        speaker?.stop()
+        speaking = nil
+    }
+
+    /// From the panel's menu, Settings' switch or a voice command; kept in the config.
+    func setSilent(_ on: Bool) {
+        guard on != silent else { return }
+        update(silent: on)
+        saveSilent?(on)
+    }
+
+    /// Going silent mid-answer ends the voice; the turn goes on and finishes as it would have.
+    private func update(silent on: Bool) {
+        guard on != silent else { return }
+        silent = on
+        guard on else { return }
+        stopSpeaking()
+        for call in calls where call.state == .speaking {
+            call.state = call.awaitsYou ? .waiting : call.turnID == nil ? .ready : .thinking
+        }
     }
 
     /// Opened whenever Lair starts listening, not when a call or question starts: an answer elsewhere can close it
@@ -292,4 +330,6 @@ import os
 
     /// Saves a new agent in the config and returns it with its id; set by the app.
     @ObservationIgnored var saveAgent: ((AgentConfig) -> AgentConfig?)?
+    /// Saves silent mode in the config; set by the app.
+    @ObservationIgnored var saveSilent: ((Bool) -> Void)?
 }

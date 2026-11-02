@@ -9,6 +9,8 @@ public enum VoiceCommand: Equatable, Sendable {
     case fast
     case deep
     case answers(AgentConfig.Answers)
+    /// Silent mode on or off.
+    case silent(Bool)
 
     /// nil when the transcript is a normal request for the agent.
     public static func parse(_ transcript: String) -> VoiceCommand? {
@@ -27,6 +29,8 @@ public enum VoiceCommand: Equatable, Sendable {
         case "be brief", "shorter answers", "short answers": return .answers(.brief)
         case "more detail", "more details", "longer answers", "be more detailed": return .answers(.detailed)
         case "normal answers": return .answers(.normal)
+        case "go silent", "silent mode": return .silent(true)
+        case "speak again", "talk to me again": return .silent(false)
         default: break
         }
         if let level = thinkingLevel(words) { return .thinking(level) }

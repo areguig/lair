@@ -9,29 +9,33 @@ import os
 extension Room {
     func say(_ sentence: String, in call: Call) async throws -> Bool {
         let text = Speakable.text(sentence)
-        guard !text.isEmpty, let speaker else { return false }
+        guard !silent, !text.isEmpty, let speaker else { return false }
         guard call.id == focusedID else {
             call.unheard.append(sentence)
             return false
         }
         let samples = try await voice.speech(for: text, voice: call.agent.voice)
         // Hung up while the sentence was being synthesized: setting `.speaking` would bring the call back.
-        guard call.inCall else { return false }
+        guard call.inCall, !silent else { return false }
         // Focus may have moved while the sentence was being synthesized.
         guard !Task.isCancelled, call.id == focusedID else {
             call.unheard.append(sentence)
             return false
         }
-        speaker.enqueue(samples)
         call.state = .speaking
+        speaker.enqueue(samples) { [weak self, weak call] in
+            if let self, let call, call.id == self.focusedID, call.state == .speaking { self.speaking = sentence }
+        }
         return true
     }
 
     /// One line from a background agent, once the focused one has stopped talking.
     func announce(_ text: String, for call: Call) {
+        guard !silent else { return }
         Task {
             await waitForTheFloor()
-            guard let speaker, let samples = try? await voice.speech(for: text, voice: call.agent.voice) else { return }
+            guard !silent, let speaker, let samples = try? await voice.speech(for: text, voice: call.agent.voice) else { return }
+            guard !silent else { return }
             speaker.enqueue(samples)
         }
     }
@@ -39,6 +43,7 @@ extension Room {
     /// Returns whether the sentence was queued for playback; only the focused agent is heard.
     /// Speaks what the agent said in the background, once you switch to it and it isn't mid-turn.
     func replayUnheard(_ call: Call) {
+        guard !silent else { return call.unheard = [] }
         guard !call.unheard.isEmpty, call.state == .ready || call.state == .waiting else {
             // Mid-turn, it speaks from here on; the earlier part stays in the transcript.
             if call.inCall, call.state != .ready, call.state != .waiting { call.unheard = [] }
@@ -63,6 +68,11 @@ extension Room {
         while let current = focused, current.state == .speaking || current.state == .listening || answering != nil {
             try? await Task.sleep(for: .milliseconds(300))
         }
+    }
+
+    /// Plays a group's sound once, so Settings can let you hear a change.
+    func preview(sound group: SoundGroup) {
+        speaker?.preview(group.preview)
     }
 
     /// Says a short line in `voice`, so a voice can be tried before choosing it.
