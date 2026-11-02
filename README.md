@@ -9,7 +9,7 @@ A macOS menu-bar app to talk with your coding agents by voice. Speech-to-text an
 - **First launch:** a welcome window downloads the voices (with progress), asks for the microphone and lists the agents it found on your Mac.
 - **Talk:** hold <kbd>⌥ Space</kbd>, speak, let go. The agent answers out loud. Talking over it cuts it off.
 - **Just reply:** after the agent answers, Lair listens for a few seconds (a ring empties on the talk button). Talk, and it sends when you stop. Turn it off in Settings › General.
-- **The island:** Lair grows out of the notch when an agent talks or needs you, with its choices and OKs right there, and gets out of the way after. It never steals focus. In silent mode it shows read-along captions.
+- **The island:** Lair grows out of the notch when an agent talks or needs you, with its choices and OKs right there, and gets out of the way after. It never steals focus. While Lair speaks, it shows the sentence being said; in silent mode, the written answer.
 - **Agents in your terminal:** connect Claude Code or omp in Settings › On this Mac. Every session you start yourself can then speak to you and ask you out loud. Any other MCP agent can join too: Lair is a local MCP server with two tools, speak and ask.
 - **Choices:** a question can come with choices, read out and shown as numbered buttons. Click one, press <kbd>⌘ 1</kbd>, or say "the blue one".
 - **They come back by themselves:** when an agent's background work finishes, it tells you as soon as the call is free, then listens for your reply.
@@ -27,7 +27,7 @@ A macOS menu-bar app to talk with your coding agents by voice. Speech-to-text an
 
 ## Agents
 
-Lair talks to agents over the [Agent Client Protocol](https://agentclientprotocol.com) (ACP), one process per call. Pick a preset in Settings, give the command of any other ACP agent, or add one from the [ACP Registry](https://agentclientprotocol.com) (Settings › + › More agents…). Registry agents stay on the version you added until you click **Update**.
+Lair talks to agents over the [Agent Client Protocol](https://agentclientprotocol.com) (ACP), one process per call. Pick a preset in Settings, give the command of any other ACP agent, or add one from the [ACP Registry](https://agentclientprotocol.com/registry) (Settings › + › More agents…). Registry agents stay on the version you added until you click **Update**.
 
 | Preset | Runs | Needs |
 |---|---|---|
@@ -50,7 +50,7 @@ The first launch downloads the speech models (Parakeet, Kokoro) through [FluidAu
 
 Download `Lair-vX.Y.Z.dmg` from [Releases](https://github.com/areguig/lair/releases) and drag Lair to Applications. It's signed with a Developer ID and notarized by Apple, so it opens like any other app.
 
-From 0.2.1 on, Lair updates itself: when a new version is out, an **Update** button shows in the panel. **Reset** and **Uninstall** are in Settings › General; your files go to the Trash.
+From 0.2.1 on, Lair updates itself: when a new version is out, an **Update** button shows in the panel. **Reset** and **Uninstall** are in Settings › General: files go to the Trash, saved secrets are deleted.
 
 ## Build
 
