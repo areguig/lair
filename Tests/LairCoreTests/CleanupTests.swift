@@ -94,7 +94,7 @@ import Testing
         let old = try make("Library/Application Support/FluidAudio/Models/parakeet-tdt-0.6b-v2/d.bin", bytes: 4000)
         let cleanup = try cleanup(withApp: false)
         #expect(await cleanup.plan(.uninstall).items.map(\.label).contains("Speech models"))
-        let reset = try await cleanup.plan(.reset)
+        let reset = await cleanup.plan(.reset)
         #expect(reset.items.isEmpty)
         _ = await cleanup.run(reset)
         #expect(FileManager.default.fileExists(atPath: old.path))
