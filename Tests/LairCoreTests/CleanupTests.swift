@@ -30,7 +30,8 @@ import Testing
             registryCache: home.appending(path: "Library/Application Support/Lair"),
             logs: home.appending(path: "Library/Logs/Lair"),
             speechModels: [home.appending(path: "Library/Application Support/Lair/pocket"),
-                           home.appending(path: "Library/Application Support/FluidAudio/Models/parakeet-tdt-0.6b-v3")],
+                           home.appending(path: "Library/Application Support/FluidAudio/Models/parakeet-tdt-0.6b-v3"),
+                           home.appending(path: "Library/Application Support/FluidAudio/Models/parakeet-tdt-0.6b-v2")],
             app: withApp ? (appFolder ?? home.appending(path: "Applications")).appending(path: "Lair.app") : nil)
         let trashed = trashed
         let services = Cleanup.Services(
@@ -88,6 +89,17 @@ import Testing
         #expect(models?.bytes ?? 0 < 400_000)
     }
 
+    @Test func theOldParakeetModelIsListedForUninstallAndLeftAloneByReset() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let old = try make("Library/Application Support/FluidAudio/Models/parakeet-tdt-0.6b-v2/d.bin", bytes: 4000)
+        let cleanup = try cleanup(withApp: false)
+        #expect(await cleanup.plan(.uninstall).items.map(\.label).contains("Speech models"))
+        let reset = try await cleanup.plan(.reset)
+        #expect(reset.items.isEmpty)
+        _ = await cleanup.run(reset)
+        #expect(FileManager.default.fileExists(atPath: old.path))
+    }
+
     @Test func missingThingsAreLeftOutWithoutComplaint() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
         let cleanup = try cleanup(withApp: false)
@@ -101,7 +113,8 @@ import Testing
         try writeConfig()
         let voices = try make("Library/Application Support/Lair/pocket/hub/a.bin")
         let huggingface = try make(".cache/huggingface/hub/p.bin")
-        let other = try make("Library/Application Support/FluidAudio/Models/parakeet-tdt-0.6b-v2/c.bin")
+        let other = try make("Library/Application Support/FluidAudio/Models/another-tool/c.bin")
+        let old = try make("Library/Application Support/FluidAudio/Models/parakeet-tdt-0.6b-v2/d.bin")
         let mine = try make("Library/Application Support/FluidAudio/Models/parakeet-tdt-0.6b-v3/b.bin")
         let theirs = try make("Library/Logs/Other/x.log")
         let calls = Calls()
@@ -110,7 +123,7 @@ import Testing
         #expect(failures.isEmpty)
         let fm = FileManager.default
         #expect(!fm.fileExists(atPath: home.appending(path: ".config/lair").path))
-        #expect(!fm.fileExists(atPath: voices.path) && !fm.fileExists(atPath: mine.path))
+        #expect(!fm.fileExists(atPath: voices.path) && !fm.fileExists(atPath: mine.path) && !fm.fileExists(atPath: old.path))
         #expect(fm.fileExists(atPath: huggingface.path) && fm.fileExists(atPath: other.path) && fm.fileExists(atPath: theirs.path))
         #expect(calls.all.sorted() == ["disconnect Claude Code", "disconnect omp", "preferences", "secret lair.nova/header:X-Key"])
         #expect(fm.fileExists(atPath: trashed.path))

@@ -42,9 +42,11 @@ public actor VoiceModels {
 
     /// The folders holding the models Lair loads, and no others: FluidAudio's cache is shared with other tools.
     /// Parakeet v3 and Silero VAD sit in FluidAudio's folder in Application Support, the voices in Lair's own.
+    /// Parakeet v2, which v0.4 replaced, is listed too so Uninstall can reclaim its space; nothing else deletes it.
     public static var folders: [URL] {
         [
             AsrModels.defaultCacheDirectory(for: .v3),
+            AsrModels.defaultCacheDirectory(for: .v2),
             MLModelConfigurationUtils.defaultModelsDirectory(for: .vad),
             PocketServer.home,
         ]
