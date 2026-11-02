@@ -1,9 +1,32 @@
 import Foundation
+import LairCore
 
 public enum Earcon: CaseIterable, Sendable {
     case listening, sent, needsYou, done, problem
     /// The mic opened on its own for your reply: quieter than `listening`, since it follows every answer.
     case yourTurn
+
+    /// The Settings switch that turns this sound off.
+    public var group: SoundGroup {
+        switch self {
+        case .listening, .sent, .yourTurn: .listening
+        case .done: .done
+        case .needsYou: .needsYou
+        case .problem: .problems
+        }
+    }
+}
+
+extension SoundGroup {
+    /// The sound played to try the group out.
+    public var preview: Earcon {
+        switch self {
+        case .listening: .listening
+        case .done: .done
+        case .needsYou: .needsYou
+        case .problems: .problem
+        }
+    }
 }
 
 /// Short UI sounds synthesized in code, so there are no audio assets to ship.

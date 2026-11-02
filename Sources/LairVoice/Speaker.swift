@@ -1,4 +1,5 @@
 import AVFoundation
+import LairCore
 
 /// Plays 24 kHz mono replies back to back and meters what is heard.
 @MainActor public final class Speaker {
@@ -8,6 +9,11 @@ import AVFoundation
     private let format = AVAudioFormat(standardFormatWithSampleRate: 24_000, channels: 1)!
     private let pending = DispatchGroup()
     public let meter = LevelMeter()
+
+    /// Which earcons play and how loud; speech is not affected.
+    public var sounds = SoundSettings() {
+        didSet { earconNode.volume = Float(sounds.level) }
+    }
 
     public init() throws {
         engine.attach(node)
@@ -30,8 +36,14 @@ import AVFoundation
         node.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { @Sendable [pending] _ in pending.leave() }
     }
 
-    /// Plays on its own node: never queued with speech, never cut by `stop()`.
+    /// Plays on its own node: never queued with speech, never cut by `stop()`. Skipped while its group is off.
     public func play(_ earcon: Earcon) {
+        guard sounds.isOn(earcon.group) else { return }
+        preview(earcon)
+    }
+
+    /// Plays regardless of the switches, so Settings can let you hear what you're about to turn on.
+    public func preview(_ earcon: Earcon) {
         let samples = Earcons.samples(for: earcon)
         let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count))!
         buffer.frameLength = AVAudioFrameCount(samples.count)
