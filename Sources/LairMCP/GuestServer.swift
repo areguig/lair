@@ -182,19 +182,19 @@ public actor GuestServer {
             }
             switch params.name {
             case "speak":
-                guard !argument("text").isEmpty else { return .init(content: [.text("Nothing to say.")], isError: true) }
+                guard !argument("text").isEmpty else { return reply("Nothing to say.", isError: true) }
                 await host.speak(argument("text"), from: guest)
-                return .init(content: [.text("Said.")], isError: false)
+                return reply("Said.")
             case "ask":
-                guard !argument("question").isEmpty else { return .init(content: [.text("No question.")], isError: true) }
+                guard !argument("question").isEmpty else { return reply("No question.", isError: true) }
                 let choices = (params.arguments?["choices"]?.arrayValue ?? []).compactMap(\.stringValue)
                     .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
                 guard let answer = await host.ask(argument("question"), choices: Array(choices.prefix(6)), from: guest) else {
-                    return .init(content: [.text("The user didn't answer.")], isError: false)
+                    return reply("The user didn't answer.")
                 }
-                return .init(content: [.text(answer)], isError: false)
+                return reply(answer)
             default:
-                return .init(content: [.text("Unknown tool \(params.name).")], isError: true)
+                return reply("Unknown tool \(params.name).", isError: true)
             }
         }
     }
@@ -234,4 +234,9 @@ public actor GuestServer {
         }
         return Response(status: status, headers: fields, body: .init(byteBuffer: ByteBuffer(data: response.bodyData ?? Data())))
     }
+}
+
+/// A tool's answer as plain text, in the SDK's current form.
+private func reply(_ text: String, isError: Bool = false) -> CallTool.Result {
+    .init(content: [.text(text: text, annotations: nil, _meta: nil)], isError: isError)
 }
