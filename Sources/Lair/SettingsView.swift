@@ -714,6 +714,7 @@ private struct GeneralSettings: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            ResetSection(store: store)
             Section {
                 Text(Self.version).font(.caption).foregroundStyle(.secondary)
             }
