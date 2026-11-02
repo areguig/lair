@@ -39,6 +39,12 @@ import os
         }
     }
 
+    /// Stops looking for edits, so a file that was just removed on purpose isn't written back.
+    func stopWatching() {
+        watcher?.invalidate()
+        watcher = nil
+    }
+
     func save(_ new: LairConfig) {
         guard new != config else { return }
         do {
