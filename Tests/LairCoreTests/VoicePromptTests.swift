@@ -32,11 +32,45 @@ import Testing
     }
 
     @Test func theThreeRulesDiffer() {
-        #expect(Set(AgentConfig.Answers.allCases.map(VoicePrompt.rule)).count == 3)
+        #expect(Set(AgentConfig.Answers.allCases.map { VoicePrompt.rule($0) }).count == 3)
     }
 
     @Test func aMidCallChangeCarriesTheRule() {
         #expect(VoicePrompt.answers(.brief) == "From now on in this call: \(VoicePrompt.rule(.brief))")
         #expect(VoicePrompt.answers(.detailed).hasPrefix("From now on in this call: Explain fully"))
+    }
+
+    @Test func englishIsTheDefaultAndNeverChanges() {
+        #expect(VoicePrompt.forCall(name: "Nova", soul: "Dry.", others: ["Echo"], answers: .brief)
+            == VoicePrompt.forCall(name: "Nova", soul: "Dry.", others: ["Echo"], answers: .brief, language: .english))
+        #expect(VoicePrompt.answers(.brief) == VoicePrompt.answers(.brief, language: .english))
+    }
+
+    @Test func frenchRulesAreFrenchAndKeepEveryRule() {
+        let prompt = VoicePrompt.forCall(name: nil, soul: nil, language: .french)
+        #expect(prompt.hasPrefix("Cette conversation est un appel vocal en direct via Lair"))
+        #expect(prompt.contains("- \(VoicePrompt.rule(.normal, .french))\n"))
+        #expect(prompt.contains("<show>…</show>"))
+        #expect(prompt.contains("Pas de markdown"))
+        #expect(prompt.contains("Arrondis les nombres"))
+        #expect(prompt.contains("mal comprise"))
+        #expect(prompt.hasSuffix("(build, commit, pull request…)."))
+        #expect(prompt.contains("Réponds toujours en français, quelle que soit la langue de l'utilisateur"))
+        #expect(!prompt.contains("This conversation"))
+    }
+
+    @Test func frenchAnswerLengthsDifferAndReplaceOnlyTheLengthRule() {
+        #expect(Set(AgentConfig.Answers.allCases.map { VoicePrompt.rule($0, .french) }).count == 3)
+        let normal = VoicePrompt.forCall(name: nil, soul: nil, language: .french)
+        let brief = VoicePrompt.forCall(name: nil, soul: nil, answers: .brief, language: .french)
+        #expect(brief == normal.replacingOccurrences(of: VoicePrompt.rule(.normal, .french), with: VoicePrompt.rule(.brief, .french)))
+        #expect(VoicePrompt.answers(.brief, language: .french).hasPrefix("À partir de maintenant dans cet appel : Sois très bref"))
+    }
+
+    @Test func frenchNameOthersAndSoulAreFrenchToo() {
+        let prompt = VoicePrompt.forCall(name: "Nova", soul: "Sèche et drôle.", others: ["Echo", "Claude"], language: .french)
+        #expect(prompt.contains("l'utilisateur t'appelle Nova."))
+        #expect(prompt.contains("Echo, Claude. Tu ne peux pas les joindre toi-même."))
+        #expect(prompt.hasSuffix("Ta personnalité, écrite par l'utilisateur :\nSèche et drôle."))
     }
 }

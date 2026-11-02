@@ -23,7 +23,7 @@ extension Room {
         // Talking over the agent cuts it off.
         if call.pendingApproval == nil, call.state == .speaking || call.state == .thinking {
             interrupt(call)
-            call.lines.append(.init(role: .info, text: "You cut in."))
+            call.lines.append(.init(role: .info, text: phrase(.youCutIn, in: call)))
         }
         guard call.state == .ready || call.state == .waiting else { return }
         if call.guest, call.question == nil { return show(hint: "\(call.agent.name) listens only when it asks you something.") }
@@ -60,11 +60,11 @@ extension Room {
     private func hearAnswer(in call: Call, from samples: [Float]) async {
         let heard = (try? await voice.transcribe(samples)) ?? ""
         guard call.pendingApproval != nil else { return }
-        if let decision = SpokenAnswer.parse(heard) {
+        if let decision = SpokenAnswer.parse(heard, language: call.agent.spokenLanguage) {
             answer(call, decision: decision)
         } else {
             if silent { show(hint: "Didn't catch that; say yes or no, or use the buttons.") }
-            _ = try? await say("Sorry, say" + (call.pendingApproval?.canAlwaysAllow == true ? " yes, always, or no." : " yes or no."), in: call)
+            _ = try? await say(phrase(.sayYesOrNo(canAlwaysAllow: call.pendingApproval?.canAlwaysAllow == true), in: call), in: call)
             call.state = .waiting
             await speaker?.waitUntilDone()
             if call.pendingApproval != nil { listenForAnswer(in: call) }
@@ -115,7 +115,7 @@ extension Room {
         releaseHold()
         if !call.inCall { summon(call) }
         if let request = call.pendingApproval {
-            guard let decision = SpokenAnswer.parse(text) else {
+            guard let decision = SpokenAnswer.parse(text, language: call.agent.spokenLanguage) else {
                 return show(hint: "Type yes" + (request.canAlwaysAllow ? ", always" : "") + " or no, or use the buttons.")
             }
             return answer(call, decision: decision)
@@ -125,7 +125,7 @@ extension Room {
         if call.state == .speaking || call.state == .thinking { interrupt(call) }
         guard call.state == .ready else { return }
         if pass(text, from: call, speech: 0, start: Self.clock.now) { return }
-        if let command = VoiceCommand.parse(text) {
+        if let command = VoiceCommand.parse(text, language: call.agent.spokenLanguage) {
             call.lines.append(.init(role: .you, text: text))
             call.log(.you(text))
             Task { await run(command, in: call) }

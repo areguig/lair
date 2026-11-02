@@ -32,6 +32,9 @@ struct SpeakableTests {
         #expect(Speakable.name("Claude Code") == "Claude Code")
         #expect(Speakable.name("Nova") == "Nova")
         #expect(Speakable.name("zed2") == "zed2")
+        // French names, accented or not, are handled the same way.
+        #expect(Speakable.name("léa") == "L É A")
+        #expect(Speakable.name("Édith") == "Édith")
     }
 
     @Test func gluedSentencesGetASpace() {

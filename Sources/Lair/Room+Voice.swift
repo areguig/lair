@@ -7,6 +7,11 @@ import Observation
 import os
 
 extension Room {
+    /// A line of Lair's own, in the language the call's agent speaks.
+    func phrase(_ phrase: Phrase, in call: Call) -> String {
+        phrase.text(in: call.agent.spokenLanguage)
+    }
+
     func say(_ sentence: String, in call: Call) async throws -> Bool {
         let text = Speakable.text(sentence)
         guard !silent, !text.isEmpty, let speaker else { return false }
