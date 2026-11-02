@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import LairACP
 import LairCore
@@ -76,6 +77,11 @@ import os
         silent = config.isSilent
         sounds = config.soundSettings
         guestSettings = config.guests
+        // The voice engine is a child process: it doesn't end with the app on its own.
+        let voice = voice
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: nil) { _ in
+            voice.stopSpeech()
+        }
     }
 
     /// Never nobody while anyone's in the room: a stale id falls back to the first call.
@@ -138,7 +144,7 @@ import os
         }
         defer { voiceProgress = nil }
         do {
-            try await voice.load(warmUpVoice: calls.first?.agent.voice ?? "af_heart") { progress in
+            try await voice.load(warmUpVoice: calls.first?.agent.voice ?? Voices.defaultName()) { progress in
                 // A report that lands after loading ended is stale.
                 Task { @MainActor in if self.readiness == .loading { self.voiceProgress = progress } }
             }
