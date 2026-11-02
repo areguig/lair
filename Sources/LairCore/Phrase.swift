@@ -89,7 +89,7 @@ public enum Phrase: Equatable, Sendable {
         case .backWithNews: "De retour avec des nouvelles"
         case .youCutIn: "Tu as coupé la parole."
         case .didntAnswer(let agent): "\(agent) n'a pas répondu."
-        case .switchedModel(let model): "Passé à \(model)."
+        case .switchedModel(let model): "Je passe à \(model)."
         case .thinkingNow(let level): "Réflexion \(Self.frenchLevel(level)) maintenant."
         case .thinkingNextCall(let level): "Réflexion \(Self.frenchLevel(level)) à partir du prochain appel."
         case .answers(let level):

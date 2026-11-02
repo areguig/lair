@@ -45,7 +45,7 @@ import Testing
         #expect(french(.askingAgent("Echo")) == "Je demande à Echo.")
         #expect(french(.passedOn(to: "Echo")) == "Transmis à Echo.")
         #expect(french(.answers(.brief)) == "Réponses brèves pour cet appel.")
-        #expect(french(.switchedModel("opus")) == "Passé à opus.")
+        #expect(french(.switchedModel("opus")) == "Je passe à opus.")
         #expect(french(.says(speaker: "O M P")) == "O M P dit,")
         #expect(french(.asks(speaker: "O M P")) == "O M P demande,")
     }
