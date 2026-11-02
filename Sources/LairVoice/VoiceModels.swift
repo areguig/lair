@@ -3,13 +3,13 @@ import Foundation
 import LairCore
 import os
 
-/// Speech-to-text, voice detection and the text-to-speech engine, loaded once and shared by every call.
+/// Speech-to-text, voice detection and the text-to-speech engines, loaded once and shared by every call.
 public actor VoiceModels {
     public enum Failure: Error {
         case notLoaded
     }
 
-    /// Where loading is: speech recognition downloads with a fraction (0...1), then the voice engine, which reports none.
+    /// Where loading is: speech recognition downloads with a fraction (0...1), then the English voice engine, which reports none.
     public enum Progress: Equatable, Sendable {
         case recognition(Double)
         case voices
@@ -19,7 +19,10 @@ public actor VoiceModels {
 
     private var asr: AsrManager?
     private var vad: VadManager?
-    private nonisolated let pocket = PocketServer(model: "english_18m_2026-10", defaultVoice: Voices.defaultName())
+    /// One engine per language, only created here: each starts when something first speaks in its language.
+    private nonisolated let pockets = Dictionary(uniqueKeysWithValues: LairCore.Language.allCases.map {
+        ($0, PocketServer(model: VoiceModels.model(for: $0), defaultVoice: Voices.defaultName(for: $0)))
+    })
     private nonisolated let client = PocketClient()
 
     /// Where the voice detector is in what it has heard so far.
@@ -38,9 +41,11 @@ public actor VoiceModels {
     public init() {}
 
     /// The folders holding the models Lair loads, and no others: FluidAudio's cache is shared with other tools.
-    /// Parakeet v2 and Silero VAD sit in FluidAudio's folder in Application Support, the voices in Lair's own.
+    /// Parakeet v3 and Silero VAD sit in FluidAudio's folder in Application Support, the voices in Lair's own.
+    /// Parakeet v2, which v0.4 replaced, is listed too so Uninstall can reclaim its space; nothing else deletes it.
     public static var folders: [URL] {
         [
+            AsrModels.defaultCacheDirectory(for: .v3),
             AsrModels.defaultCacheDirectory(for: .v2),
             MLModelConfigurationUtils.defaultModelsDirectory(for: .vad),
             PocketServer.home,
@@ -51,12 +56,12 @@ public actor VoiceModels {
     public func load(warmUpVoice: String, progress: (@Sendable (Progress) -> Void)? = nil) async throws {
         let asr = AsrManager()
         progress?(.recognition(0))
-        let models = try await AsrModels.downloadAndLoad(version: .v2) { progress?(.recognition($0.fractionCompleted)) }
+        let models = try await AsrModels.downloadAndLoad(version: .v3) { progress?(.recognition($0.fractionCompleted)) }
         try await asr.loadModels(models)
         self.asr = asr
         progress?(.voices)
         // The first start downloads the voice model; the first synthesis warms it up, so pay for both now.
-        _ = try await speech(for: "Ready.", voice: warmUpVoice)
+        _ = try await speech(for: "Ready.", voice: warmUpVoice, language: .english)
         // Only listening for answers needs it; without it you press the key as before.
         vad = try? await VadManager()
     }
@@ -85,14 +90,22 @@ public actor VoiceModels {
         return try await asr.transcribe(samples, decoderState: &decoderState).text
     }
 
-    /// Text to 24 kHz mono samples. A voice the catalog doesn't know (an older config's) is said in the default.
-    public func speech(for text: String, voice: String) async throws -> [Float] {
-        let url = try await pocket.ensureRunning()
-        return try await client.speech(for: text, voice: Voices.resolve(voice), at: url)
+    /// The Pocket TTS model that speaks `language`.
+    static func model(for language: LairCore.Language) -> String {
+        switch language {
+        case .english: "english_18m_2026-10"
+        case .french: "french"
+        }
     }
 
-    /// Stops the voice engine; called as the app quits.
+    /// Text to 24 kHz mono samples. A voice the language doesn't have (an older config's) is said in its default.
+    public func speech(for text: String, voice: String, language: LairCore.Language) async throws -> [Float] {
+        let url = try await pockets[language]!.ensureRunning()
+        return try await client.speech(for: text, voice: Voices.resolve(voice, language: language), at: url)
+    }
+
+    /// Stops the voice engines; called as the app quits.
     public nonisolated func stopSpeech() {
-        pocket.stop()
+        pockets.values.forEach { $0.stop() }
     }
 }

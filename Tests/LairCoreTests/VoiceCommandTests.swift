@@ -47,7 +47,7 @@ import Testing
         ("Talk to me again.", .silent(false)),
     ])
     func positives(_ input: String, _ expected: VoiceCommand) {
-        #expect(VoiceCommand.parse(input) == expected)
+        #expect(VoiceCommand.parse(input, language: .english) == expected)
     }
 
     @Test(arguments: [
@@ -73,6 +73,59 @@ import Testing
         "",
     ])
     func negatives(_ input: String) {
-        #expect(VoiceCommand.parse(input) == nil)
+        #expect(VoiceCommand.parse(input, language: .english) == nil)
+    }
+
+    @Test(arguments: [
+        ("Passe à Opus.", VoiceCommand.model("opus")),
+        ("Passe sur sonnet s'il te plaît", .model("sonnet")),
+        ("Bascule sur claude opus 5", .model("claude-opus-5")),
+        ("Change de modèle pour haiku", .model("haiku")),
+        ("Réfléchis plus.", .thinkMore),
+        ("Reflechis davantage", .thinkMore),
+        ("Réfléchis moins", .thinkLess),
+        ("Mode rapide", .fast),
+        ("Sois rapide, merci", .fast),
+        ("Prends ton temps.", .deep),
+        ("Sois bref", .answers(.brief)),
+        ("Ok, sois bref", .answers(.brief)),
+        ("Réponses courtes", .answers(.brief)),
+        ("Plus de détails", .answers(.detailed)),
+        ("Donne plus de détails s'il te plaît", .answers(.detailed)),
+        ("Réponses normales", .answers(.normal)),
+        ("Mode silencieux", .silent(true)),
+        ("Tais-toi", .silent(true)),
+        ("Reparle-moi", .silent(false)),
+        ("Mode vocal.", .silent(false)),
+    ] as [(String, VoiceCommand?)])
+    func frenchCommands(_ input: String, _ expected: VoiceCommand?) {
+        #expect(VoiceCommand.parse(input, language: .french) == expected)
+    }
+
+    @Test(arguments: [
+        "Sois bref sur la migration",
+        "Passe à autre chose",
+        "Passe à la suite",
+        "Passe à la question suivante",
+        "Passe à ça",
+        "Pourquoi passer à opus",
+        "Est-ce que tu réfléchis plus quand c'est dur ?",
+        "Qu'est-ce que le mode rapide ?",
+        "Réfléchis plus à la migration de la base",
+        "Mode silencieux pour les tests du logger",
+        "Reparle-moi demain de la migration",
+        "Silence",
+        "Parle-moi",
+        "",
+    ])
+    func frenchNegatives(_ input: String) {
+        #expect(VoiceCommand.parse(input, language: .french) == nil)
+    }
+
+    @Test func eachLanguageHearsOnlyItself() {
+        #expect(VoiceCommand.parse("Sois bref", language: .english) == nil)
+        #expect(VoiceCommand.parse("Be brief", language: .french) == nil)
+        #expect(VoiceCommand.parse("Switch to opus", language: .french) == nil)
+        #expect(VoiceCommand.parse("Set thinking to high", language: .french) == nil)
     }
 }

@@ -30,4 +30,28 @@ struct VoicesTests {
         #expect(Voices.label(for: "alba") == "Alba")
         #expect(Voices.label(for: "bf_emma") == "Fantine")
     }
+
+    @Test func frenchHasEstelleFirstAndOnlyLicenceSafeVoices() {
+        let names = Voices.names(for: .french)
+        #expect(names.first == "estelle" && Voices.defaultName(for: .french) == "estelle")
+        #expect(Set(names).count == names.count && Voices.french.allSatisfy { $0.language == .french })
+        #expect(!names.contains("cosette") && !names.contains("jean"))
+        // Every French voice is one Kyutai's catalog knows.
+        #expect(Set(names.filter { $0 != "estelle" }).isSubset(of: Set(Voices.names(for: .english))))
+    }
+
+    @Test func aVoiceOfAnotherLanguageFallsBackToThisLanguagesDefault() {
+        #expect(Voices.resolve("estelle", language: .french) == "estelle")
+        #expect(Voices.resolve("charles", language: .french) == "charles")
+        #expect(Voices.resolve("george", language: .french) == "estelle")
+        #expect(Voices.resolve("estelle", language: .english) == "fantine")
+        #expect(Voices.label(for: "estelle", language: .french) == "Estelle")
+    }
+
+    @Test func eachLanguageIntroducesAVoiceInItsOwnWords() {
+        #expect(Language.english.introduction(of: "Atlas") == "Hi, I'm Atlas.")
+        #expect(Language.french.introduction(of: "Atlas") == "Bonjour, je suis Atlas.")
+        #expect(Language.french.label == "Français")
+        #expect(Language(rawValue: "fr") == .french && Language(rawValue: "de") == nil)
+    }
 }

@@ -141,6 +141,8 @@ public struct AgentConfig: Codable, Equatable, Identifiable, Sendable {
     public var headers: [String]?
     /// How long spoken answers are; unset means normal.
     public var answers: Answers?
+    /// What the agent speaks, its voice and Lair's words to it; unset means English.
+    public var language: Language?
 
     /// How much an agent says out loud, from a line to a few sentences.
     public enum Answers: String, Codable, CaseIterable, Sendable {
@@ -188,10 +190,19 @@ public struct AgentConfig: Codable, Equatable, Identifiable, Sendable {
         disabled = try container.decodeIfPresent(Bool.self, forKey: .disabled)
         headers = try container.decodeIfPresent([String].self, forKey: .headers)
         answers = try container.decodeIfPresent(Answers.self, forKey: .answers)
+        language = try container.decodeIfPresent(Language.self, forKey: .language)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, kind, voice, color, model, directory, thinking, preset, command, options, env, registry, url, disabled, headers, answers
+        case id, name, kind, voice, color, model, directory, thinking, preset, command, options, env, registry, url, disabled, headers, answers, language
+    }
+
+    public var spokenLanguage: Language { language ?? .english }
+
+    /// Switches language, keeping the voice when that language has it and taking its default when not; English stays unset.
+    public mutating func speak(_ new: Language) {
+        language = new == .english ? nil : new
+        voice = Voices.resolve(voice, language: new)
     }
 
     /// What starts an ACP agent: its own command, else its preset's.

@@ -32,7 +32,7 @@ extension Room {
             if !target.inCall { summon(target) }
             guard target.inCall else { return }
             guard target.state == .ready else {
-                target.lines.append(.init(role: .info, text: "\(name) is busy; say it again when it's done."))
+                target.lines.append(.init(role: .info, text: phrase(.busy(agent: name), in: target)))
                 return
             }
             target.state = .thinking
@@ -40,7 +40,7 @@ extension Room {
             return
         }
         // "Switch to Opus", "think harder": for Lair, not for the agent.
-        if let command = VoiceCommand.parse(prompt) {
+        if let command = VoiceCommand.parse(prompt, language: call.agent.spokenLanguage) {
             call.lines.append(.init(role: .you, text: prompt))
             await run(command, in: call)
             if call.inCall { call.state = .ready }
@@ -59,20 +59,21 @@ extension Room {
         if heard.state == .thinking { heard.state = .ready }
         let asked = source.lines.last { $0.role == .you }?.text
         let answered = source.lines.last { $0.role == .agent && !$0.text.isEmpty }?.text
-        source.lines.append(.init(role: .info, text: "Passed on to \(target.agent.name)."))
-        source.log(.note("Passed on to \(target.agent.name): \(relay.words)"))
+        let passedOn = phrase(.passedOn(to: target.agent.name), in: source)
+        source.lines.append(.init(role: .info, text: passedOn))
+        source.log(.note("\(passedOn) \(relay.words)"))
         focus(target)
         if !target.inCall { summon(target) }
         guard target.inCall else { return true }
         guard target.state == .ready else {
-            target.lines.append(.init(role: .info, text: "\(target.agent.name) is busy; say it again when it's done."))
+            target.lines.append(.init(role: .info, text: phrase(.busy(agent: target.agent.name), in: target)))
             return true
         }
-        let from = answered == nil ? "From \(source.agent.name)" : "From \(source.agent.name), with its last answer"
+        let from = phrase(.relayedFrom(agent: source.agent.name, withAnswer: answered != nil), in: target)
         target.lines.append(.init(role: .info, text: from))
         target.log(.note(from))
         // Heard in the source's voice, so the hand-off isn't a silence.
-        if speech > 0 { announce("Asking \(target.agent.name).", for: source) }
+        if speech > 0 { announce(phrase(.askingAgent(target.agent.name), in: source), for: source) }
         target.state = .thinking
         let prompt = VoicePrompt.relay(relay.words, from: source.agent.name, asked: asked, answered: answered)
         let before = target.lines.count
@@ -102,7 +103,7 @@ extension Room {
         let turn = call.ownTurnsWaiting.removeFirst()
         call.state = .thinking
         call.turn = Task {
-            await play({ turn }, in: call, speech: 0, start: Self.clock.now, opening: .init(role: .info, text: "Back with news"))
+            await play({ turn }, in: call, speech: 0, start: Self.clock.now, opening: .init(role: .info, text: phrase(.backWithNews, in: call)))
         }
     }
 
@@ -197,7 +198,7 @@ extension Room {
             guard !Task.isCancelled, call.turnID == turnID else { return }
             try await deliver(stream.finish(), to: answer)
             if !answered, opening == nil {
-                report(in: call, .init(role: .problem, text: "\(call.agent.name) didn't answer."))
+                report(in: call, .init(role: .problem, text: phrase(.didntAnswer(agent: call.agent.name), in: call)))
             }
             if call.id == focusedID {
                 await speaker.waitUntilDone()
@@ -206,7 +207,7 @@ extension Room {
             } else if !Task.isCancelled {
                 call.unread = true
                 speaker.play(.done)
-                announce("\(call.agent.name) is done.", for: call)
+                announce(phrase(.done(agent: call.agent.name), in: call), for: call)
             }
         } catch {
             guard !Task.isCancelled else { return }
@@ -241,10 +242,11 @@ extension Room {
         if call.id != focusedID {
             call.unread = true
             call.state = .waiting
-            announce("\(call.agent.name) needs your OK.", for: call)
+            announce(phrase(.needsOKElsewhere(agent: call.agent.name), in: call), for: call)
             return
         }
-        _ = try await say("\(call.agent.name) needs your OK to \(request.spoken.lowercasedFirst). Allow it?" + (request.canAlwaysAllow ? " Say yes, always, or no." : " Say yes or no."), in: call)
+        _ = try await say(phrase(.needsOK(agent: call.agent.name, action: request.spoken.lowercasedFirst,
+                                canAlwaysAllow: request.canAlwaysAllow), in: call), in: call)
         if call.pendingApproval?.id == request.id { call.state = .waiting }
         await speaker?.waitUntilDone()
         if call.pendingApproval?.id == request.id { listenForAnswer(in: call) }
@@ -256,14 +258,10 @@ extension Room {
         call.pendingApproval = nil
         notifier.remove(request.id)
         let decision = decision == .allowAlways && !request.canAlwaysAllow ? .allowOnce : decision
-        let verdict = switch decision {
-        case .allowOnce: "Allowed once"
-        case .allowAlways: "Always allowed"
-        case .deny: "Denied"
-        }
-        call.lines.append(.init(role: .info, text: "\(verdict): \(request.summary)"))
-        call.log(.note("\(verdict): \(request.summary)"))
-        Self.log.notice("\(call.id, privacy: .public): approval answered, \(verdict, privacy: .public)")
+        let verdict = phrase(.approved(decision, action: request.summary), in: call)
+        call.lines.append(.init(role: .info, text: verdict))
+        call.log(.note(verdict))
+        Self.log.notice("\(call.id, privacy: .public): approval answered, \(String(describing: decision), privacy: .public)")
         do {
             try call.session?.answer(request, decision: decision)
             if call.state == .waiting { call.state = .thinking }
@@ -290,7 +288,7 @@ extension Room {
             switch command {
             case .model(let model):
                 try session.setModel(model)
-                confirmation = "Switched to \(model)."
+                confirmation = phrase(.switchedModel(model), in: call)
             case .thinking(let level):
                 confirmation = try setThinking(level, in: call, session: session)
             case .thinkMore, .thinkLess:
@@ -302,14 +300,14 @@ extension Room {
                 confirmation = try setThinking(command == .fast ? "low" : "high", in: call, session: session)
             case .silent(let on):
                 setSilent(on)
-                confirmation = on ? "Silent mode: I'll write instead of speaking." : "Speaking again."
+                confirmation = phrase(on ? .silentOn : .speakingAgain, in: call)
             case .answers(let level):
                 // Only this call: the line goes out with the next turn, the config stays as it is.
-                call.context.append(VoicePrompt.answers(level))
-                confirmation = "\(level.rawValue.capitalized) answers for this call."
+                call.context.append(VoicePrompt.answers(level, language: call.agent.spokenLanguage))
+                confirmation = phrase(.answers(level), in: call)
             }
         } catch is ChangeLater {
-            confirmation = local ? "That can't change during a call." : "\(call.agent.name) chooses that itself."
+            confirmation = phrase(local ? .cantChangeDuringCall : .choosesItself(agent: call.agent.name), in: call)
         } catch {
             report(in: call, .init(role: .problem, text: error.localizedDescription))
             return
@@ -326,10 +324,10 @@ extension Room {
         do {
             try session.setThinking(level)
             call.thinking = level
-            return "Thinking \(level) now."
+            return phrase(.thinkingNow(level), in: call)
         } catch is ChangeLater where !session.thinkingLevels.isEmpty {
             call.thinkingNextCall = level
-            return "I'll think \(level) from the next call."
+            return phrase(.thinkingNextCall(level), in: call)
         }
     }
 }

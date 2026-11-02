@@ -255,7 +255,7 @@ import os
     private func callPrompt(for agent: AgentConfig) -> String {
         VoicePrompt.forCall(name: agent.name, soul: Souls.standard.soul(for: agent.id),
                             others: calls.filter { !$0.guest }.map(\.agent.name).filter { $0 != agent.name },
-                            answers: agent.answers ?? .normal)
+                            answers: agent.answers ?? .normal, language: agent.spokenLanguage)
     }
 
     func hangUp(_ call: Call) {

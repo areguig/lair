@@ -1,11 +1,7 @@
 import Foundation
 
-/// The voices an agent can have: Kyutai's Pocket TTS voices whose licence allows shipping them (CC BY 4.0 or CC0).
+/// The voices an agent can have, per language: Kyutai's Pocket TTS voices whose licence allows shipping them (CC BY 4.0 or CC0).
 public enum Voices {
-    public enum Language: String, Sendable {
-        case english = "en"
-    }
-
     public struct Voice: Equatable, Sendable {
         /// What the Pocket server knows it by, and what the config stores.
         public let name: String
@@ -21,9 +17,13 @@ public enum Voices {
         "jane", "javert", "marius", "mary", "michael", "paul", "peter_yearsley", "stuart_bell", "vera",
     ].map { Voice(name: $0, language: .english) }
 
+    /// Kyutai's French model has every one of these voices; those left out sounded wrong or were transcribed wrongly.
+    public static let french: [Voice] = ["estelle", "eve", "charles"].map { Voice(name: $0, language: .french) }
+
     public static func voices(for language: Language) -> [Voice] {
         switch language {
         case .english: english
+        case .french: french
         }
     }
 
@@ -34,6 +34,7 @@ public enum Voices {
     public static func defaultName(for language: Language = .english) -> String {
         switch language {
         case .english: "fantine"
+        case .french: "estelle"
         }
     }
 
@@ -44,7 +45,7 @@ public enum Voices {
     }
 
     /// How a configured name reads in Settings.
-    public static func label(for configured: String) -> String {
-        Voice(name: resolve(configured), language: .english).label
+    public static func label(for configured: String, language: Language = .english) -> String {
+        Voice(name: resolve(configured, language: language), language: language).label
     }
 }

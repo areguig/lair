@@ -8,10 +8,10 @@ import os
 
 extension Room {
     /// "omp says, …" when the voice changes or hasn't been heard for a while; just the words otherwise.
-    private func introduce(_ text: String, by call: Call, verb: String) -> String {
+    private func introduce(_ text: String, by call: Call, _ verb: (String) -> Phrase) -> String {
         defer { lastVoice = (call.id, .now) }
         if let lastVoice, lastVoice.id == call.id, Date.now.timeIntervalSince(lastVoice.at) < 90 { return text }
-        return "\(Speakable.name(call.agent.name)) \(verb), \(text)"
+        return phrase(verb(Speakable.name(call.agent.name)), in: call) + " " + text
     }
 
     /// The session's call, joining the room on its first word: as your agent with its tool and folder when that
@@ -39,11 +39,12 @@ extension Room {
             return call
         }
         let used = Set(calls.map(\.agent.voice)), colors = Set(calls.map(\.agent.color))
-        let agent = AgentConfig(id: "guest-" + guest.id, name: Visitors.name(match?.name ?? guest.name, taken: Set(calls.map(\.agent.name))),
+        var agent = AgentConfig(id: "guest-" + guest.id, name: Visitors.name(match?.name ?? guest.name, taken: Set(calls.map(\.agent.name))),
                                 kind: .guest,
                                 voice: match?.voice ?? Voices.names().first { !used.contains($0) } ?? Voices.defaultName(),
                                 color: match?.color ?? AgentConfig.palette.first { !colors.contains($0) }
                                     ?? AgentConfig.palette[calls.count % AgentConfig.palette.count])
+        agent.language = match?.language
         let call = Call(agent: agent)
         calls.append(call)
         return call
@@ -85,7 +86,7 @@ extension Room {
             return announce(text, for: call)
         }
         var splitter = SentenceSplitter()
-        for sentence in splitter.feed(introduce(text, by: call, verb: "says")) + [splitter.flush()].compactMap(\.self) {
+        for sentence in splitter.feed(introduce(text, by: call, Phrase.says)) + [splitter.flush()].compactMap(\.self) {
             _ = try? await say(sentence, in: call)
         }
         await speaker.waitUntilDone()
@@ -116,8 +117,8 @@ extension Room {
                 notifier.postQuestion(question, choices: choices, id: call.id, from: call.agent.name)
                 speaker?.play(.needsYou)
                 Task {
-                    let spoken = [question, Choices.spoken(choices, after: question)].compactMap { $0 }.joined(separator: " ")
-                    _ = try? await say(introduce(spoken, by: call, verb: "asks"), in: call)
+                    let spoken = [question, Choices.spoken(choices, after: question, language: call.agent.spokenLanguage)].compactMap { $0 }.joined(separator: " ")
+                    _ = try? await say(introduce(spoken, by: call, Phrase.asks), in: call)
                     await speaker?.waitUntilDone()
                     if call.question != nil {
                         call.state = .waiting
@@ -172,14 +173,14 @@ extension Room {
         let heard = (try? await voice.transcribe(samples)) ?? ""
         guard call.question != nil else { return }
         if heard.isEmpty { return call.state = .waiting }
-        resolveQuestion(of: call, with: Choices.pick(heard, from: call.questionChoices) ?? heard)
+        resolveQuestion(of: call, with: Choices.pick(heard, from: call.questionChoices, language: call.agent.spokenLanguage) ?? heard)
     }
 
     /// Typed or clicked in the question card, or in the notification; "2" picks the second choice.
     func answerQuestion(of call: Call, with typed: String) {
         let typed = typed.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !typed.isEmpty else { return }
-        let text = Choices.pick(typed, from: call.questionChoices) ?? typed
+        let text = Choices.pick(typed, from: call.questionChoices, language: call.agent.spokenLanguage) ?? typed
         if call.state == .listening { _ = try? microphone.stopCapture() }
         if answering?.callID == call.id { answering = nil }
         resolveQuestion(of: call, with: text)
