@@ -19,8 +19,8 @@ import os
         let role: Role
         var text: String
         var action: Action?
-        /// Links, paths and commands the agent showed instead of saying (`<show>…</show>`).
-        var shown: [String] = []
+        /// Links, paths and commands the agent showed instead of saying (`<show>…</show>`), where they sit in the text.
+        var shown: [Shown] = []
     }
 
     var agent: AgentConfig

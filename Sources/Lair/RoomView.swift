@@ -11,6 +11,10 @@ struct RoomView: View {
     var configProblem: String?
     var updates: Updates?
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.renderTime) private var renderTime
+    /// With a call the panel is this tall and the transcript scrolls, so a long exchange never grows it off the screen.
+    private static let height: CGFloat = 580
+
     var body: some View {
         let call = room.focused
         let tint = call.map { Color(hex: $0.agent.color) } ?? Color(hex: "#8A8F98")
@@ -21,18 +25,18 @@ struct RoomView: View {
                     .padding(.top, 10)
             }
             if let call {
-                HStack(alignment: .top, spacing: 14) {
+                HStack(alignment: .top, spacing: 12) {
                     rail
                     main(call, tint: tint)
                 }
-                .padding(.top, 14)
+                .padding(.top, 12)
             } else {
                 emptyState
             }
-            if call.map(statusMentionsTalkKey) != true { footer.padding(.top, 14) }
+            if call.map(statusMentionsTalkKey) != true { footer.padding(.top, 10) }
         }
-        .padding(18)
-        .frame(width: call == nil ? 340 : 424)
+        .padding(16)
+        .frame(width: call == nil ? 340 : 424, height: call == nil ? nil : Self.height)
         .motion(.smooth(duration: 0.3), value: call?.pendingApproval)
         .motion(.smooth(duration: 0.3), value: call?.questionText)
         .motion(.smooth(duration: 0.3), value: room.focusedID)
@@ -46,7 +50,7 @@ struct RoomView: View {
                 .font(.system(.headline, design: .rounded, weight: .semibold))
             if let presence {
                 Text(presence)
-                    .font(.system(.caption, design: .rounded, weight: .medium))
+                    .font(.system(.subheadline, design: .rounded))
                     .foregroundStyle(.secondary)
                     .contentTransition(.numericText())
             }
@@ -101,21 +105,21 @@ struct RoomView: View {
 
     // MARK: The rail
 
-    /// Everyone in the room: the agents you call, then the ones that came to you from this Mac.
+    /// Everyone in the room: the agents you call, then the ones that came to you from this Mac. It scrolls by itself, so
+    /// it never sets the panel's height.
     private var rail: some View {
         let agents = room.calls.filter { !$0.stranger }, guests = room.calls.filter(\.stranger)
-        return VStack(spacing: 6) {
+        let content = VStack(spacing: 4) {
             ForEach(agents) { avatar($0) }
             if !guests.isEmpty {
-                VStack(spacing: 4) {
-                    Capsule().fill(.separator).frame(width: 28, height: 1)
+                VStack(spacing: 3) {
+                    Divider().frame(width: 36)
                     Text("This Mac")
-                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                        .font(.system(.caption2, design: .rounded, weight: .semibold))
                         .textCase(.uppercase)
-                        .kerning(0.6)
                         .foregroundStyle(.secondary)
                 }
-                .padding(.vertical, 4)
+                .padding(.vertical, 6)
                 .help("Sessions on this Mac that aren't one of your agents")
                 ForEach(guests) { avatar($0) }
             }
@@ -123,19 +127,25 @@ struct RoomView: View {
                 Image(systemName: "plus")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
-                    .frame(width: 34, height: 34)
+                    .frame(width: 30, height: 30)
                     .overlay(Circle().strokeBorder(.secondary.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [3, 3])))
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .help("Add an agent, or connect the ones you run on this Mac")
             .accessibilityLabel("Add an agent")
-            .padding(.top, 4)
+            .padding(.vertical, 6)
         }
-        .padding(.vertical, 10)
-        .frame(width: 68)
-        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .outlined(RoundedRectangle(cornerRadius: 20, style: .continuous), opacity: 0.08)
+        // Scroll views don't render offscreen: snapshots get the top of the list, clipped.
+        return Group {
+            if renderTime == nil {
+                ScrollView(showsIndicators: false) { content }
+            } else {
+                Color.clear.overlay(alignment: .top) { content }.clipped()
+            }
+        }
+        .frame(width: 62)
+        .frame(maxHeight: .infinity)
     }
 
     private func avatar(_ call: Call) -> some View {
@@ -149,62 +159,99 @@ struct RoomView: View {
             let waiting = room.calls.filter { $0.id != call.id && $0.awaitsYou }
             if let other = waiting.first {
                 ElsewhereBar(call: other, more: waiting.count - 1) { room.focus(other) }
-                    .padding(.bottom, 12)
+                    .padding(.bottom, 10)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
-            stage(call, tint: tint)
-            Transcript(lines: call.lines, live: call.inCall, tips: tips(for: call), perform: perform)
-                .padding(.top, 12)
+            if call.lines.isEmpty { stage(call, tint: tint) } else { topBar(call, tint: tint) }
+            Transcript(lines: call.lines, tint: tint, tips: tips(for: call), perform: perform)
+                .id(call.id)
+                .padding(.top, call.lines.isEmpty ? 0 : 4)
             if let request = call.pendingApproval {
                 ApprovalCard(agent: call.agent.name, request: request, tint: tint,
                              answer: { room.answer(call, decision: $0) })
-                    .padding(.top, 10)
+                    .padding(.top, 8)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             } else if let question = call.questionText {
                 QuestionCard(agent: call.agent.name, question: question, choices: call.questionChoices, since: call.questionSince,
                              deadline: call.questionDeadline, tint: tint,
                              answer: { room.answerQuestion(of: call, with: $0) }, skip: { room.skipQuestion(of: call) })
-                    .padding(.top, 10)
+                    .padding(.top, 8)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            controls(call).padding(.top, 14)
+            controls(call).padding(.top, 10)
         }
         .frame(maxWidth: .infinity)
         .motion(.smooth(duration: 0.3), value: room.calls.contains { $0.id != call.id && $0.awaitsYou })
     }
 
+    /// The call in one row once there are words: orb, name, model, and where it is, so the transcript gets the height.
+    private func topBar(_ call: Call, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                orb(call, tint: tint).frame(width: 30, height: 30)
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 8) {
+                        Text(call.agent.name)
+                            .font(.system(.headline, design: .rounded, weight: .semibold))
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                        trailing(call)
+                    }
+                    if call.guest { GuestBadge(folder: call.folder) }
+                    if readinessProblem == nil { caption(call, style: .caption) }
+                }
+            }
+            problem
+            Divider()
+        }
+    }
+
+    /// The model menu, or what a guest or Hermes can say about itself.
+    @ViewBuilder private func trailing(_ call: Call) -> some View {
+        if call.guest {
+            if room.canAdopt(call) { adoptButton(call) }
+        } else if call.inCall && call.agent.kind != .hermes {
+            ModelSwitcher(call: call, room: room)
+        } else if let details = call.details {
+            Text(details)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+    }
+
+    private func adoptButton(_ call: Call) -> some View {
+        Button { room.adopt(call) } label: {
+            Label("Make it an agent", systemImage: "person.crop.circle.badge.plus")
+        }
+        .buttonStyle(PillButtonStyle())
+        .help("Save this tool and folder as an agent: give it a voice, a soul and a purpose in Settings")
+    }
+
+    /// The agent's orb; a tap starts a call, while hanging up stays on the red button so a stray click can't end one.
+    private func orb(_ call: Call, tint: Color) -> some View {
+        Orb(color: tint, state: call.state, meter: room.meter(for: call))
+            .contentShape(Circle())
+            .onTapGesture { if !call.inCall, !call.guest { room.summon(call) } }
+            .accessibilityElement()
+            .accessibilityLabel("\(call.agent.name), \(call.state.label)")
+            .accessibilityAddTraits(call.inCall || call.guest ? [] : .isButton)
+            .accessibilityAction { if !call.inCall, !call.guest { room.summon(call) } }
+    }
+
+    /// The big orb and name, for a call with no words yet.
     private func stage(_ call: Call, tint: Color) -> some View {
-        // Once there are words, the orb and name shrink to leave the room to the transcript.
-        let compact = !call.lines.isEmpty
-        return VStack(spacing: compact ? 6 : 12) {
-            Orb(color: tint, state: call.state, meter: room.meter(for: call))
-                .frame(width: compact ? 56 : 96, height: compact ? 56 : 96)
-                .frame(height: compact ? 64 : 124)
-                .contentShape(Circle())
-                // Starts a call; hanging up stays on the red button, so a stray click can't end one.
-                .onTapGesture { if !call.inCall, !call.guest { room.summon(call) } }
-                .accessibilityElement()
-                .accessibilityLabel("\(call.agent.name), \(call.state.label)")
-                .accessibilityAddTraits(call.inCall || call.guest ? [] : .isButton)
-                .accessibilityAction { if !call.inCall, !call.guest { room.summon(call) } }
+        VStack(spacing: 12) {
+            orb(call, tint: tint)
+                .frame(width: 96, height: 96)
+                .frame(height: 124)
             VStack(spacing: 4) {
                 Text(call.agent.name)
                     .font(.system(.title3, design: .rounded, weight: .semibold))
                     .lineLimit(1)
                 if call.guest {
                     GuestBadge(folder: call.folder)
-                    if room.canAdopt(call) {
-                        Button { room.adopt(call) } label: {
-                            Label("Make it an agent", systemImage: "person.crop.circle.badge.plus")
-                                .font(.system(.caption, design: .rounded, weight: .semibold))
-                                .foregroundStyle(.primary)
-                                .padding(.horizontal, 10).padding(.vertical, 4)
-                                .background(Color.primary.opacity(0.1), in: Capsule())
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.top, 2)
-                        .help("Save this tool and folder as an agent: give it a voice, a soul and a purpose in Settings")
-                    }
+                    if room.canAdopt(call) { adoptButton(call).padding(.top, 2) }
                 } else if call.inCall && call.agent.kind != .hermes {
                     ModelSwitcher(call: call, room: room)
                 } else if let details = call.details {
@@ -214,50 +261,59 @@ struct RoomView: View {
                         .lineLimit(1)
                         .transition(.opacity)
                 }
-                status(for: call)
+                if readinessProblem == nil { caption(call, style: .subheadline).multilineTextAlignment(.center) }
+                problem
             }
         }
-        .motion(.smooth(duration: 0.3), value: compact)
     }
 
-    /// The caption under the name, or what's in the way and how to fix it.
-    @ViewBuilder private func status(for call: Call) -> some View {
+    /// What's in the way of talking, and how to fix it; nothing while the microphone and voices are fine.
+    private var readinessProblem: String? {
         switch room.readiness {
-        case .microphoneDenied:
-            Problem(text: "Lair needs your microphone to hear you.") {
-                Button("Open Privacy Settings") {
-                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
+        case .microphoneDenied: "Lair needs your microphone to hear you."
+        case .failed(let message): message
+        case .loading, .ready: nil
+        }
+    }
+
+    @ViewBuilder private var problem: some View {
+        if let text = readinessProblem {
+            Problem(text: text) {
+                if room.readiness == .microphoneDenied {
+                    Button("Open Privacy Settings") {
+                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
+                    }
                 }
                 Button("Try again") { Task { await room.prepare() } }
             }
-        case .failed(let message):
-            Problem(text: message) {
-                Button("Try again") { Task { await room.prepare() } }
-            }
-        case .loading, .ready:
-            let text = room.hint ?? caption(for: call)
-            Text(text)
-                .font(.system(.subheadline, design: .rounded))
-                .foregroundStyle(room.hint == nil ? .secondary : .primary)
-                .multilineTextAlignment(.center)
-                .contentTransition(.opacity)
-                .motion(.easeInOut(duration: 0.2), value: text)
+            .frame(maxWidth: .infinity)
         }
+    }
+
+    /// Where the call is and how to talk to it.
+    private func caption(_ call: Call, style: Font.TextStyle) -> some View {
+        let text = room.hint ?? caption(for: call)
+        return Text(text)
+            .font(.system(style, design: .rounded))
+            .foregroundStyle(room.hint == nil ? .secondary : .primary)
+            .lineLimit(2)
+            .contentTransition(.opacity)
+            .motion(.easeInOut(duration: 0.2), value: text)
     }
 
     /// The talk button in the middle; on its left the call button, or Dismiss for a guest; Mission Control on its right.
     private func controls(_ call: Call) -> some View {
-        HStack(spacing: 26) {
+        HStack(spacing: 24) {
             if call.guest {
                 // A guest isn't called or hung up: it comes and goes on its own, and can be sent away.
-                RoundButton(symbol: "xmark", tint: nil, size: 42) { room.toggle(call) }
+                RoundButton(symbol: "xmark", tint: nil, size: 38) { room.toggle(call) }
                     .help("Dismiss \(call.agent.name); it comes back when it next talks to you")
                     .accessibilityLabel("Dismiss \(call.agent.name)")
                     .accessibilityValue(call.state.label)
             } else {
                 RoundButton(symbol: call.inCall ? "phone.down.fill" : "phone.fill",
                             tint: call.inCall ? LairColors.hangUp : LairColors.call,
-                            size: 42) { room.toggle(call) }
+                            size: 38) { room.toggle(call) }
                     .disabled(room.readiness != .ready)
                     .help(call.inCall ? "Hang up" : "Call \(call.agent.name)")
                     .accessibilityLabel(call.inCall ? "Hang up \(call.agent.name)" : "Call \(call.agent.name)")
@@ -265,12 +321,12 @@ struct RoomView: View {
             }
             let deaf = call.guest && call.questionText == nil
             HoldToTalk(active: call.state == .listening, tint: Color(hex: call.agent.color),
-                       answering: room.answering?.callID == call.id ? room.answering : nil,
+                       answering: room.answering?.callID == call.id ? room.answering : nil, size: 56,
                        onPress: room.pressTalk, onRelease: room.releaseTalk)
                 .disabled(room.readiness != .ready || deaf)
                 .opacity(deaf ? 0.35 : 1)
                 .help(deaf ? "\(call.agent.name) listens when it asks you something" : "Hold to talk")
-            RoundButton(symbol: "rectangle.split.3x1", tint: nil, size: 42) {
+            RoundButton(symbol: "rectangle.split.3x1", tint: nil, size: 38) {
                 MissionControl.toggle(room: room)
             }
             .help("Mission Control\(missionControlKey): every agent's whole stream")
@@ -309,14 +365,14 @@ struct RoomView: View {
                     Text("Add an agent…")
                         .font(.system(.callout, design: .rounded, weight: .semibold))
                         .foregroundStyle(Color.inverse)
-                        .frame(maxWidth: 220).padding(.vertical, 8)
+                        .frame(maxWidth: 260).padding(.vertical, 8)
                         .background(.primary, in: Capsule())
                 }
                 Button { openSettings(.mac) } label: {
                     Label("Connect agents on this Mac…", systemImage: "laptopcomputer")
                         .font(.system(.callout, design: .rounded, weight: .semibold))
                         .foregroundStyle(.primary)
-                        .frame(maxWidth: 220).padding(.vertical, 8)
+                        .frame(maxWidth: 260).padding(.vertical, 8)
                         .background(Color.primary.opacity(0.12), in: Capsule())
                         .outlined(Capsule(), opacity: 0)
                 }

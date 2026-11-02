@@ -7,6 +7,8 @@ struct Orb: View {
     let color: Color
     let state: Call.State
     var meter: LevelMeter?
+    /// How much color an orb keeps while its agent isn't in a call.
+    var offlineSaturation = 0.25
     @State private var smoothed = Smoothed()
     @Environment(\.renderTime) private var renderTime
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -27,7 +29,7 @@ struct Orb: View {
                 core(time: time)
                     .scaleEffect(scale)
             }
-            .saturation(state == .offline ? 0.25 : 1)
+            .saturation(state == .offline ? offlineSaturation : 1)
             .opacity(state == .offline ? 0.6 : 1)
         }
         .motion(.smooth(duration: 0.5), value: state)
