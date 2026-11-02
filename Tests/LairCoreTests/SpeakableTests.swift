@@ -2,6 +2,13 @@ import LairCore
 import Testing
 
 struct SpeakableTests {
+    @Test func linesWithNothingToSayAreSilent() {
+        #expect(Speakable.text("---") == "")
+        #expect(Speakable.text("…") == "")
+        #expect(Speakable.text("* * *") == "")
+        #expect(Speakable.text("Step 2.") == "Step 2.")
+    }
+
     @Test func dropsMarkdownSymbols() {
         #expect(Speakable.text("**Bold** and `code` and _soft_.") == "Bold and code and soft.")
     }

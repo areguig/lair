@@ -9,6 +9,8 @@ public enum Speakable {
         // List bullets and heading marks at the start of a line.
         text = text.replacingOccurrences(of: #"(?m)^\s*(#+|[-*+]|\d+\.)\s+"#, with: "", options: .regularExpression)
         text = text.replacingOccurrences(of: #"[*_`~#>|]"#, with: "", options: .regularExpression)
+        // A rule like "---" or a lone "…" has nothing to say, and the voice model fails on it.
+        guard text.contains(where: { $0.isLetter || $0.isNumber }) else { return "" }
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
