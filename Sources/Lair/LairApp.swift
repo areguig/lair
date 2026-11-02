@@ -387,6 +387,11 @@ struct MenuBarIcon: View {
 
     /// The settings window with demo agents, drawn in a hidden window so native controls render.
     static func writeSettings(to url: URL, agent: String? = nil) {
+        // Variants of the Hermes agent that show a test result.
+        let staged: [String: ConnectionCheck] = ["hermes-ok": .connected(models: ["hermes-agent"]), "hermes-refused": .refused(401),
+                                                 "hermes-proxy": .proxy]
+        SettingsRoute.shared.stagedCheck = agent.flatMap { staged[$0] }
+        let agent = staged[agent ?? ""] == nil ? agent : "hermes"
         let file = FileManager.default.temporaryDirectory.appending(path: "lair-settings-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: file) }
         var hermes = AgentConfig(id: "hermes", name: "Hermes", kind: .hermes, voice: "am_adam", color: "#4BA3E3")

@@ -198,6 +198,10 @@ public final class HermesSession: AgentSession {
     }
 
     private func authorize(_ request: inout URLRequest) {
+        Self.authorize(&request, with: credentials)
+    }
+
+    static func authorize(_ request: inout URLRequest, with credentials: Credentials) {
         request.setValue("Bearer \(credentials.apiKey)", forHTTPHeaderField: "Authorization")
         for (name, value) in credentials.headers { request.setValue(value, forHTTPHeaderField: name) }
     }
@@ -221,7 +225,7 @@ public final class HermesSession: AgentSession {
 
 /// Hermes never redirects; a redirect comes from something in front of it, usually a login page, and following it
 /// would read that page as Hermes's answer.
-private final class NoRedirects: NSObject, URLSessionTaskDelegate {
+final class NoRedirects: NSObject, URLSessionTaskDelegate {
     static let shared = NoRedirects()
 
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
