@@ -223,7 +223,7 @@ struct MenuBarIcon: View {
     }
 }
 
-/// `Lair --snapshot out.png [approval|chat|reply|empty|micdenied|crowded|busy|silent] [light|dark]` renders the panel in a demo
+/// `Lair --snapshot out.png [approval|french|chat|reply|empty|micdenied|crowded|busy|silent] [light|dark]` renders the panel in a demo
 /// state, to check the design without clicking around.
 @MainActor enum Snapshot {
     /// Speaks `text` and writes the 24 kHz mono result, printing how long the first start and the whole took.
@@ -260,6 +260,20 @@ struct MenuBarIcon: View {
                 room.calls[1].state = .thinking
                 room.calls[1].unread = true
                 call.state = .waiting
+                call.pendingApproval = ApprovalRequest(
+                    id: "demo", tool: "Bash", summary: "Bump the build number in Info.plist and commit it", canAlwaysAllow: true)
+            case "french":
+                call.agent.language = .french
+                call.agent.voice = Voices.defaultName(for: .french)
+                call.state = .waiting
+                call.lines = [
+                    .init(role: .you, text: "Il reste quoi sur la checklist de la release ?"),
+                    .init(role: .agent, text: "Deux choses : le changelog attend la nouvelle section sur la voix, et le numéro de build n'a pas été incrémenté."),
+                    .init(role: .you, text: "Fais les deux, mais ne pousse rien."),
+                    .init(role: .info, text: Phrase.approved(.allowOnce, action: "Edit CHANGELOG.md").text(in: .french)),
+                    .init(role: .info, text: Phrase.youCutIn.text(in: .french)),
+                    .init(role: .info, text: Phrase.answers(.brief).text(in: .french)),
+                ]
                 call.pendingApproval = ApprovalRequest(
                     id: "demo", tool: "Bash", summary: "Bump the build number in Info.plist and commit it", canAlwaysAllow: true)
             case "chat":
