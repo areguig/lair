@@ -51,6 +51,10 @@ import os
     func isInstalled(_ preset: AgentPreset) -> Bool? {
         environment.map { preset.isInstalled(path: $0["PATH"]) }
     }
+    /// Whether a program is found on your login shell's PATH; unknown until that PATH is read.
+    func isInstalled(program: String) -> Bool? {
+        environment.map { AgentPreset.isInstalled(program, path: $0["PATH"]) }
+    }
     @ObservationIgnored let notifier = ApprovalNotifier()
     @ObservationIgnored private var hintTask: Task<Void, Never>?
 

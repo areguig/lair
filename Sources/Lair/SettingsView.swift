@@ -29,6 +29,7 @@ struct SettingsView: View {
     let store: ConfigStore
     let room: Room
     let link: GuestLink
+    let registry: RegistryStore
     /// The agent shown first; snapshots use it to show a given form.
     var selectedAgent: String?
     @Bindable private var route = SettingsRoute.shared
@@ -37,7 +38,7 @@ struct SettingsView: View {
 
     var body: some View {
         TabView(selection: $route.tab) {
-            AgentsSettings(store: store, room: room, selection: selectedAgent)
+            AgentsSettings(store: store, room: room, registry: registry, selection: selectedAgent)
                 .tabItem { Label("Agents", systemImage: "person.2") }
                 .tag(Tab.agents)
             GuestSettingsView(store: store, link: link)
@@ -62,8 +63,10 @@ struct SettingsView: View {
 private struct AgentsSettings: View {
     let store: ConfigStore
     let room: Room
+    let registry: RegistryStore
     @State var selection: String?
     @State private var removing: AgentConfig?
+    @State private var browsing = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -92,6 +95,8 @@ private struct AgentsSettings: View {
                         ForEach(AgentChoice.all, id: \.self) { choice in
                             Button(choice.label) { add(choice) }
                         }
+                        Divider()
+                        Button("More agents…") { browsing = true }
                     } label: {
                         Image(systemName: "plus").frame(width: 24, height: 20)
                     }
@@ -117,7 +122,8 @@ private struct AgentsSettings: View {
             .frame(width: 190)
             Divider()
             if let index = store.config.agents.firstIndex(where: { $0.id == selection }) {
-                AgentForm(agent: binding(at: index), others: store.config.agents.filter { $0.id != selection }, room: room)
+                AgentForm(agent: binding(at: index), others: store.config.agents.filter { $0.id != selection }, room: room,
+                          update: registry.registry?.update(for: store.config.agents[index]))
                     .id(store.config.agents[index].id)
             } else {
                 Text("Select an agent, or add one with +.")
@@ -126,6 +132,9 @@ private struct AgentsSettings: View {
             }
         }
         .onAppear { selection = selection ?? store.config.agents.first?.id }
+        .sheet(isPresented: $browsing) {
+            RegistrySheet(store: registry, room: room, added: Set(store.config.agents.compactMap(\.registry)), add: add)
+        }
         .confirmationDialog("Remove \(removing?.name ?? "this agent")?", isPresented: Binding(
             get: { removing != nil }, set: { if !$0 { removing = nil } }
         )) {
@@ -163,6 +172,16 @@ private struct AgentsSettings: View {
         selection = agent.id
     }
 
+    private func add(_ entry: Registry.Entry) {
+        var config = store.config
+        var agent = config.newAgent(named: entry.name, voices: VoiceModels.voices)
+        agent.directory = "~"
+        agent.follow(entry)
+        config.agents.append(agent)
+        store.save(config)
+        selection = agent.id
+    }
+
     private func remove(_ agent: AgentConfig) {
         var config = store.config
         config.agents.removeAll { $0.id == agent.id }
@@ -177,6 +196,8 @@ private struct AgentForm: View {
     @Binding var agent: AgentConfig
     let others: [AgentConfig]
     let room: Room
+    /// The registry's entry when it starts this agent differently from how it starts now.
+    let update: Registry.Entry?
 
     var body: some View {
         Form {
@@ -214,6 +235,19 @@ private struct AgentForm: View {
                     } else if let preset = AgentPreset.withID(agent.preset), room.isInstalled(preset) == false {
                         Helper("\(agent.name) needs \(preset.needs), not found on this Mac.")
                         Link("Get \(preset.needs)", destination: preset.installURL)
+                    }
+                    if let update {
+                        LabeledContent("Version") {
+                            HStack {
+                                Text(Registry.pinnedVersion(in: agent.launchCommand) ?? "built in").foregroundStyle(.secondary)
+                                Button("Update to \(update.version)") { agent.follow(update) }
+                                    .accessibilityLabel("Update \(agent.name) to version \(update.version)")
+                                    .accessibilityHint("Changes the command that starts it")
+                            }
+                        }
+                    }
+                    if agent.registry != nil || AgentPreset.withID(agent.preset)?.registryID != nil, let command = agent.launchCommand {
+                        Hint("Runs " + runs(command)).textSelection(.enabled)
                     }
                     FolderField(path: $agent.directory)
                     if AgentPreset.withID(agent.preset)?.mcpClientName != nil {
@@ -261,6 +295,11 @@ private struct AgentForm: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    /// The command as a shell would see it, with the environment it sets in front.
+    private func runs(_ command: [String]) -> String {
+        ((agent.env ?? [:]).sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" } + command).joined(separator: " ")
     }
 
     /// Switching agent drops the settings that only made sense for the old one.
