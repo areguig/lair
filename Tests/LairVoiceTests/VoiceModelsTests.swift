@@ -10,7 +10,6 @@ struct VoiceModelsTests {
             "~/Library/Application Support/FluidAudio/Models/parakeet-tdt-0.6b-v2",
             "~/Library/Application Support/FluidAudio/Models/silero-vad",
             "~/.cache/fluidaudio/Models/kokoro-82m-coreml/ANE-v3",
-            "~/.cache/fluidaudio/Models/kokoro",
         ])
     }
 }

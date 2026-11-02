@@ -23,7 +23,7 @@ struct ResetSection: View {
         } header: {
             Text("Reset or uninstall")
         } footer: {
-            Text("Reset brings Lair back to its first launch. Uninstall also removes its speech models and the app. Everything goes to the Trash.")
+            Text("Reset brings Lair back to its first launch. Uninstall also removes its speech models and the app. Files go to the Trash; saved secrets are deleted.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

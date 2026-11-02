@@ -36,7 +36,8 @@ public actor VoiceModels {
     public init() {}
 
     /// The folders holding the models Lair loads, and no others: FluidAudio's cache is shared with other tools.
-    /// Parakeet v2 and Silero VAD sit in Application Support; Kokoro v3 and its English G2P assets in `~/.cache`.
+    /// Parakeet v2 and Silero VAD sit in Application Support, Kokoro v3 in `~/.cache`. Kokoro's G2P folder stays:
+    /// every Kokoro backend shares it, with other languages' lexicons.
     public static var folders: [URL] {
         let tts = ttsCache.appending(path: "Models", directoryHint: .isDirectory)
         return [
@@ -44,8 +45,6 @@ public actor VoiceModels {
             MLModelConfigurationUtils.defaultModelsDirectory(for: .vad),
             // KokoroAneV3Assets.swift:71, whatever its revision or language.
             tts.appending(path: "kokoro-82m-coreml/ANE-v3", directoryHint: .isDirectory),
-            // KokoroAneResourceDownloader.swift:381, the G2P assets and lexicon (`Repo.kokoro.folderName`).
-            tts.appending(path: Repo.kokoro.folderName, directoryHint: .isDirectory),
         ]
     }
 
