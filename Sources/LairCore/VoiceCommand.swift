@@ -8,6 +8,7 @@ public enum VoiceCommand: Equatable, Sendable {
     case thinking(String)
     case fast
     case deep
+    case answers(AgentConfig.Answers)
 
     /// nil when the transcript is a normal request for the agent.
     public static func parse(_ transcript: String) -> VoiceCommand? {
@@ -23,6 +24,9 @@ public enum VoiceCommand: Equatable, Sendable {
         case "think less", "less thinking", "stop overthinking": return .thinkLess
         case "go fast", "fast mode", "be quick", "quick mode": return .fast
         case "go deep", "deep mode", "take your time": return .deep
+        case "be brief", "shorter answers", "short answers": return .answers(.brief)
+        case "more detail", "more details", "longer answers", "be more detailed": return .answers(.detailed)
+        case "normal answers": return .answers(.normal)
         default: break
         }
         if let level = thinkingLevel(words) { return .thinking(level) }

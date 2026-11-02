@@ -32,6 +32,14 @@ import Testing
         ("Go deep", .deep),
         ("Deep mode", .deep),
         ("Take your time, thanks", .deep),
+        ("Be brief.", .answers(.brief)),
+        ("Shorter answers please", .answers(.brief)),
+        ("short answers", .answers(.brief)),
+        ("More detail", .answers(.detailed)),
+        ("more details.", .answers(.detailed)),
+        ("Longer answers", .answers(.detailed)),
+        ("Be more detailed", .answers(.detailed)),
+        ("Normal answers", .answers(.normal)),
     ])
     func positives(_ input: String, _ expected: VoiceCommand) {
         #expect(VoiceCommand.parse(input) == expected)
@@ -46,6 +54,9 @@ import Testing
         "Think about the login bug",
         "Go fast on the migration and tell me when it's done",
         "What model are you using?",
+        "Tell me more about it",
+        "Be brief about the migration and then deploy it",
+        "Normal answers?",
         "Can you use sonnet?",
         "How do I switch to opus",
         "",

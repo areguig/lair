@@ -83,6 +83,25 @@ struct LairConfigTests {
         let agent = AgentConfig(id: "c", name: "C", preset: .claude, voice: "v", color: "#000000", directory: "~/dev")
         #expect(agent.directoryURL?.path == FileManager.default.homeDirectoryForCurrentUser.appending(path: "dev").path)
     }
+
+    @Test func anOldConfigAnswersNormallyAndIsWrittenBackUnchanged() throws {
+        let url = temporaryURL()
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(##"{"agents":[{"id":"c","name":"C","kind":"acp","voice":"am_adam","color":"#000000"}]}"##.utf8).write(to: url)
+        let config = try LairConfig.load(from: url)
+        #expect(config.agents[0].answers == nil)
+        try config.save(to: url)
+        #expect(!(try String(contentsOf: url, encoding: .utf8)).contains("answers"))
+    }
+
+    @Test(arguments: AgentConfig.Answers.allCases)
+    func answersSurviveASaveAndLoad(_ answers: AgentConfig.Answers) throws {
+        let url = temporaryURL()
+        var agent = AgentConfig(id: "c", name: "C", kind: .acp, voice: "am_adam", color: "#000000")
+        agent.answers = answers
+        try LairConfig(agents: [agent]).save(to: url)
+        #expect(try LairConfig.load(from: url).agents[0].answers == answers)
+    }
 }
 
 struct AgentLogTests {

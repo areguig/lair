@@ -129,6 +129,13 @@ public struct AgentConfig: Codable, Equatable, Identifiable, Sendable {
     /// Hermes: extra HTTP headers sent with every request, such as a proxy's access token.
     /// Only the names are here; the values are secrets kept in the Keychain.
     public var headers: [String]?
+    /// How long spoken answers are; unset means normal.
+    public var answers: Answers?
+
+    /// How much an agent says out loud, from a line to a few sentences.
+    public enum Answers: String, Codable, CaseIterable, Sendable {
+        case brief, normal, detailed
+    }
 
     public init(id: String, name: String, kind: Kind, voice: String, color: String, model: String? = nil,
                 directory: String? = nil, url: String? = nil, headers: [String]? = nil) {
@@ -168,10 +175,11 @@ public struct AgentConfig: Codable, Equatable, Identifiable, Sendable {
         url = try container.decodeIfPresent(String.self, forKey: .url)
         disabled = try container.decodeIfPresent(Bool.self, forKey: .disabled)
         headers = try container.decodeIfPresent([String].self, forKey: .headers)
+        answers = try container.decodeIfPresent(Answers.self, forKey: .answers)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, kind, voice, color, model, directory, thinking, preset, command, options, url, disabled, headers
+        case id, name, kind, voice, color, model, directory, thinking, preset, command, options, url, disabled, headers, answers
     }
 
     /// What starts an ACP agent: its own command, else its preset's.

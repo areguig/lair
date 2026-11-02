@@ -293,6 +293,10 @@ extension Room {
             case .fast, .deep:
                 guard local else { throw ChangeLater() }
                 confirmation = try setThinking(command == .fast ? "low" : "high", in: call, session: session)
+            case .answers(let level):
+                // Only this call: the line goes out with the next turn, the config stays as it is.
+                call.context.append(VoicePrompt.answers(level))
+                confirmation = "\(level.rawValue.capitalized) answers for this call."
             }
         } catch is ChangeLater {
             confirmation = local ? "That can't change during a call." : "\(call.agent.name) chooses that itself."

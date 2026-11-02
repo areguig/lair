@@ -224,6 +224,12 @@ private struct AgentForm: View {
                                emptyHint: "Call this agent once to list its models")
                     ThinkingPicker(title: "Thinking", thinking: $agent.thinking, levels: room.knownThinking[agent.id] ?? [])
                         .hint("Applies from the next call. During a call, say “switch to <model>”, “think harder” or “go fast”.")
+                    Picker("Answers", selection: answers) {
+                        ForEach(AgentConfig.Answers.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityLabel("Answer length")
+                    .hint("How long spoken answers are. Code and links always stay on screen.")
                     ForEach(room.knownOptions[agent.id] ?? []) { option in
                         Picker(option.name, selection: chosen(option.id)) {
                             Text("Default").tag(String?.none)
@@ -266,6 +272,11 @@ private struct AgentForm: View {
             agent.options = nil
             new.apply(to: &agent)
         })
+    }
+
+    /// Normal is the default, so it is stored as nothing.
+    private var answers: Binding<AgentConfig.Answers> {
+        Binding(get: { agent.answers ?? .normal }, set: { agent.answers = $0 == .normal ? nil : $0 })
     }
 
     /// One of the agent's other choices, kept by option id; "Default" removes it.
