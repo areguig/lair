@@ -20,12 +20,13 @@ import SwiftUI
     static let menuIcon = CGPoint(x: canvas.width - 196, y: 14)
     static let floatingOrb = CGPoint(x: canvas.width - 92, y: canvas.height - 178)
     static let missionFrame = CGRect(x: 56, y: 50, width: 1060, height: 600)
-    static let panelOrigin = CGPoint(x: menuIcon.x - 170, y: 34)
-    static let panelFocus = CGPoint(x: panelOrigin.x + 170, y: 380)
-    /// The agent chips in the open panel, in agents order.
-    static let chips = [CGPoint(x: panelOrigin.x + 104, y: 331), CGPoint(x: panelOrigin.x + 170, y: 331),
-                        CGPoint(x: panelOrigin.x + 236, y: 331)]
-    static let panelAllow = CGPoint(x: panelOrigin.x + 240, y: 603)
+    /// The panel is 424 × 580 pt: under the menu icon, kept inside the screen.
+    static let panelOrigin = CGPoint(x: min(menuIcon.x - 212, canvas.width - 424 - 8), y: 34)
+    static let panelFocus = CGPoint(x: panelOrigin.x + 212, y: 330)
+    /// The agents in the panel's rail (the avatars down its left side), in agents order: 69 pt apart, measured from a frame.
+    static let chips = (0..<3).map { CGPoint(x: panelOrigin.x + 47, y: panelOrigin.y + 86 + 69 * CGFloat($0)) }
+    /// The Allow button of the approval card, with the one-line request Sage makes in the story.
+    static let panelAllow = CGPoint(x: panelOrigin.x + 323, y: panelOrigin.y + 442)
     /// The middle of Mission Control's column `i`, at its `y`.
     static func column(_ i: Int, y: CGFloat) -> CGPoint {
         let width = (missionFrame.width - 14 * 4) / 3
@@ -57,7 +58,7 @@ import SwiftUI
         s.wait(1.1)
         s.click()
         s.show(.panel)
-        s.camera(to: panelFocus, zoom: 1.2, over: 0.9)
+        s.camera(to: panelFocus, zoom: 1.1, over: 0.9)
         s.wait(1.6)
 
         s.caption("Hold ⌥Space and ask")
@@ -470,6 +471,7 @@ struct Stage {
     /// When each caption starts, to pick stills with `--demo-frame`.
     var outline: String {
         (captions.map { String(format: "%5.1f s  %@", $0.at, $0.text ?? "(none)") }
+            + clicks.map { String(format: "%5.1f s  click", $0) }
             + [String(format: "%5.1f s  end", time)]).joined(separator: "\n")
     }
 
