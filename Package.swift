@@ -8,7 +8,7 @@ let package = Package(
         .executable(name: "Lair", targets: ["Lair"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.17.7"),
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.18.2"),
         .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "3.1.0"),
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.9.0"),
         .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.28.0"),

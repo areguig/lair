@@ -1,5 +1,6 @@
 import FluidAudio
 import Foundation
+import os
 
 /// Speech-to-text and text-to-speech models, loaded once and shared by every call.
 public actor VoiceModels {
@@ -12,6 +13,8 @@ public actor VoiceModels {
         case recognition(Double)
         case voices
     }
+
+    private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "lair", category: "voice")
 
     private var asr: AsrManager?
     private var tts: KokoroAneManager?
@@ -35,16 +38,30 @@ public actor VoiceModels {
 
     public init() {}
 
+    /// The Kokoro chain for an OS: v3 hard-codes its noise and source-generator stages to the GPU, which aborts in
+    /// MPSGraph on macOS 27 (FluidAudio #843); the legacy chain follows `KokoroAneComputeUnits.default`, which has no GPU stage there.
+    public static func kokoroVersion(for os: OperatingSystemVersion) -> KokoroAneVersion {
+        os.majorVersion >= 27 ? .legacy : .v3
+    }
+
     /// The folders holding the models Lair loads, and no others: FluidAudio's cache is shared with other tools.
-    /// Parakeet v2 and Silero VAD sit in Application Support, Kokoro v3 in `~/.cache`. Kokoro's G2P folder stays:
-    /// every Kokoro backend shares it, with other languages' lexicons.
-    public static var folders: [URL] {
+    /// Parakeet v2 and Silero VAD sit in Application Support, the Kokoro chain this OS loads in `~/.cache`.
+    /// Kokoro's G2P folder stays: every Kokoro backend shares it, with other languages' lexicons.
+    public static var folders: [URL] { folders(for: ProcessInfo.processInfo.operatingSystemVersion) }
+
+    static func folders(for os: OperatingSystemVersion) -> [URL] {
         let tts = ttsCache.appending(path: "Models", directoryHint: .isDirectory)
+        let kokoro: String
+        switch kokoroVersion(for: os) {
+        // KokoroAneV3Assets.swift:71, whatever its revision or language.
+        case .v3: kokoro = "kokoro-82m-coreml/ANE-v3"
+        // KokoroAneResourceDownloader.swift:22, the English variant.
+        case .legacy: kokoro = Repo.kokoroAne.folderName
+        }
         return [
             AsrModels.defaultCacheDirectory(for: .v2),
             MLModelConfigurationUtils.defaultModelsDirectory(for: .vad),
-            // KokoroAneV3Assets.swift:71, whatever its revision or language.
-            tts.appending(path: "kokoro-82m-coreml/ANE-v3", directoryHint: .isDirectory),
+            tts.appending(path: kokoro, directoryHint: .isDirectory),
         ]
     }
 
@@ -60,7 +77,10 @@ public actor VoiceModels {
         let models = try await AsrModels.downloadAndLoad(version: .v2) { progress?(.recognition($0.fractionCompleted)) }
         try await asr.loadModels(models)
         progress?(.voices)
-        let tts = KokoroAneManager(version: .v3)
+        let version = Self.kokoroVersion(for: ProcessInfo.processInfo.operatingSystemVersion)
+        // A tester's log shows which chain ran; the legacy chain's default routing keeps the GPU out on macOS 27.
+        Self.log.info("Kokoro chain: \(version.rawValue, privacy: .public)")
+        let tts = KokoroAneManager(version: version)
         try await tts.initialize()
         // The first synthesis compiles the models; pay for it now rather than on the first reply.
         _ = try await tts.synthesizeDetailed(text: "Ready.", voice: warmUpVoice)
