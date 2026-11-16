@@ -11,6 +11,7 @@ A macOS menu-bar app to talk with your coding agents by voice. Speech-to-text an
 - **Talk:** hold <kbd>⌥ Space</kbd>, speak, let go. The agent answers out loud. Talking over it cuts it off.
 - **Just reply:** after the agent answers, Lair listens for a few seconds (a ring empties on the talk button). Talk, and it sends when you stop. Turn it off in Settings › General.
 - **The island:** Lair grows out of the notch when an agent talks or needs you, with its choices and OKs right there, and gets out of the way after. It never steals focus. While Lair speaks, it shows the sentence being said; in silent mode, the written answer.
+- **The panel:** click Lair in the menu bar. Your agents sit in a sidebar with what each one is doing (speaking, needs your OK, at your keyboard), and the conversation beside it, with the model menu and the ⋯ menu in its header.
 - **Agents in your terminal:** connect Claude Code or omp in Settings › On this Mac. Every session you start yourself can then speak to you and ask you out loud. Any other MCP agent can join too: Lair is a local MCP server with two tools, speak and ask.
 - **Choices:** a question can come with choices, read out and shown as numbered buttons. Click one, press <kbd>⌘ 1</kbd>, or say "the blue one".
 - **They come back by themselves:** when an agent's background work finishes, it tells you as soon as the call is free, then listens for your reply.
@@ -18,7 +19,7 @@ A macOS menu-bar app to talk with your coding agents by voice. Speech-to-text an
 - **Switch agents:** start a sentence with an agent's name ("Iris, …") or click its name in the panel.
 - **Pass it on:** "Nova, ask Claude what it thinks", or "ask Echo to do it" to the agent you're talking to. The other agent gets your words and the last exchange, answers out loud, and the first one hears its answer on its next turn.
 - **Approvals:** when an agent asks before acting, answer by voice, in the panel or from the notification. The first answer wins. Lair never approves by itself; each agent's own approval mode (Claude's Accept edits, Copilot's Allow all…) is in Settings.
-- **Model and thinking:** pick them from the model line, or say "switch to Opus", "think harder", "go fast", "go deep".
+- **Model and thinking:** pick them from the model menu beside the agent's name, or say "switch to Opus", "think harder", "go fast", "go deep".
 - **Continue at keyboard:** when a quick question turns into real work, the keyboard button opens the agent's own CLI on the same conversation (Claude, Codex and omp). Lair stays quiet for it meanwhile; quit the CLI, or close its window, and the agent is back on voice, knowing what you did there. It opens in Terminal, iTerm2, Ghostty or herdr, chosen in Settings › General; in herdr, every agent at the keyboard shares one tab in a Lair space.
 - **Show, don't say:** links and paths sit inside the agent's sentence, clickable, and are never read aloud.
 - **Silent mode:** Lair writes instead of speaking. Switch it in the ⋯ menu or Settings, or say "go silent" and "speak again".
