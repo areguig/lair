@@ -223,7 +223,7 @@ struct MenuBarIcon: View {
     }
 }
 
-/// `Lair --snapshot out.png [approval|french|chat|reply|empty|micdenied|crowded|busy|silent|keyboard] [light|dark]` renders the panel in a demo
+/// `Lair --snapshot out.png [approval|french|chat|reply|empty|micdenied|crowded|busy|silent|keyboard|quiet] [light|dark]` renders the panel in a demo
 /// state, to check the design without clicking around.
 @MainActor enum Snapshot {
     /// Speaks `text` and writes the 24 kHz mono result, printing how long the first start and the whole took.
@@ -286,6 +286,8 @@ struct MenuBarIcon: View {
                 ]
                 room.calls[1].lines = [.init(role: .problem, text: "Echo needs an API key. Add it in Settings › Agents.",
                                              action: .openSettings)]
+            case "quiet":
+                call.lines = []
             case "busy":
                 stageBusy(room, call)
             case "silent":
