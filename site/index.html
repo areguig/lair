@@ -254,11 +254,8 @@ code { font: .88em var(--mono); background: rgba(255,255,255,.06); padding: 2px 
 }
 .stage img { border-radius: 22px; box-shadow: 0 30px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.08); }
 .stage.portrait img { width: min(400px, 100%); }
-.stage.wide { margin-top: 56px; padding: clamp(18px, 4vw, 52px); }
-.stage.wide img { width: 100%; border-radius: 16px; }
 .stage.coral { --a: rgba(217,119,87,.55); --b: rgba(123,92,255,.4); }
 .stage.green { --a: rgba(63,182,139,.45); --b: rgba(75,163,227,.4); }
-.stage.night { --a: rgba(75,163,227,.4); --b: rgba(123,92,255,.5); }
 
 /* ---------- Every agent ---------- */
 .agents { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 56px; }
@@ -362,7 +359,6 @@ footer a { color: var(--dim); }
     <nav>
       <a class="opt" href="#agents">Agents</a>
       <a class="opt" href="#talk">Talk</a>
-      <a class="opt" href="#mission">Mission Control</a>
       <a href="https://github.com/areguig/lair">GitHub</a>
       <a class="get" href="#start">Get Lair</a>
     </nav>
@@ -499,7 +495,7 @@ footer a { color: var(--dim); }
       </ul>
     </div>
     <div class="stage portrait coral reveal">
-      <img src="img/reply-dark.jpg" alt="Lair's panel: agents down a rail, Claude in focus after answering, and Lair listening for your reply" loading="lazy" width="848" height="1160">
+      <img src="img/reply-dark.jpg" alt="Lair's panel: agents down a rail, Claude in focus after answering, and Lair listening for your reply" loading="lazy" width="960" height="1160">
     </div>
   </div>
 </section>
@@ -540,20 +536,7 @@ footer a { color: var(--dim); }
       </ul>
     </div>
     <div class="stage portrait green reveal">
-      <img src="img/asks-dark.jpg" alt="A Claude Code session from the terminal asks a question with two choices in Lair's panel, while another agent waits for an OK" loading="lazy" width="848" height="1160">
-    </div>
-  </div>
-</section>
-
-<section id="mission">
-  <div class="wrap">
-    <div class="center reveal">
-      <div class="kicker">Mission Control · ⌥⌘L</div>
-      <h2>Every agent's whole stream,<br>side by side.</h2>
-      <p class="sub">Tool calls, diffs and thinking for each agent, with a line to type to any of them. Timings and cost stay one click away.</p>
-    </div>
-    <div class="stage wide night reveal">
-      <img src="img/mission-dark.jpg" alt="Mission Control: one column per agent with tool calls, thinking, and an approval card" loading="lazy" width="2480" height="1560">
+      <img src="img/asks-dark.jpg" alt="A Claude Code session from the terminal asks a question with two choices in Lair's panel, while another agent waits for an OK" loading="lazy" width="960" height="1160">
     </div>
   </div>
 </section>
@@ -565,15 +548,15 @@ footer a { color: var(--dim); }
       <h2>Light or dark.<br>Built for everyone.</h2>
       <p class="sub">Lair follows your Mac's appearance, with Liquid Glass controls on macOS 26, and every state reads the same everywhere: orange when you're needed, red for problems, blue for news.</p>
       <ul class="points">
-        <li><span class="n">◑</span><span><b>Light and dark.</b> The panel and Mission Control follow the system. The island stays black, a part of the notch.</span></li>
+        <li><span class="n">◑</span><span><b>Light and dark.</b> The panel follows the system. The island stays black, a part of the notch.</span></li>
         <li><span class="n">♿︎</span><span><b>Accessible.</b> Reduce Motion stills the orbs, Reduce Transparency and Increase Contrast are respected, and VoiceOver says who needs you.</span></li>
         <li><span class="n">⚙︎</span><span><b>Each agent's own rules.</b> Its models, thinking and approval mode, like Claude's Accept edits or Copilot's Allow all, are in Settings.</span></li>
       </ul>
     </div>
     <div class="stage reveal" style="--a: rgba(255,255,255,.22); --b: rgba(123,92,255,.45)">
       <div class="pair">
-        <img src="img/approval-light.jpg" alt="Lair's panel in light mode, with Claude asking for an OK" loading="lazy" width="848" height="1160">
-        <img src="img/approval-dark.jpg" alt="The same panel in dark mode" loading="lazy" width="848" height="1160">
+        <img src="img/approval-light.jpg" alt="Lair's panel in light mode, with Claude asking for an OK" loading="lazy" width="960" height="1160">
+        <img src="img/approval-dark.jpg" alt="The same panel in dark mode" loading="lazy" width="960" height="1160">
       </div>
     </div>
   </div>
