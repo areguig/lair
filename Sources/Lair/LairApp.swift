@@ -223,7 +223,7 @@ struct MenuBarIcon: View {
     }
 }
 
-/// `Lair --snapshot out.png [approval|french|chat|reply|empty|micdenied|crowded|busy|silent] [light|dark]` renders the panel in a demo
+/// `Lair --snapshot out.png [approval|french|chat|reply|empty|micdenied|crowded|busy|silent|keyboard] [light|dark]` renders the panel in a demo
 /// state, to check the design without clicking around.
 @MainActor enum Snapshot {
     /// Speaks `text` and writes the 24 kHz mono result, printing how long the first start and the whole took.
@@ -291,6 +291,11 @@ struct MenuBarIcon: View {
             case "silent":
                 room.setSilent(true)
                 call.state = .thinking
+            case "keyboard":
+                call.atKeyboard = "demo"
+            case "longmodel":
+                call.state = .ready
+                call.details = "vmlx/Qwen3.6 35B-A3B 4-bit (local) · Thinking: medium thinking"
             case "reply":
                 call.state = .listening
                 room.answering = .init(callID: call.id, since: .now)

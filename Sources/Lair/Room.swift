@@ -47,6 +47,8 @@ import os
     private(set) var holding: String?
     @ObservationIgnored private var holdTask: Task<Void, Never>?
     @ObservationIgnored private var sounds: SoundSettings
+    /// Where "Continue at keyboard" opens the agent's CLI.
+    @ObservationIgnored var keyboardTerminal: KeyboardHandoff.Terminal
 
     @ObservationIgnored let voice = VoiceModels()
     @ObservationIgnored let microphone = Microphone()
@@ -76,6 +78,7 @@ import os
         listensForAnswers = config.listensForAnswers
         silent = config.isSilent
         sounds = config.soundSettings
+        keyboardTerminal = config.keyboardTerminal
         guestSettings = config.guests
         // The voice engine is a child process: it doesn't end with the app on its own.
         let voice = voice
@@ -108,6 +111,7 @@ import os
         if !calls.contains(where: { $0.id == focusedID }) { focusedID = calls.first?.id ?? "" }
         listensForAnswers = config.listensForAnswers
         sounds = config.soundSettings
+        keyboardTerminal = config.keyboardTerminal
         speaker?.sounds = sounds
         update(silent: config.isSilent)
         if guestSettings != config.guests {
@@ -171,6 +175,7 @@ import os
     func toggle(_ call: Call) {
         if call.guest { return dismiss(call) }
         focus(call)
+        if call.atKeyboard != nil { return takeBackByHand(call) }
         if call.inCall { hangUp(call) } else { summon(call) }
     }
 
@@ -194,16 +199,19 @@ import os
         calls.removeAll { $0.stranger && !$0.inCall && $0 !== call }
     }
 
-    func summon(_ call: Call) {
+    /// Starts a call, or picks up `reopening`, a session that already exists.
+    func summon(_ call: Call, reopening: String? = nil) {
         guard readiness == .ready, !call.inCall else { return }
         guard !call.guest else { return }
+        // A new session now would leave the one at the keyboard behind.
+        if call.atKeyboard != nil, reopening == nil { return show(hint: atKeyboardHint(call)) }
         // A new attempt replaces the last setup problem instead of stacking another.
         call.lines.removeAll { $0.action == .openSettings }
         do {
             try microphone.open()
             call.thinking = call.thinkingNextCall ?? call.agent.thinking
             let session = try SessionMaker(environment: environment)
-                .session(for: call.agent, thinking: call.thinking, prompt: callPrompt(for: call.agent))
+                .session(for: call.agent, thinking: call.thinking, prompt: callPrompt(for: call.agent), reopening: reopening)
             Self.log.notice("""
                 \(call.id, privacy: .public): call started, \(call.agent.kind.rawValue, privacy: .public) \
                 model \(call.agent.model ?? "default", privacy: .public)

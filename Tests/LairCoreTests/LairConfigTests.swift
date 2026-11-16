@@ -30,6 +30,15 @@ struct LairConfigTests {
         #expect(agent.directoryURL == nil)
     }
 
+    @Test func theKeyboardOpensInTerminalUnlessHerdrIsChosen() throws {
+        let url = temporaryURL()
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(#"{"agents":[]}"#.utf8).write(to: url)
+        #expect(try LairConfig.load(from: url).keyboardTerminal == .terminal)
+        try Data(#"{"agents":[],"terminal":"herdr"}"#.utf8).write(to: url)
+        #expect(try LairConfig.load(from: url).keyboardTerminal == .herdr)
+    }
+
     /// Configs from before ACP: their Claude Code and omp agents become those presets, keeping their settings.
     @Test func readsClaudeCodeAndOmpAgentsAsTheirPresets() throws {
         let url = temporaryURL()

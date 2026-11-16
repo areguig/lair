@@ -164,8 +164,10 @@ struct ModelSwitcher: View {
             Button("Go deep", systemImage: "tortoise") { run(.deep) }
         } label: {
             HStack(spacing: 4) {
+                // Local model names can be long: cut in the middle so the start and the thinking level stay.
                 Text(call.details ?? "Choose model")
                     .lineLimit(1)
+                    .truncationMode(.middle)
                 Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
             }
             .font(.caption)
@@ -176,7 +178,7 @@ struct ModelSwitcher: View {
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
-        .fixedSize()
+        .fixedSize(horizontal: false, vertical: true)
         .help("Switch model or thinking for this call — or just say “switch to Opus”, “think harder”")
         .accessibilityLabel("\(call.agent.name) model: \(call.details ?? "default"). Switch model or thinking")
         .accessibilityValue(call.state.label)

@@ -12,6 +12,8 @@ public protocol AgentSession: Sendable {
     /// Stops the reply in progress; the current `ask` stream ends.
     func interrupt()
     func stop()
+    /// The agent's own id for the conversation, which its CLI can pick up; nil for agents without one.
+    var resumableID: String? { get async }
     /// What runs the agent, e.g. "gpt-6-luna · low thinking", as soon as the agent tells.
     var details: AsyncStream<String> { get }
     /// Turns the agent takes without being asked, such as telling what its background work found.
@@ -70,6 +72,7 @@ public struct ChangeLater: Error {
 
 extension AgentSession {
     public func answer(_ request: ApprovalRequest, decision: ApprovalDecision) throws {}
+    public var resumableID: String? { get async { nil } }
     public var details: AsyncStream<String> { AsyncStream { $0.finish() } }
     public var ownTurns: AsyncStream<AgentTurn> { AsyncStream { $0.finish() } }
     public var problems: AsyncStream<String> { AsyncStream { $0.finish() } }
@@ -80,9 +83,13 @@ extension AgentSession {
     public func setThinking(_ level: String) throws { throw ChangeLater() }
 }
 
-/// "gpt-6-luna" and "low" → "gpt-6-luna · low thinking".
+/// "gpt-6-luna" and "low" → "gpt-6-luna · low thinking"; a level that already says thinking is kept as it is.
 public func agentDetails(model: String?, thinking: String?) -> String? {
-    let parts = [model, thinking.flatMap { $0 == "off" || $0.isEmpty ? nil : "\($0) thinking" }].compactMap { $0 }
+    let level = thinking.flatMap { level -> String? in
+        guard level != "off", !level.isEmpty else { return nil }
+        return level.localizedCaseInsensitiveContains("thinking") ? level : "\(level) thinking"
+    }
+    let parts = [model, level].compactMap { $0 }
     return parts.isEmpty ? nil : parts.joined(separator: " · ")
 }
 
