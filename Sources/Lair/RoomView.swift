@@ -221,6 +221,7 @@ struct RoomView: View {
                         Text(call.agent.name)
                             .font(.system(.headline, design: .rounded, weight: .semibold))
                             .lineLimit(1)
+                            .layoutPriority(1)
                         Spacer(minLength: 0)
                         trailing(call)
                     }

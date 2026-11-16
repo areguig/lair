@@ -293,6 +293,9 @@ struct MenuBarIcon: View {
                 call.state = .thinking
             case "keyboard":
                 call.atKeyboard = "demo"
+            case "longmodel":
+                call.state = .ready
+                call.details = "vmlx/Qwen3.6 35B-A3B 4-bit (local) · Thinking: medium thinking"
             case "reply":
                 call.state = .listening
                 room.answering = .init(callID: call.id, since: .now)
