@@ -19,6 +19,7 @@ A macOS menu-bar app to talk with your coding agents by voice. Speech-to-text an
 - **Pass it on:** "Nova, ask Claude what it thinks", or "ask Echo to do it" to the agent you're talking to. The other agent gets your words and the last exchange, answers out loud, and the first one hears its answer on its next turn.
 - **Approvals:** when an agent asks before acting, answer by voice, in the panel or from the notification. The first answer wins. Lair never approves by itself; each agent's own approval mode (Claude's Accept edits, Copilot's Allow all…) is in Settings.
 - **Model and thinking:** pick them from the model line, or say "switch to Opus", "think harder", "go fast", "go deep".
+- **Continue at keyboard:** when a quick question turns into real work, the keyboard button opens the agent's own CLI on the same conversation (Claude, Codex and omp). Lair stays quiet for it meanwhile; quit the CLI, or close its window, and the agent is back on voice, knowing what you did there. It opens in Terminal, iTerm2, Ghostty or herdr, chosen in Settings › General; in herdr, every agent at the keyboard shares one tab in a Lair space.
 - **Mission Control** (<kbd>⌥ ⌘ L</kbd>): each agent's whole stream side by side, with tool calls, diffs, thinking, timings and cost, a line to type in, and Allow/Deny on approvals.
 - **Show, don't say:** links and paths sit inside the agent's sentence, clickable, and are never read aloud.
 - **Silent mode:** Lair writes instead of speaking. Switch it in the ⋯ menu or Settings, or say "go silent" and "speak again".
@@ -103,7 +104,7 @@ Use **Settings…** in the panel, or edit `~/.config/lair/config.json`, which La
 | `url`, `headers` | Hermes: API address, and names of extra headers such as a proxy token |
 | `disabled` | `true` turns the agent off: it keeps its settings but leaves the panel and Mission Control (the **On** switch in Settings) |
 
-At the top level, `"listenForAnswers": false` stops Lair listening for your reply after each answer, and `"silent": true` makes Lair write instead of speak. `"sounds": { "volume": 0.5, "off": ["listening"] }` sets the volume (0 to 1) and switches off kinds: `listening`, `done`, `needsYou`, `problems`.
+At the top level, `"listenForAnswers": false` stops Lair listening for your reply after each answer, and `"silent": true` makes Lair write instead of speak. `"sounds": { "volume": 0.5, "off": ["listening"] }` sets the volume (0 to 1) and switches off kinds: `listening`, `done`, `needsYou`, `problems`. `"terminal"` is where Continue at keyboard opens: `terminal` (the default), `iterm`, `ghostty` or `herdr`.
 
 Secrets (API keys, header values) live in the Keychain, never in the file. A soul, which is extra instructions for one Claude Code or omp agent, is a Markdown file at `~/.config/lair/souls/<id>.md`.
 
