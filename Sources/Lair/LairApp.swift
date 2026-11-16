@@ -10,7 +10,7 @@ extension KeyboardShortcuts.Name {
     static let pushToTalk = Self("pushToTalk", initial: .init(.space, modifiers: [.option]))
 }
 
-/// The talk shortcut as shown in the panel and Mission Control, kept current when it's changed in Settings.
+/// The talk shortcut as shown in the panel, kept current when it's changed in Settings.
 @Observable @MainActor final class TalkKey {
     static let shared = TalkKey()
     private(set) var label = TalkKey.current
@@ -92,11 +92,6 @@ struct LairApp: App {
             Snapshot.writeIsland(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]), variant: variant)
             exit(0)
         }
-        if let i = CommandLine.arguments.firstIndex(of: "--mission-snapshot"), i + 1 < CommandLine.arguments.count {
-            let look = i + 2 < CommandLine.arguments.count ? CommandLine.arguments[i + 2] : nil
-            Snapshot.writeMissionControl(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]), look: look)
-            exit(0)
-        }
         if let i = CommandLine.arguments.firstIndex(of: "--settings-snapshot"), i + 1 < CommandLine.arguments.count {
             let agent = i + 2 < CommandLine.arguments.count ? CommandLine.arguments[i + 2] : nil
             Snapshot.writeSettings(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]), agent: agent)
@@ -146,7 +141,6 @@ struct LairApp: App {
         updates = Updates()
         KeyboardShortcuts.onKeyDown(for: .pushToTalk) { room.pressTalk() }
         KeyboardShortcuts.onKeyUp(for: .pushToTalk) { room.releaseTalk() }
-        KeyboardShortcuts.onKeyDown(for: .missionControl) { MissionControl.toggle(room: room) }
         Task { await room.start() }
         Task { await registry.refresh() }
     }
@@ -378,57 +372,6 @@ struct MenuBarIcon: View {
         room.calls[1].state = .thinking
         room.calls[2].unread = true
         room.calls[4].state = .ready
-    }
-
-    /// Mission Control with a demo exchange, drawn in a hidden window so scroll views render.
-    static func writeMissionControl(to url: URL, look: String? = nil) {
-        let room = Room(config: LairConfig(agents: Array(Demo.agents.prefix(2))))
-        room.readiness = .ready
-        let claude = room.calls[0]
-        claude.state = .speaking
-        claude.details = "Haiku 5.5"
-        claude.log(.you("What's left before we ship the release?"))
-        claude.record(.thinking("The user wants the release status. I should check the changelog and the build number "
-            + "before answering, and look at the open TODOs."))
-        claude.record(.toolStarted(id: "t1", name: "Bash", input: "git log --oneline -5"))
-        claude.record(.toolFinished(id: "t1", output: "b68c50f Settings footer\n410f237 Model picker\n08c8726 Voice switch",
-                                 failed: false))
-        claude.record(.toolStarted(id: "t2", name: "Edit", input: "~/dev/app/CHANGELOG.md"))
-        claude.record(.toolFinished(id: "t2", output: "@@ -1,3 +1,4 @@\n # Changelog\n+- Voice: switch model by voice\n- WIP",
-                                 failed: false))
-        claude.record(.toolStarted(id: "t3", name: "Bash", input: "swift test"))
-        claude.logText("Two things are left: <show>CHANGELOG.md</show> needed the voice section, which I just added, and the "
-            + "build number. Tests are running now.")
-        claude.record(.usage(inputTokens: 18_400, outputTokens: 512, cost: 0.0213))
-        claude.log(.timing(heard: 140, firstWord: 1_880, firstSound: 2_410, total: 6_120))
-        let echo = room.calls[1]
-        echo.state = .thinking
-        echo.log(.you("did last night's backups finish?"))
-        echo.record(.toolStarted(id: "c1", name: "delegate_task", input: ""))
-        echo.logText("I've started the check in the background; we can keep talking.")
-        echo.log(.note("Background task finished"))
-        echo.logText("Yes. All three finished, and the newest one is from three this morning.")
-        echo.log(.approval("Delete backups older than 30 days"))
-        echo.state = .waiting
-        echo.pendingApproval = ApprovalRequest(id: "demo", tool: "terminal", summary: "Delete backups older than 30 days")
-        let guest = room.call(for: Guest(id: "demo", name: "omp", folder: URL(fileURLWithPath: "/Users/me/dev/landing-page")))
-        guest.logText("Added a subtitle under the heading.")
-        guest.questionText = "Which colour should the subtitle be?"
-        guest.questionChoices = ["Red", "Green", "Blue"]
-        guest.questionSince = .now - 20
-        guest.questionDeadline = .now + 100
-        guest.state = .waiting
-        let view = NSHostingView(rootView: MissionControl(room: room))
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1240, height: 780), styleMask: [.titled],
-                              backing: .buffered, defer: false)
-        window.contentView = view
-        // "light" or "dark"; anything else follows the system.
-        window.appearance = look.flatMap { NSAppearance(named: $0 == "light" ? .aqua : .darkAqua) }
-        view.layoutSubtreeIfNeeded()
-        RunLoop.main.run(until: Date().addingTimeInterval(0.8))
-        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
-        view.cacheDisplay(in: view.bounds, to: rep)
-        try? rep.representation(using: .png, properties: [:])?.write(to: url)
     }
 
     /// A few real entries of the ACP Registry, so snapshots need no network.

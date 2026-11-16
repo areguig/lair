@@ -61,7 +61,6 @@ extension Room {
         let answered = source.lines.last { $0.role == .agent && !$0.text.isEmpty }?.text
         let passedOn = phrase(.passedOn(to: target.agent.name), in: source)
         source.lines.append(.init(role: .info, text: passedOn))
-        source.log(.note("\(passedOn) \(relay.words)"))
         focus(target)
         if !target.inCall { summon(target) }
         guard target.inCall else { return true }
@@ -71,7 +70,6 @@ extension Room {
         }
         let from = phrase(.relayedFrom(agent: source.agent.name, withAnswer: answered != nil), in: target)
         target.lines.append(.init(role: .info, text: from))
-        target.log(.note(from))
         // Heard in the source's voice, so the hand-off isn't a silence.
         if speech > 0 { announce(phrase(.askingAgent(target.agent.name), in: source), for: source) }
         target.state = .thinking
@@ -112,7 +110,6 @@ extension Room {
                           shown: Call.Line? = nil, typed: Bool = false) async {
         guard let session = call.session else { return }
         call.lines.append(shown ?? .init(role: .you, text: prompt))
-        call.log(shown.map { $0.role == .you ? .you($0.text) : .note($0.text) } ?? .you(prompt))
         let sent = (call.context + [prompt]).joined(separator: "\n\n")
         call.context = []
         await play({ try session.ask(sent) }, in: call, speech: speech, start: start, typed: typed)
@@ -144,9 +141,6 @@ extension Room {
         var firstToken, firstAudio: Duration?
         defer {
             func ms(_ d: Duration?) -> Int { d.map { Int($0 / .milliseconds(1)) } ?? -1 }
-            func optionalMS(_ d: Duration?) -> Int? { d.map { Int($0 / .milliseconds(1)) } }
-            call.log(.timing(heard: speech > 0 ? optionalMS(heard) : nil, firstWord: optionalMS(firstToken),
-                             firstSound: optionalMS(firstAudio), total: ms(clock.now - start)))
             Self.log.notice("""
                 \(call.id, privacy: .public): \(speech / 16) ms of speech; heard \(ms(heard)) ms, \
                 first token \(ms(firstToken)) ms, first audio \(ms(firstAudio)) ms after release
@@ -172,15 +166,12 @@ extension Room {
                 guard !Task.isCancelled else { return }
                 switch reply {
                 case .activity(let activity):
-                    call.record(activity)
                     logTool(activity, in: call)
                 case .text(let delta):
                     if firstToken == nil { firstToken = clock.now - start }
                     if !answered, let opening {
                         call.lines.append(opening)
-                        call.log(.note(opening.text))
                     }
-                    call.logText(delta)
                     if answer == nil {
                         call.lines.append(.init(role: .agent, text: ""))
                         answer = call.lines.count - 1
@@ -235,7 +226,6 @@ extension Room {
     private func ask(_ call: Call, to request: ApprovalRequest) async throws {
         call.pendingApproval = request
         releaseHold()
-        call.log(.approval("\(request.tool): \(request.summary)"))
         Self.log.notice("\(call.id, privacy: .public): approval asked\(call.id == self.focusedID ? "" : " while not in focus", privacy: .public)")
         notifier.post(request, from: call.agent.name)
         speaker?.play(.needsYou)
@@ -260,7 +250,6 @@ extension Room {
         let decision = decision == .allowAlways && !request.canAlwaysAllow ? .allowOnce : decision
         let verdict = phrase(.approved(decision, action: request.summary), in: call)
         call.lines.append(.init(role: .info, text: verdict))
-        call.log(.note(verdict))
         Self.log.notice("\(call.id, privacy: .public): approval answered, \(String(describing: decision), privacy: .public)")
         do {
             try call.session?.answer(request, decision: decision)

@@ -137,7 +137,7 @@ public struct AgentConfig: Codable, Equatable, Identifiable, Sendable {
     public var registry: String?
     /// Hermes: base URL of its API server, e.g. `http://hermes.local:8642` at home or a public address away.
     public var url: String?
-    /// Turned off: kept in the file and in Settings, but not in the panel, Mission Control or by name.
+    /// Turned off: kept in the file and in Settings, but not in the panel or by name.
     public var disabled: Bool?
     /// Hermes: extra HTTP headers sent with every request, such as a proxy's access token.
     /// Only the names are here; the values are secrets kept in the Keychain.

@@ -255,7 +255,6 @@ import os
     func report(in call: Call, _ line: Call.Line) {
         Self.log.error("\(call.id, privacy: .public): \(line.text, privacy: .public)")
         call.lines.append(line)
-        call.log(.problem(line.text))
         speaker?.play(.problem)
     }
 
