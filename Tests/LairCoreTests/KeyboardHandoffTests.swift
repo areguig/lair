@@ -25,7 +25,7 @@ struct KeyboardHandoffTests {
             #!/bin/sh
             # Lair: quitting the CLI gives the conversation back to Lair's voice.
             back='lair://back?agent=claude&session=s1'
-            trap '/usr/bin/open -g "$back"' EXIT
+            trap '/usr/bin/open -g "$back"; [ -z "$HC_TERMINAL_ID" ] || hc kill "$HC_TERMINAL_ID" >/dev/null 2>&1' EXIT
             trap 'exit' HUP INT TERM
             export PATH='/opt/bin:/usr/bin'
             cd '/work/it'\\''s here' || exit 1
@@ -46,17 +46,29 @@ struct KeyboardHandoffTests {
         let process = Process()
         process.executableURL = URL(filePath: "/bin/sh")
         process.arguments = ["-c", script]
+        // Run from a herdr pane, the script would close that pane on exit.
+        process.environment = ProcessInfo.processInfo.environment.filter { $0.key != "HC_TERMINAL_ID" }
         _ = try await ProcessRun.run(process)
         let opened = try String(contentsOf: folder.appending(path: "opened"), encoding: .utf8)
         #expect(opened == "lair://back?agent=a&session=s\n")
     }
 
-    @Test func opensTerminalOrAHerdrTab() {
-        let file = URL(filePath: "/tmp/claude.command")
-        #expect(KeyboardHandoff.launch(file, in: .terminal, title: "Claude", folder: "/work")
+    @Test func opensInTerminal() {
+        #expect(KeyboardHandoff.terminalLaunch(URL(filePath: "/tmp/claude.command"))
             == ["/usr/bin/open", "-a", "Terminal", "/tmp/claude.command"])
-        #expect(KeyboardHandoff.launch(file, in: .herdr, title: "Claude", folder: "/work")
-            == ["/usr/bin/env", "herdr-app", "do", "tab.new",
-                #"{"argv":["/bin/sh","/tmp/claude.command"],"folder":"/work","name":"Claude"}"#])
+    }
+
+    @Test func theFirstAgentAtTheKeyboardMakesTheLairSpaceInHerdr() {
+        let list = Data(#"{"spaces":[{"name":"PERSO","tabs":[{"terminals":[{"terminal":"t1","pane":"p1"}]}]}]}"#.utf8)
+        #expect(KeyboardHandoff.herdrLaunch(URL(filePath: "/tmp/claude.command"), folder: "/work", list: list)
+            == ["/usr/bin/env", "herdr-app", "do", "space.new",
+                #"{"argv":["/bin/sh","/tmp/claude.command"],"folder":"/work","name":"Lair","tab":"Agents"}"#])
+    }
+
+    @Test func theNextOnesJoinItsTab() {
+        let list = Data(#"{"spaces":[{"name":"Lair","tabs":[{"terminals":[{"pane":"p1"},{"pane":"p2"}]},{"terminals":[{"pane":"p9"}]}]}]}"#.utf8)
+        #expect(KeyboardHandoff.herdrLaunch(URL(filePath: "/tmp/codex.command"), folder: "/work", list: list)
+            == ["/usr/bin/env", "herdr-app", "do", "pane.split",
+                #"{"argv":["/bin/sh","/tmp/codex.command"],"direction":"right","pane":"p2"}"#])
     }
 }

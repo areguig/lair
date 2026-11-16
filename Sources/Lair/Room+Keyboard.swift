@@ -35,8 +35,12 @@ extension Room {
             call.atKeyboard = id
             do {
                 let file = try Self.write(script, for: call.id)
-                try await Self.run(KeyboardHandoff.launch(file, in: terminal, title: call.agent.name, folder: folder),
-                                   environment: environment)
+                let launch = switch terminal {
+                case .terminal: KeyboardHandoff.terminalLaunch(file)
+                case .herdr: KeyboardHandoff.herdrLaunch(file, folder: folder,
+                                                         list: Data(try await Self.run(KeyboardHandoff.herdrList, environment: environment).utf8))
+                }
+                _ = try await Self.run(launch, environment: environment)
                 Self.log.notice("\(call.id, privacy: .public): went on at the keyboard in \(terminal.rawValue, privacy: .public)")
             } catch {
                 reopen(call, id)
@@ -79,7 +83,8 @@ extension Room {
         return file
     }
 
-    private static func run(_ command: [String], environment: [String: String]?) async throws {
+    /// Runs `command` and returns what it printed; failing, it throws what it said.
+    private static func run(_ command: [String], environment: [String: String]?) async throws -> String {
         let process = Process()
         process.executableURL = URL(filePath: command[0])
         process.arguments = Array(command.dropFirst())
@@ -88,6 +93,7 @@ extension Room {
         guard result.status == 0 else {
             throw AgentFailure(message: result.output.trimmingCharacters(in: .whitespacesAndNewlines))
         }
+        return result.output
     }
 
     /// Whether a CLI still runs with this session on its command line.
