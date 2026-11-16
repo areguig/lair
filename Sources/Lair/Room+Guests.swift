@@ -77,7 +77,6 @@ extension Room {
     func guestSpeaks(_ text: String, from guest: Guest) async {
         let call = call(for: guest)
         call.lines.append(.init(role: .agent, text: text))
-        call.logText(text)
         guard readiness == .ready, let speaker else { return call.unread = call.id != focusedID }
         await waitForTheFloor()
         if focused.map({ !$0.inCall || ($0.guest && !$0.awaitsYou) }) ?? true { focus(call) }
@@ -94,11 +93,10 @@ extension Room {
     }
 
     /// One question at a time takes the floor once it's free, is asked aloud and listened for; it's also answered
-    /// in the panel, Mission Control or the notification. The agent hearing nothing gets nil.
+    /// in the panel or the notification. The agent hearing nothing gets nil.
     func guestAsks(_ question: String, choices: [String] = [], from guest: Guest) async -> String? {
         let call = call(for: guest)
         guard readiness == .ready, call.question == nil else { return nil }
-        call.logText(question)
         while calls.contains(where: { $0.question != nil }) || focused?.state == .speaking || focused?.state == .listening
                 || answering != nil {
             try? await Task.sleep(for: .milliseconds(300))
@@ -199,10 +197,8 @@ extension Room {
         notifier.remove(call.id)
         if let answer {
             call.lines.append(.init(role: .you, text: answer))
-            call.log(.you(answer))
         } else {
             call.lines.append(.init(role: .info, text: note))
-            call.log(.note(note))
         }
         Self.log.notice("\(call.id, privacy: .public): \(answer == nil ? "no answer" : "answered", privacy: .public)")
         if call.state == .listening { _ = try? microphone.stopCapture() }

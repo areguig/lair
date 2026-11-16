@@ -47,14 +47,13 @@ struct RoomView: View {
         .background(Backdrop(tint: tint, live: call?.inCall == true, center: call == nil ? 0.5 : 0.7))
     }
 
-    /// Settings, Mission Control and the rest, beside the model switcher.
+    /// Settings and the rest, beside the model switcher.
     private var moreMenu: some View {
         Menu {
             if let updates, let version = updates.reminder.version {
                 Button("Install Lair \(version)") { updates.install() }
                 Divider()
             }
-            Button("Mission Control…\(missionControlKey)") { MissionControl.toggle(room: room) }
             Toggle("Silent mode", isOn: Binding(get: { room.silent }, set: { room.setSilent($0) }))
             Button("Settings…") { openSettings(.agents) }
             Button("Connect agents on this Mac…") { openSettings(.mac) }
@@ -333,10 +332,6 @@ struct RoomView: View {
                     .accessibilityLabel("Continue \(call.agent.name) at the keyboard")
             }
         }
-    }
-
-    private var missionControlKey: String {
-        KeyboardShortcuts.getShortcut(for: .missionControl).map { " (\($0))" } ?? ""
     }
 
     /// What you can say, shown while a call has no words yet.

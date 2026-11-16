@@ -205,7 +205,7 @@ private struct AgentForm: View {
         Form {
             Section("Identity") {
                 Toggle("Use this agent", isOn: Binding(get: { agent.disabled != true }, set: { agent.disabled = $0 ? nil : true }))
-                    .hint("Off keeps its settings but takes it out of the panel and Mission Control.")
+                    .hint("Off keeps its settings but takes it out of the panel.")
                 VStack(alignment: .leading, spacing: 2) {
                     TextField("Name", text: $agent.name, prompt: Text("What you call it by voice"))
                     if let problem = nameProblem(agent.name, others: others) { Helper(problem) }

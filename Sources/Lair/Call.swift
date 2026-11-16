@@ -45,8 +45,6 @@ import os
     @ObservationIgnored var thinkingNextCall: String?
     /// What the agent said while another agent had the floor, heard when you switch to it.
     @ObservationIgnored var unheard: [String] = []
-    /// The whole exchange for Mission Control; kept across calls with this agent until Lair quits.
-    var entries: [LogEntry] = []
     @ObservationIgnored var session: (any AgentSession)?
     @ObservationIgnored var turn: Task<Void, Never>?
     /// Identifies the running turn, so an interrupted one can't reset the state of the next.

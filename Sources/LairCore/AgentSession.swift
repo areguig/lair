@@ -97,7 +97,7 @@ public enum AgentReply: Equatable, Sendable {
     case text(String)
     /// The agent is paused until `answer` is called.
     case approval(ApprovalRequest)
-    /// What the agent does besides talking: thinking, tools, usage. Shown in Mission Control, never spoken.
+    /// What the agent does besides talking: thinking, tools, usage. Never spoken.
     case activity(Activity)
 }
 
@@ -116,7 +116,7 @@ public enum Activity: Equatable, Sendable {
 }
 
 extension Activity {
-    /// Results can be huge; Mission Control shows the start and says how much was left out.
+    /// Results can be huge; only the start is kept, with how much was left out.
     public static func trimmed(_ text: String, limit: Int = 4_000) -> String {
         guard text.count > limit else { return text }
         return String(text.prefix(limit)) + "\n… \(text.count - limit) more characters"

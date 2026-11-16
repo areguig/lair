@@ -107,31 +107,4 @@ extension Room {
             if answering?.callID == call.id { answering = nil }
         }
     }
-
-    /// Text typed in Mission Control: the same as saying it, without the microphone.
-    func type(_ text: String, to call: Call) {
-        guard readiness == .ready else { return show(hint: "Still getting the voices ready…") }
-        focus(call)
-        releaseHold()
-        if !call.inCall { summon(call) }
-        if let request = call.pendingApproval {
-            guard let decision = SpokenAnswer.parse(text, language: call.agent.spokenLanguage) else {
-                return show(hint: "Type yes" + (request.canAlwaysAllow ? ", always" : "") + " or no, or use the buttons.")
-            }
-            return answer(call, decision: decision)
-        }
-        if call.questionText != nil { return answerQuestion(of: call, with: text) }
-        if call.guest { return show(hint: "\(call.agent.name) listens only when it asks you something.") }
-        if call.state == .speaking || call.state == .thinking { interrupt(call) }
-        guard call.state == .ready else { return }
-        if pass(text, from: call, speech: 0, start: Self.clock.now) { return }
-        if let command = VoiceCommand.parse(text, language: call.agent.spokenLanguage) {
-            call.lines.append(.init(role: .you, text: text))
-            call.log(.you(text))
-            Task { await run(command, in: call) }
-            return
-        }
-        call.state = .thinking
-        call.turn = Task { await converse(in: call, prompt: text, speech: 0, start: Self.clock.now, typed: true) }
-    }
 }

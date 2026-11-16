@@ -276,7 +276,7 @@ enum ACPWire {
     }
 }
 
-/// Any JSON value, kept as compact text: a tool's arguments, shown in Mission Control.
+/// Any JSON value, kept as compact text: a tool's arguments.
 struct JSONText: Decodable {
     let text: String
 

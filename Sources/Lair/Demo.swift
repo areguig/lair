@@ -19,7 +19,6 @@ import SwiftUI
     // Where things are on the desktop, in points.
     static let menuIcon = CGPoint(x: canvas.width - 196, y: 14)
     static let floatingOrb = CGPoint(x: canvas.width - 92, y: canvas.height - 178)
-    static let missionFrame = CGRect(x: 56, y: 50, width: 1060, height: 600)
     /// The panel is 424 × 580 pt: under the menu icon, kept inside the screen.
     static let panelOrigin = CGPoint(x: min(menuIcon.x - 212, canvas.width - 424 - 8), y: 34)
     static let panelFocus = CGPoint(x: panelOrigin.x + 212, y: 330)
@@ -27,11 +26,6 @@ import SwiftUI
     static let chips = (0..<3).map { CGPoint(x: panelOrigin.x + 47, y: panelOrigin.y + 86 + 69 * CGFloat($0)) }
     /// The Allow button of the approval card, with the one-line request Sage makes in the story.
     static let panelAllow = CGPoint(x: panelOrigin.x + 323, y: panelOrigin.y + 442)
-    /// The middle of Mission Control's column `i`, at its `y`.
-    static func column(_ i: Int, y: CGFloat) -> CGPoint {
-        let width = (missionFrame.width - 14 * 4) / 3
-        return CGPoint(x: missionFrame.minX + 14 + (width + 14) * CGFloat(i) + width / 2, y: y)
-    }
 
     static func run(into folder: URL) async throws {
         let voice = VoiceModels()
@@ -64,10 +58,6 @@ import SwiftUI
         s.caption("Hold ⌥Space and ask")
         s.keys("⌥ Space", for: 3.2)
         try await s.you("Add rate limiting to the bookings API.", to: 0)
-        s.at { room in
-            room.calls[0].record(.thinking("Rate limiting per user. Find where bookings requests come in first."))
-            room.calls[0].record(.toolStarted(id: "a1", name: "Grep", input: "router.post(\"/bookings\""))
-        }
         try await s.agent(0, says: "On it. A token bucket per user, with tests.", after: 0.9, then: .thinking)
 
         s.caption("Several agents at once: click one to switch")
@@ -78,9 +68,6 @@ import SwiftUI
         s.wait(0.5)
         s.keys("⌥ Space", for: 3.4)
         try await s.you("Build the empty state for the trips screen.", to: 1)
-        s.at { room in
-            room.calls[1].record(.toolStarted(id: "i1", name: "Read", input: "Design/Tokens.swift"))
-        }
         try await s.agent(1, says: "Sure. I'll use the illustration from the design kit.", after: 0.9, then: .thinking)
 
         s.caption("…or start with its name")
@@ -92,7 +79,6 @@ import SwiftUI
         s.at { room in
             room.calls[2].pendingApproval = ApprovalRequest(id: "s1", tool: "bash",
                                                             summary: "Fetch and check out atlas/rate-limit")
-            room.calls[2].log(.approval("bash: Fetch and check out atlas/rate-limit"))
         }
         s.earcon(.needsYou)
         try await s.agent(2, says: "Sage needs your OK to fetch and check out the rate limit branch. Allow it? "
@@ -104,8 +90,6 @@ import SwiftUI
             let sage = room.calls[2]
             sage.pendingApproval = nil
             sage.lines.append(.init(role: .info, text: "Allowed once: Fetch and check out atlas/rate-limit"))
-            sage.log(.note("Allowed once: Fetch and check out atlas/rate-limit"))
-            sage.record(.toolStarted(id: "s2", name: "bash", input: "git fetch && git checkout atlas/rate-limit"))
             sage.state = .thinking
         }
         s.wait(1.2)
@@ -140,23 +124,9 @@ import SwiftUI
         s.cursor(to: CGPoint(x: 600, y: 430), over: 0.9)
         s.wait(1.0)
 
-        s.caption("⌥⌘L: Mission Control")
-        s.keys("⌥ ⌘ L", for: 1.4)
-        s.wait(0.5)
-        s.show(.missionControl)
-        s.camera(to: CGPoint(x: missionFrame.midX, y: missionFrame.midY + 6), zoom: 1.13, over: 0.8)
-        work(s)
-        s.wait(3.5)
-        s.caption("Every tool call, diff and test run, live")
-        s.wait(5.5)
-
         s.caption("One finishes and calls out")
         s.at { room in
             let atlas = room.calls[0]
-            atlas.record(.toolFinished(id: "a5", output: "Executed 86 tests, with 0 failures", failed: false))
-            atlas.logText("Rate limiting is in: 20 requests a minute per user, with a test for the 429. All 86 tests pass.")
-            atlas.record(.usage(inputTokens: 31_200, outputTokens: 1_480, cost: 0.041))
-            atlas.log(.timing(heard: 120, firstWord: 1_580, firstSound: 2_060, total: 48_900))
             atlas.state = .ready
             atlas.unread = true
         }
@@ -169,7 +139,6 @@ import SwiftUI
         s.at { room in
             let sage = room.calls[2]
             sage.pendingApproval = ApprovalRequest(id: "s9", tool: "bash", summary: "Post the review on the pull request")
-            sage.log(.approval("bash: Post the review on the pull request"))
             sage.state = .waiting
             sage.unread = true
         }
@@ -177,21 +146,25 @@ import SwiftUI
         s.wait(0.3)
         try await s.announce(2, "Sage needs your OK.")
         s.caption("Approve with a click")
-        s.cursor(to: column(2, y: missionFrame.maxY - 108).applying(.init(translationX: 80, y: 0)), over: 1.0)
+        s.show(.panel)
+        s.camera(to: panelFocus, zoom: 1.1, over: 0.9)
+        s.cursor(to: chips[2], over: 1.0)
         s.wait(1.1)
+        s.click()
+        s.at { $0.focusedID = "sage" }
+        s.cursor(to: panelAllow, over: 0.8)
+        s.wait(0.9)
         s.click()
         s.at { room in
             let sage = room.calls[2]
             sage.pendingApproval = nil
             sage.unread = false
-            sage.log(.note("Allowed once: Post the review on the pull request"))
-            sage.record(.toolStarted(id: "s10", name: "bash", input: "gh pr review 128 --comment --body-file review.md"))
             sage.state = .thinking
         }
         s.wait(1.4)
 
         s.caption("Click an agent to hear what it did")
-        s.cursor(to: column(0, y: missionFrame.minY + 92), over: 1.0)
+        s.cursor(to: chips[0], over: 1.0)
         s.wait(1.1)
         s.click()
         s.at { room in
@@ -205,57 +178,6 @@ import SwiftUI
         s.caption(nil)
         s.show(.endCard)
         s.wait(4.5)
-    }
-
-    /// Everyone's work streaming into Mission Control at once, spread over the next few seconds.
-    private static func work(_ s: Script) {
-        s.after(0.4) { $0.calls[0].record(.toolFinished(id: "a1", output: "Sources/API/BookingsRouter.swift:41", failed: false)) }
-        s.after(0.9) { $0.calls[1].record(.toolFinished(id: "i1", output: "spacing.l = 24, radius.card = 16, ink.muted", failed: false)) }
-        s.after(1.3) { $0.calls[2].record(.toolFinished(id: "s2", output: "Switched to branch 'atlas/rate-limit'", failed: false)) }
-        s.after(1.6) { room in
-            room.calls[0].record(.toolStarted(id: "a2", name: "Write", input: "Sources/API/RateLimiter.swift"))
-            room.calls[0].record(.toolFinished(id: "a2", output: """
-                +struct RateLimiter {
-                +    let perMinute = 20
-                +    func allow(_ user: User.ID, at now: Date) -> Bool
-                """, failed: false))
-        }
-        s.after(2.4) { room in
-            room.calls[1].record(.thinking("No trips yet: a calm illustration, one line of copy, one button to plan a trip."))
-            room.calls[1].record(.toolStarted(id: "i2", name: "Write", input: "Sources/Trips/TripsEmptyState.swift"))
-        }
-        s.after(3.0) { room in
-            room.calls[2].record(.toolStarted(id: "s3", name: "bash", input: "git diff main --stat"))
-            room.calls[2].record(.toolFinished(id: "s3", output: " Sources/API/BookingsRouter.swift |  6 +-\n Sources/API/RateLimiter.swift   | 38 +++", failed: false))
-        }
-        s.after(3.6) { room in
-            room.calls[1].record(.toolFinished(id: "i2", output: """
-                +struct TripsEmptyState: View {
-                +    var body: some View { … }
-                """, failed: false))
-            room.calls[0].record(.toolStarted(id: "a3", name: "Edit", input: "Sources/API/BookingsRouter.swift"))
-        }
-        s.after(4.4) { room in
-            room.calls[0].record(.toolFinished(id: "a3", output: """
-                @@ -41,2 +41,4 @@
-                +    guard limiter.allow(user.id, at: .now) else { throw HTTPError.tooManyRequests }
-                """, failed: false))
-            room.calls[2].record(.thinking("The bucket refills from the wall clock; a monotonic clock would survive clock changes."))
-        }
-        s.after(5.4) { room in
-            room.calls[0].record(.toolStarted(id: "a4", name: "Write", input: "Tests/API/RateLimiterTests.swift"))
-            room.calls[0].record(.toolFinished(id: "a4", output: "+func testTwentyFirstRequestGets429()", failed: false))
-            room.calls[1].record(.toolStarted(id: "i3", name: "Bash", input: "swift test --filter TripsSnapshots"))
-        }
-        s.after(6.6) { room in
-            room.calls[1].record(.toolFinished(id: "i3", output: "✘ testEmptyState: no reference image", failed: true))
-            room.calls[2].logText("One note for Atlas: use a monotonic clock for the refill. Otherwise it looks good.")
-            room.calls[0].record(.toolStarted(id: "a5", name: "Bash", input: "swift test"))
-        }
-        s.after(8.0) { room in
-            room.calls[2].record(.usage(inputTokens: 12_900, outputTokens: 410, cost: nil))
-            room.calls[2].state = .ready
-        }
     }
 
     // MARK: - Rendering
@@ -302,29 +224,12 @@ import SwiftUI
         try NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?.write(to: url)
     }
 
-    private static let window = NSWindow(contentRect: NSRect(origin: .zero, size: missionFrame.size),
-                                         styleMask: [.borderless], backing: .buffered, defer: false)
-
     private static func render(_ script: Script, at time: Double) -> CGImage? {
         let room = script.room(at: time), stage = script.stage(at: time)
-        let mission = stage.open[.missionControl] == nil ? nil : missionControl(room, at: time)
-        let renderer = ImageRenderer(content: DemoFrame(room: room, stage: stage, mission: mission,
+        let renderer = ImageRenderer(content: DemoFrame(room: room, stage: stage,
                                                         caption: script.caption(at: time), time: time))
         renderer.scale = scale
         return renderer.cgImage
-    }
-
-    /// ImageRenderer leaves scroll views blank, so Mission Control's streams go through a hidden window.
-    /// A fresh hosting view each frame keeps SwiftUI from animating between frames in real time.
-    private static func missionControl(_ room: Room, at time: Double) -> CGImage? {
-        let view = NSHostingView(rootView: MissionControl(room: room).environment(\.renderTime, time))
-        view.frame = NSRect(origin: .zero, size: missionFrame.size)
-        window.contentView = view
-        view.layoutSubtreeIfNeeded()
-        RunLoop.main.run(until: Date().addingTimeInterval(0.01))
-        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
-        view.cacheDisplay(in: view.bounds, to: rep)
-        return rep.cgImage
     }
 
     private static func pixelBuffer(from image: CGImage, pool: CVPixelBufferPool) -> CVPixelBuffer? {
@@ -357,7 +262,7 @@ import SwiftUI
 
 /// What's on screen at one moment, besides the room: the camera, the cursor, the open windows, the keys held.
 struct Stage {
-    enum Window { case panel, missionControl, endCard }
+    enum Window { case panel, endCard }
 
     /// Starts on the whole 1280×800 canvas.
     var camera = (focus: CGPoint(x: 640, y: 400), zoom: 1.0)
@@ -424,7 +329,6 @@ struct Stage {
         at { room in
             if transcript {
                 room.calls[call].lines.append(.init(role: .you, text: text))
-                room.calls[call].log(.you(text))
             }
             room.calls[call].state = transcript ? .thinking : room.calls[call].pendingApproval == nil ? .ready : .waiting
         }
@@ -439,7 +343,6 @@ struct Stage {
             room.calls[call].state = .speaking
             if transcript {
                 room.calls[call].lines.append(.init(role: .agent, text: text))
-                room.calls[call].logText(text)
             }
         }
         let duration = place(samples, at: time)
@@ -532,12 +435,11 @@ struct Stage {
     }
 }
 
-/// One frame of the video: the desktop with Lair's floating orb, its panel and Mission Control when open, and the
+/// One frame of the video: the desktop with Lair's floating orb, its panel when open, and the
 /// cursor, seen through a camera that moves in on what matters; the caption and keys sit on top, unzoomed.
 private struct DemoFrame: View {
     let room: Room
     let stage: Stage
-    let mission: CGImage?
     let caption: String?
     let time: Double
 
@@ -585,18 +487,6 @@ private struct DemoFrame: View {
             Dock()
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 .padding(.bottom, 8)
-            if let opened = stage.open[.missionControl], let mission {
-                Image(decorative: mission, scale: 2)
-                    .resizable()
-                    .frame(width: Demo.missionFrame.width, height: Demo.missionFrame.height)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(alignment: .topLeading) { TrafficLights().padding(14) }
-                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.white.opacity(0.14)))
-                    .compositingGroup()
-                    .shadow(color: .black.opacity(0.5), radius: 40, y: 18)
-                    .offset(x: Demo.missionFrame.minX, y: Demo.missionFrame.minY)
-                    .appearing(opened)
-            }
             // Above every window, as the real one floats.
             if let call = room.focused, room.calls.contains(where: \.inCall) {
                 Orb(color: Color(hex: call.agent.color), state: call.state, meter: room.meter(for: call))
