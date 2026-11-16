@@ -35,8 +35,7 @@ extension Room {
                 terminal = .terminal
             }
             let folder = (call.agent.directoryURL ?? FileManager.default.homeDirectoryForCurrentUser).path
-            let back = KeyboardHandoff.Back(agent: call.id, sessionID: id)
-            let script = KeyboardHandoff.script(command: command, folder: folder, path: environment?["PATH"], back: back)
+            let script = KeyboardHandoff.script(command: command, folder: folder, path: environment?["PATH"])
             // The CLI must not open the session while this call still holds it.
             hangUp(call)
             call.atKeyboard = id
@@ -48,6 +47,7 @@ extension Room {
                     : KeyboardHandoff.windowLaunch(file, in: terminal)
                 _ = try await Self.run(launch, environment: environment)
                 Self.log.notice("\(call.id, privacy: .public): went on at the keyboard in \(terminal.rawValue, privacy: .public)")
+                await waitForTheCLI(of: call, id)
             } catch {
                 reopen(call, id)
                 report(in: call, .init(role: .problem, text: "Couldn't open the terminal: \(error.localizedDescription)"))
@@ -55,13 +55,21 @@ extension Room {
         }
     }
 
-    /// `lair://back`: the CLI quit, so the call it had is picked up again.
-    func takeBack(_ back: KeyboardHandoff.Back) {
-        guard let call = calls.first(where: { $0.id == back.agent }), !call.inCall else { return }
-        // A newer hand-off of this agent is still at the keyboard.
-        guard call.atKeyboard == nil || call.atKeyboard == back.sessionID else { return }
-        guard readiness == .ready else { return pendingBack = back }
-        reopen(call, back.sessionID)
+    /// Waits for the CLI to start, then to end however it ends (quit, closed window or pane), and takes the call back.
+    /// Watching the process, not a signal from the terminal: a closed pane kills the script before it could say so.
+    private func waitForTheCLI(of call: Call, _ id: String) async {
+        var started = false
+        for _ in 0..<30 where !started {
+            started = await Self.isRunning(sessionID: id)
+            if !started { try? await Task.sleep(for: .seconds(1)) }
+        }
+        while started, call.atKeyboard == id, await Self.isRunning(sessionID: id) {
+            try? await Task.sleep(for: .seconds(2))
+        }
+        // Brought back by hand meanwhile.
+        guard call.atKeyboard == id else { return }
+        if !started { report(in: call, .init(role: .problem, text: "\(call.agent.name)'s CLI didn't start, so it's back here.")) }
+        reopen(call, id)
     }
 
     /// The call button while the agent is at the keyboard: only once its CLI is gone, or both would write the session.

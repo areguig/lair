@@ -32,7 +32,6 @@ struct LairApp: App {
     private let link: GuestLink
     private let store: ConfigStore
     private let island: Island
-    private let backLink: BackLink
     private let updates: Updates
     private let registry: RegistryStore
 
@@ -142,7 +141,6 @@ struct LairApp: App {
         self.room = room
         self.link = link
         self.island = island
-        backLink = BackLink(room: room)
         let registry = RegistryStore()
         self.registry = registry
         updates = Updates()

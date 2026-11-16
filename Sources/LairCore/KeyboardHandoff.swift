@@ -1,6 +1,6 @@
 import Foundation
 
-/// Going on with a call in the agent's own CLI, in a terminal, and back to voice when the CLI quits.
+/// Going on with a call in the agent's own CLI, in a terminal; Lair takes it back once that CLI is gone.
 public enum KeyboardHandoff {
     /// Where the CLI opens: Terminal comes with macOS; the others when you have them and chose one.
     public enum Terminal: String, Codable, Sendable, CaseIterable {
@@ -36,41 +36,13 @@ public enum KeyboardHandoff {
         }
     }
 
-    /// Who comes back to voice: opened as `lair://back?agent=…&session=…` when the CLI quits.
-    public struct Back: Equatable, Sendable {
-        public let agent: String
-        public let sessionID: String
-
-        public init(agent: String, sessionID: String) {
-            (self.agent, self.sessionID) = (agent, sessionID)
-        }
-
-        public var url: URL {
-            var components = URLComponents()
-            components.scheme = "lair"
-            components.host = "back"
-            components.queryItems = [.init(name: "agent", value: agent), .init(name: "session", value: sessionID)]
-            return components.url!
-        }
-
-        public init?(url: URL) {
-            guard url.scheme == "lair", url.host() == "back",
-                  let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
-                  let agent = items.first(where: { $0.name == "agent" })?.value,
-                  let session = items.first(where: { $0.name == "session" })?.value
-            else { return nil }
-            (self.agent, self.sessionID) = (agent, session)
-        }
-    }
-
-    /// What the terminal runs: the CLI in the agent's folder with your login PATH. Quitting it, or closing the
-    /// window, opens `back`; in herdr the pane then closes itself, so the Lair tab holds only agents at the keyboard.
-    public static func script(command: [String], folder: String, path: String?, back: Back) -> String {
+    /// What the terminal runs: the CLI in the agent's folder with your login PATH. In herdr the pane closes once the CLI
+    /// quits, so the Lair tab holds only agents at the keyboard.
+    public static func script(command: [String], folder: String, path: String?) -> String {
         var lines = [
             "#!/bin/sh",
-            "# Lair: quitting the CLI gives the conversation back to Lair's voice.",
-            "back=\(quote(back.url.absoluteString))",
-            #"trap '/usr/bin/open -g "$back"; [ -z "$HC_TERMINAL_ID" ] || hc kill "$HC_TERMINAL_ID" >/dev/null 2>&1' EXIT"#,
+            "# Lair: once this CLI quits, Lair picks the conversation up again by voice.",
+            #"trap '[ -z "$HC_TERMINAL_ID" ] || hc kill "$HC_TERMINAL_ID" >/dev/null 2>&1' EXIT"#,
             "trap 'exit' HUP INT TERM",
         ]
         if let path { lines.append("export PATH=\(quote(path))") }

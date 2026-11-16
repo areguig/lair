@@ -68,10 +68,6 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>SUFeedURL</key><string>https://github.com/areguig/lair/releases/latest/download/appcast.xml</string>
   <key>SUPublicEDKey</key><string>dxNFdjuJmZE7FSoBXtKgfw6xZoTFfoCEeleM5WLloVk=</string>
   <key>SUEnableAutomaticChecks</key><true/>
-  <key>CFBundleURLTypes</key><array><dict>
-    <key>CFBundleURLName</key><string>$bundle_id</string>
-    <key>CFBundleURLSchemes</key><array><string>lair</string></array>
-  </dict></array>
   <key>NSMicrophoneUsageDescription</key><string>$name listens while you hold the talk key or after you click the orb, to hear what you say to your agents.</string>
 </dict></plist>
 PLIST

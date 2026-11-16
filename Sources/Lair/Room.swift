@@ -49,8 +49,6 @@ import os
     @ObservationIgnored private var sounds: SoundSettings
     /// Where "Continue at keyboard" opens the agent's CLI.
     @ObservationIgnored var keyboardTerminal: KeyboardHandoff.Terminal
-    /// A CLI quit while the voices were still loading: its call is picked up once they're ready.
-    @ObservationIgnored var pendingBack: KeyboardHandoff.Back?
 
     @ObservationIgnored let voice = VoiceModels()
     @ObservationIgnored let microphone = Microphone()
@@ -160,10 +158,6 @@ import os
                 self.speaker = speaker
             }
             readiness = .ready
-            if let back = pendingBack {
-                pendingBack = nil
-                takeBack(back)
-            }
         } catch {
             readiness = .failed("Couldn't load the voices: \(error.localizedDescription)")
         }
