@@ -13,6 +13,8 @@ public struct LairConfig: Codable, Equatable, Sendable {
     public var sounds: SoundSettings?
     /// Lair writes instead of speaking; unset means off.
     public var silent: Bool?
+    /// Where "Continue at keyboard" opens the agent's CLI; unset means Terminal.
+    public var terminal: KeyboardHandoff.Terminal?
 
     public init(agents: [AgentConfig]) {
         self.agents = agents
@@ -22,6 +24,7 @@ public struct LairConfig: Codable, Equatable, Sendable {
     public var showsIsland: Bool { island != false }
     public var soundSettings: SoundSettings { sounds ?? SoundSettings() }
     public var isSilent: Bool { silent == true }
+    public var keyboardTerminal: KeyboardHandoff.Terminal { terminal ?? .terminal }
 
     /// The agents you can call: turned-off ones keep their settings but stay out of the room.
     public var enabledAgents: [AgentConfig] { agents.filter { $0.disabled != true } }
