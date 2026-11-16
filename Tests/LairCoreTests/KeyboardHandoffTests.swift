@@ -6,6 +6,7 @@ struct KeyboardHandoffTests {
     @Test func picksTheSessionUpInTheCLIsThatShareTheirSessions() {
         #expect(KeyboardHandoff.command(preset: "claude", sessionID: "s1") == ["claude", "--resume", "s1"])
         #expect(KeyboardHandoff.command(preset: "codex", sessionID: "s1") == ["codex", "resume", "--no-daemon", "s1"])
+        #expect(KeyboardHandoff.command(preset: "omp", sessionID: "s1") == ["omp", "--resume", "s1"])
         #expect(KeyboardHandoff.command(preset: "copilot", sessionID: "s1") == nil)
         #expect(KeyboardHandoff.command(preset: nil, sessionID: "s1") == nil)
     }

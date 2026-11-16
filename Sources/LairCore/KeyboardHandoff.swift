@@ -32,6 +32,7 @@ public enum KeyboardHandoff {
         case "claude": ["claude", "--resume", sessionID]
         // The shared daemon keeps the session after the CLI quits, so Lair couldn't pick it up again.
         case "codex": ["codex", "resume", "--no-daemon", sessionID]
+        case "omp": ["omp", "--resume", sessionID]
         default: nil
         }
     }

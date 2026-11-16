@@ -707,7 +707,7 @@ private struct GeneralSettings: View {
                     Text("The mic opens for a few seconds once the agent stops talking, and sends when you stop.")
                     Text("At the top, Lair grows out of the notch when someone talks or needs you; click its orb to talk.")
                     Text("Allow notifications to answer approvals from anywhere; without them, answer by voice or in the panel.")
-                    Text("Continue at keyboard opens Claude or Codex in its own CLI on the same conversation; quit it to come back.")
+                    Text("Continue at keyboard opens Claude, Codex or omp in its own CLI on the same conversation; quit it to come back.")
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
