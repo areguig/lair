@@ -1,8 +1,8 @@
 import LairCore
 import SwiftUI
 
-/// One agent in the rail: its orb in its own color, alive with its state; a ring while it speaks; a dot when it needs you.
-struct RailAvatar: View {
+/// One agent in the sidebar: its orb in its own color, alive with its state, its name and where the call is.
+struct SidebarRow: View {
     let call: Call
     let focused: Bool
     let select: () -> Void
@@ -10,34 +10,32 @@ struct RailAvatar: View {
     var body: some View {
         let tint = Color(hex: call.agent.color)
         Button(action: select) {
-            VStack(spacing: 4) {
+            HStack(spacing: 6) {
                 ZStack {
-                    Orb(color: tint, state: call.state, offlineSaturation: 0.55).frame(width: 30, height: 30)
+                    Orb(color: tint, state: call.state, offlineSaturation: 0.55).frame(width: 26, height: 26)
                     if call.state == .speaking { SpeakingRing(tint: tint) }
                 }
-                .frame(width: 38, height: 38)
-                .overlay(alignment: .topTrailing) { dot }
-                .overlay(alignment: .bottomTrailing) {
-                    if call.guest {
-                        Image(systemName: "laptopcomputer")
-                            .font(.system(size: 6, weight: .bold))
-                            .foregroundStyle(.primary)
-                            .frame(width: 12, height: 12)
-                            .background(Color.inverse, in: Circle())
-                            .overlay(Circle().strokeBorder(.separator, lineWidth: 0.5))
-                    }
+                .frame(width: 28, height: 28)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(call.agent.name)
+                        .font(.system(.callout, design: .rounded, weight: focused ? .semibold : .regular))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Text(status)
+                        .font(.system(.caption, design: .rounded))
+                        .foregroundStyle(statusStyle)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                 }
-                Text(call.agent.name)
-                    .font(.system(.caption, design: .rounded, weight: focused ? .semibold : .regular))
-                    .foregroundStyle(focused || call.inCall ? .primary : .secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(width: 56)
+                Spacer(minLength: 0)
+                if call.unread && !focused && !call.awaitsYou {
+                    Circle().fill(LairColors.unread).frame(width: 8, height: 8)
+                        .transition(.scale.combined(with: .opacity))
+                }
             }
-            .padding(.vertical, 5)
-            .frame(width: 62)
-            .background(Color.primary.opacity(focused ? 0.08 : 0), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .outlined(RoundedRectangle(cornerRadius: 12, style: .continuous), opacity: 0)
+            .padding(.horizontal, 6).padding(.vertical, 4)
+            .background(Color.accentColor.opacity(focused ? 0.25 : 0), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -46,15 +44,11 @@ struct RailAvatar: View {
         .accessibilityValue(summary)
     }
 
-    /// Orange when it needs you, blue when it has news; the words are in the VoiceOver value and the tooltip.
-    @ViewBuilder private var dot: some View {
-        if call.awaitsYou || (call.unread && !focused) {
-            Circle()
-                .fill(call.awaitsYou ? LairColors.attention : LairColors.unread)
-                .frame(width: 10, height: 10)
-                .overlay(Circle().strokeBorder(Color.inverse, lineWidth: 1.5))
-                .transition(.scale.combined(with: .opacity))
-        }
+    private var status: String { call.atKeyboard != nil ? "At keyboard" : call.state.label }
+
+    private var statusStyle: AnyShapeStyle {
+        if call.awaitsYou { return AnyShapeStyle(LairColors.attention) }
+        return call.state == .speaking || call.state == .listening ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary)
     }
 
     private var help: String {
@@ -68,7 +62,7 @@ struct RailAvatar: View {
     /// What VoiceOver adds to the name: where the call is, and what the agent wants from you.
     private var summary: String {
         let wants = call.questionText != nil ? "asks you something" : call.pendingApproval != nil ? nil : call.unread ? "has news" : nil
-        return [call.state.label, wants, call.guest ? "on this Mac" : nil].compactMap { $0 }.joined(separator: ", ")
+        return [status, wants, call.guest ? "on this Mac" : nil].compactMap { $0 }.joined(separator: ", ")
     }
 }
 
@@ -92,46 +86,6 @@ private struct SpeakingRing: View {
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
-    }
-}
-
-/// Someone other than the agent in front of you is waiting on you: who, and one click to get there.
-struct ElsewhereBar: View {
-    let call: Call
-    /// Others waiting behind this one.
-    let more: Int
-    let go: () -> Void
-
-    var body: some View {
-        Button(action: go) {
-            HStack(spacing: 8) {
-                Circle().fill(Color(hex: call.agent.color)).frame(width: 8, height: 8)
-                Text(call.questionText != nil ? "\(call.agent.name) asks you something" : "\(call.agent.name) needs your OK")
-                    .font(.system(.caption, design: .rounded, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Spacer(minLength: 4)
-                if more > 0 {
-                    Text("+\(more)")
-                        .font(.system(.caption2, design: .rounded, weight: .bold))
-                        .foregroundStyle(LairColors.attention)
-                        .padding(.horizontal, 5).padding(.vertical, 1)
-                        .background(LairColors.attention.opacity(0.18), in: Capsule())
-                        .help("\(more) more waiting on you")
-                }
-                Text("Answer")
-                    .font(.system(.caption, design: .rounded, weight: .semibold))
-                    .foregroundStyle(LairColors.attention)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(LairColors.attention)
-            }
-            .padding(.horizontal, 12).padding(.vertical, 8)
-            .background(LairColors.attention.opacity(0.13), in: Capsule())
-            .overlay(Capsule().strokeBorder(LairColors.attention.opacity(0.35), lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(call.questionText != nil ? "\(call.agent.name) asks you something; answer" : "\(call.agent.name) needs your OK; answer")
     }
 }
 
