@@ -2,9 +2,28 @@ import Foundation
 
 /// Going on with a call in the agent's own CLI, in a terminal, and back to voice when the CLI quits.
 public enum KeyboardHandoff {
-    /// Where the CLI opens: Terminal comes with macOS; herdr when you have it and chose it.
+    /// Where the CLI opens: Terminal comes with macOS; the others when you have them and chose one.
     public enum Terminal: String, Codable, Sendable, CaseIterable {
-        case terminal, herdr
+        case terminal, iterm, ghostty, herdr
+
+        public var name: String {
+            switch self {
+            case .terminal: "Terminal"
+            case .iterm: "iTerm2"
+            case .ghostty: "Ghostty"
+            case .herdr: "herdr"
+            }
+        }
+
+        /// How macOS finds the app, to tell whether it's installed.
+        public var bundleID: String {
+            switch self {
+            case .terminal: "com.apple.Terminal"
+            case .iterm: "com.googlecode.iterm2"
+            case .ghostty: "com.mitchellh.ghostty"
+            case .herdr: "dev.herdr.app"
+            }
+        }
     }
 
     /// The CLI line that picks the session up; nil for agents whose CLI isn't known to share its sessions with ACP.
@@ -59,9 +78,13 @@ public enum KeyboardHandoff {
         return lines.joined(separator: "\n") + "\n"
     }
 
-    /// Opens the script at `file` in Terminal.
-    public static func terminalLaunch(_ file: URL) -> [String] {
-        ["/usr/bin/open", "-a", "Terminal", file.path]
+    /// Opens the script at `file` in a new window of `terminal`; herdr places it with `herdrLaunch` instead.
+    public static func windowLaunch(_ file: URL, in terminal: Terminal) -> [String] {
+        switch terminal {
+        case .terminal, .herdr: ["/usr/bin/open", "-a", "Terminal", file.path]
+        case .iterm: ["/usr/bin/open", "-a", "iTerm", file.path]
+        case .ghostty: ["/usr/bin/open", "-na", "Ghostty", "--args", "-e", "/bin/sh", file.path]
+        }
     }
 
     /// herdr's space for agents at the keyboard, all in one tab; it goes away with its last pane.

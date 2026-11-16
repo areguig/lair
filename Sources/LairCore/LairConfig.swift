@@ -13,7 +13,7 @@ public struct LairConfig: Codable, Equatable, Sendable {
     public var sounds: SoundSettings?
     /// Lair writes instead of speaking; unset means off.
     public var silent: Bool?
-    /// Where "Continue at keyboard" opens the agent's CLI; unset means Terminal.
+    /// Where "Continue at keyboard" opens the agent's CLI: terminal, iterm, ghostty or herdr; unset means Terminal.
     public var terminal: KeyboardHandoff.Terminal?
 
     public init(agents: [AgentConfig]) {

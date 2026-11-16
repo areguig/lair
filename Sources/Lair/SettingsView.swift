@@ -690,12 +690,24 @@ private struct GeneralSettings: View {
                         store.save(config)
                     }))
                 Toggle("Open at login", isOn: Binding(get: { opensAtLogin }, set: { setOpensAtLogin($0) }))
+                Picker("Continue at keyboard in", selection: Binding(
+                    get: { store.config.keyboardTerminal },
+                    set: { terminal in
+                        var config = store.config
+                        config.terminal = terminal == .terminal ? nil : terminal
+                        store.save(config)
+                    })) {
+                    // The chosen one stays listed even once uninstalled, so the picker never shows a blank.
+                    ForEach(KeyboardHandoff.Terminal.allCases.filter { room.isInstalled($0) || $0 == store.config.keyboardTerminal },
+                            id: \.self) { Text($0.name).tag($0) }
+                }
             } footer: {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Pick a shortcut no other app uses; it works from anywhere.")
                     Text("The mic opens for a few seconds once the agent stops talking, and sends when you stop.")
                     Text("At the top, Lair grows out of the notch when someone talks or needs you; click its orb to talk.")
                     Text("Allow notifications to answer approvals from anywhere; without them, answer by voice or in the panel.")
+                    Text("Continue at keyboard opens Claude or Codex in its own CLI on the same conversation; quit it to come back.")
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)

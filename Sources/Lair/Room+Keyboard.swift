@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import LairCore
 
 /// Going on with a call in the agent's own CLI, and back to voice when that CLI quits.
@@ -6,6 +6,13 @@ extension Room {
     /// Agents whose CLI picks up the sessions Lair starts.
     func canHandOff(_ call: Call) -> Bool {
         !call.guest && call.agent.kind == .acp && KeyboardHandoff.command(preset: call.agent.preset, sessionID: "") != nil
+    }
+
+    /// Terminal always is; herdr also needs its command on your PATH, since Lair drives it from there.
+    func isInstalled(_ terminal: KeyboardHandoff.Terminal) -> Bool {
+        guard terminal != .terminal else { return true }
+        guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: terminal.bundleID) != nil else { return false }
+        return terminal != .herdr || isInstalled(program: "herdr-app") != false
     }
 
     func atKeyboardHint(_ call: Call) -> String {
@@ -23,9 +30,9 @@ extension Room {
                 return report(in: call, .init(role: .problem, text: "\(call.agent.name) can't go on at the keyboard."))
             }
             var terminal = keyboardTerminal
-            if terminal == .herdr, isInstalled(program: "herdr-app") == false {
+            if !isInstalled(terminal) {
+                show(hint: "\(terminal.name) isn't installed, so it opens in Terminal.")
                 terminal = .terminal
-                show(hint: "herdr isn't installed, so it opens in Terminal.")
             }
             let folder = (call.agent.directoryURL ?? FileManager.default.homeDirectoryForCurrentUser).path
             let back = KeyboardHandoff.Back(agent: call.id, sessionID: id)
@@ -35,11 +42,10 @@ extension Room {
             call.atKeyboard = id
             do {
                 let file = try Self.write(script, for: call.id)
-                let launch = switch terminal {
-                case .terminal: KeyboardHandoff.terminalLaunch(file)
-                case .herdr: KeyboardHandoff.herdrLaunch(file, folder: folder,
-                                                         list: Data(try await Self.run(KeyboardHandoff.herdrList, environment: environment).utf8))
-                }
+                let launch = terminal == .herdr
+                    ? KeyboardHandoff.herdrLaunch(file, folder: folder,
+                                                  list: Data(try await Self.run(KeyboardHandoff.herdrList, environment: environment).utf8))
+                    : KeyboardHandoff.windowLaunch(file, in: terminal)
                 _ = try await Self.run(launch, environment: environment)
                 Self.log.notice("\(call.id, privacy: .public): went on at the keyboard in \(terminal.rawValue, privacy: .public)")
             } catch {

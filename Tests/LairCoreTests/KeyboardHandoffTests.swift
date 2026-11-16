@@ -53,9 +53,12 @@ struct KeyboardHandoffTests {
         #expect(opened == "lair://back?agent=a&session=s\n")
     }
 
-    @Test func opensInTerminal() {
-        #expect(KeyboardHandoff.terminalLaunch(URL(filePath: "/tmp/claude.command"))
-            == ["/usr/bin/open", "-a", "Terminal", "/tmp/claude.command"])
+    @Test func opensANewWindowInTheChosenTerminal() {
+        let file = URL(filePath: "/tmp/claude.command")
+        #expect(KeyboardHandoff.windowLaunch(file, in: .terminal) == ["/usr/bin/open", "-a", "Terminal", "/tmp/claude.command"])
+        #expect(KeyboardHandoff.windowLaunch(file, in: .iterm) == ["/usr/bin/open", "-a", "iTerm", "/tmp/claude.command"])
+        #expect(KeyboardHandoff.windowLaunch(file, in: .ghostty)
+            == ["/usr/bin/open", "-na", "Ghostty", "--args", "-e", "/bin/sh", "/tmp/claude.command"])
     }
 
     @Test func theFirstAgentAtTheKeyboardMakesTheLairSpaceInHerdr() {
