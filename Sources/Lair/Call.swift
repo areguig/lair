@@ -30,6 +30,8 @@ import os
     /// Set by the room, so a turn the agent took by itself is heard as soon as the call is free, however it got free.
     @ObservationIgnored var becameReady: (@MainActor () -> Void)?
     var lines: [Line] = []
+    /// The session you went on with in the agent's CLI: Lair stays quiet for it until it comes back.
+    var atKeyboard: String?
     var pendingApproval: ApprovalRequest?
     /// Finished or needs you while you were talking to someone else.
     var unread = false

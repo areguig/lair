@@ -23,7 +23,8 @@ struct SessionMaker {
     /// How long an agent's own turn waits for more before it's over: ACP v1 marks no end for those turns.
     private static let ownTurnQuiet = Duration.seconds(2)
 
-    func session(for agent: AgentConfig, thinking: String?, prompt: String) throws -> any AgentSession {
+    /// `reopening` picks up a session that already exists, such as one you went on with at the keyboard.
+    func session(for agent: AgentConfig, thinking: String?, prompt: String, reopening: String? = nil) throws -> any AgentSession {
         switch agent.kind {
         case .acp:
             guard let command = agent.launchCommand else { throw SetupError.missingCommand }
@@ -36,7 +37,8 @@ struct SessionMaker {
             let folder = agent.directoryURL ?? FileManager.default.homeDirectoryForCurrentUser
             return AcpSession(channel: channel, settings: .init(directory: folder.path, preamble: prompt,
                                                                 ownTurnQuiet: Self.ownTurnQuiet, model: agent.model,
-                                                                thinking: thinking, options: agent.options ?? [:]))
+                                                                thinking: thinking, options: agent.options ?? [:],
+                                                                reopening: reopening))
         case .hermes:
             guard let url = agent.url.flatMap(URL.init(string:)), url.host() != nil else { throw SetupError.missingAddress }
             guard let credentials = agent.hermesCredentials() else { throw SetupError.missingKey }

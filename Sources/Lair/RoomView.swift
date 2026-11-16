@@ -328,7 +328,8 @@ struct RoomView: View {
             .motion(.easeInOut(duration: 0.2), value: text)
     }
 
-    /// The talk button in the middle; on its left the call button, or Dismiss for a guest; Mission Control on its right.
+    /// The talk button in the middle; on its left the call button, or Dismiss for a guest; on its right Continue at
+    /// keyboard for agents whose CLI can pick the call up, else Mission Control.
     private func controls(_ call: Call) -> some View {
         HStack(spacing: 24) {
             if call.guest {
@@ -337,6 +338,11 @@ struct RoomView: View {
                     .help("Dismiss \(call.agent.name); it comes back when it next talks to you")
                     .accessibilityLabel("Dismiss \(call.agent.name)")
                     .accessibilityValue(call.state.label)
+            } else if call.atKeyboard != nil {
+                RoundButton(symbol: "arrow.uturn.backward", tint: LairColors.call, size: 38) { room.toggle(call) }
+                    .disabled(room.readiness != .ready)
+                    .help("Bring \(call.agent.name) back from the keyboard, once you've quit its CLI")
+                    .accessibilityLabel("Bring \(call.agent.name) back from the keyboard")
             } else {
                 RoundButton(symbol: call.inCall ? "phone.down.fill" : "phone.fill",
                             tint: call.inCall ? LairColors.hangUp : LairColors.call,
@@ -353,11 +359,20 @@ struct RoomView: View {
                 .disabled(room.readiness != .ready || deaf)
                 .opacity(deaf ? 0.35 : 1)
                 .help(deaf ? "\(call.agent.name) listens when it asks you something" : "Hold to talk")
-            RoundButton(symbol: "rectangle.split.3x1", tint: nil, size: 38) {
-                MissionControl.toggle(room: room)
+            if room.canHandOff(call) {
+                RoundButton(symbol: "keyboard", tint: nil, size: 38) { room.handOff(call) }
+                    .disabled(call.state != .ready)
+                    .help(call.state == .ready
+                          ? "Continue at keyboard: go on with \(call.agent.name) in its CLI; quit it to come back here"
+                          : "Continue at keyboard, once \(call.agent.name) is in a call and between turns")
+                    .accessibilityLabel("Continue \(call.agent.name) at the keyboard")
+            } else {
+                RoundButton(symbol: "rectangle.split.3x1", tint: nil, size: 38) {
+                    MissionControl.toggle(room: room)
+                }
+                .help("Mission Control\(missionControlKey): every agent's whole stream")
+                .accessibilityLabel("Mission Control\(missionControlKey)")
             }
-            .help("Mission Control\(missionControlKey): every agent's whole stream")
-            .accessibilityLabel("Mission Control\(missionControlKey)")
         }
     }
 
@@ -461,6 +476,7 @@ struct RoomView: View {
             }
         }
         switch call.state {
+        case .offline where call.atKeyboard != nil: return "At your keyboard · quit its CLI to bring it back"
         case .offline: return "Hold \(key) to talk, or tap the orb"
         case .ready: return "Hold \(key) to talk"
         case .listening where room.answering?.callID == call.id: return "Listening for your reply · just talk"

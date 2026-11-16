@@ -32,6 +32,7 @@ struct LairApp: App {
     private let link: GuestLink
     private let store: ConfigStore
     private let island: Island
+    private let backLink: BackLink
     private let updates: Updates
     private let registry: RegistryStore
 
@@ -141,6 +142,7 @@ struct LairApp: App {
         self.room = room
         self.link = link
         self.island = island
+        backLink = BackLink(room: room)
         let registry = RegistryStore()
         self.registry = registry
         updates = Updates()
@@ -223,7 +225,7 @@ struct MenuBarIcon: View {
     }
 }
 
-/// `Lair --snapshot out.png [approval|french|chat|reply|empty|micdenied|crowded|busy|silent] [light|dark]` renders the panel in a demo
+/// `Lair --snapshot out.png [approval|french|chat|reply|empty|micdenied|crowded|busy|silent|keyboard] [light|dark]` renders the panel in a demo
 /// state, to check the design without clicking around.
 @MainActor enum Snapshot {
     /// Speaks `text` and writes the 24 kHz mono result, printing how long the first start and the whole took.
@@ -291,6 +293,8 @@ struct MenuBarIcon: View {
             case "silent":
                 room.setSilent(true)
                 call.state = .thinking
+            case "keyboard":
+                call.atKeyboard = "demo"
             case "reply":
                 call.state = .listening
                 room.answering = .init(callID: call.id, since: .now)
