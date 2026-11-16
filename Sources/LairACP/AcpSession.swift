@@ -7,6 +7,10 @@ import Synchronization
 /// Your turn is a `session/prompt` request: what the agent sends while it runs answers you. What it sends with no
 /// prompt running, such as the result of background work, is a turn of its own; ACP v1 marks no end for those, so
 /// one ends after `ownTurnQuiet` without news, or when you speak.
+///
+/// With `reopening` set, the call picks up a session that already exists, such as one you went on with at the
+/// keyboard: through `session/resume` when the agent offers it, else `session/load`, whose replay of the history
+/// is not heard again.
 public final class AcpSession: AgentSession {
     public struct Settings: Sendable {
         /// The folder the agent works in.
@@ -20,11 +24,14 @@ public final class AcpSession: AgentSession {
         public var thinking: String?
         /// The agent's other choices, by option id, e.g. `["mode": "acceptEdits"]`.
         public var options: [String: String]
+        /// The session to pick up instead of starting a new one.
+        public var reopening: String?
 
         public init(directory: String, preamble: String?, mcpServers: [MCPServer] = [], ownTurnQuiet: Duration,
-                    model: String? = nil, thinking: String? = nil, options: [String: String] = [:]) {
+                    model: String? = nil, thinking: String? = nil, options: [String: String] = [:],
+                    reopening: String? = nil) {
             (self.directory, self.preamble, self.mcpServers, self.ownTurnQuiet) = (directory, preamble, mcpServers, ownTurnQuiet)
-            (self.model, self.thinking, self.options) = (model, thinking, options)
+            (self.model, self.thinking, self.options, self.reopening) = (model, thinking, options, reopening)
         }
     }
 
@@ -62,7 +69,19 @@ public final class AcpSession: AgentSession {
     private let channel: LineChannel
     private let settings: Settings
     private let state = Mutex(State())
-    private let setup: Task<ACPWire.NewSessionResult, Error>
+    private let setup: Task<Opened, Error>
+
+    /// Set while `session/load` replays the history: already heard, so dropped.
+    private let replaying: Flag
+
+    private final class Flag: Sendable {
+        let on = Atomic(false)
+    }
+
+    private struct Opened: Sendable {
+        let sessionID: String
+        let configOptions: [ACPWire.ConfigOption]
+    }
     public let ownTurns: AsyncStream<AgentTurn>
     private let ownTurnsContinuation: AsyncStream<AgentTurn>.Continuation
     public let details: AsyncStream<String>
@@ -84,20 +103,43 @@ public final class AcpSession: AgentSession {
         (models, modelsContinuation) = AsyncStream<[String]>.makeStream()
         (options, optionsContinuation) = AsyncStream<[AgentOption]>.makeStream()
         (problems, problemsContinuation) = AsyncStream<String>.makeStream()
+        let replaying = Flag()
+        self.replaying = replaying
         setup = Task {
-            _ = try await peer.request("initialize", ACPWire.InitializeParams(clientInfo: .init(name: "Lair", version: "1")),
-                                       as: ACPWire.InitializeResult.self)
+            let initialized = try await peer.request("initialize", ACPWire.InitializeParams(clientInfo: .init(name: "Lair", version: "1")),
+                                                     as: ACPWire.InitializeResult.self)
             let servers = settings.mcpServers.map { server in
                 ACPWire.MCPServer(name: server.name, url: server.url.absoluteString,
                                   headers: server.headers.sorted { $0.key < $1.key }.map { .init(name: $0.key, value: $0.value) })
             }
-            return try await peer.request("session/new", ACPWire.NewSessionParams(cwd: settings.directory, mcpServers: servers),
-                                          as: ACPWire.NewSessionResult.self)
+            guard let id = settings.reopening else {
+                let session = try await peer.request("session/new", ACPWire.NewSessionParams(cwd: settings.directory, mcpServers: servers),
+                                                     as: ACPWire.NewSessionResult.self)
+                guard let id = session.sessionId else { throw AgentFailure(message: "The agent started a session without an id.") }
+                return Opened(sessionID: id, configOptions: session.configOptions)
+            }
+            let reopen = ACPWire.ReopenSessionParams(sessionId: id, cwd: settings.directory, mcpServers: servers)
+            let capabilities = initialized.agentCapabilities
+            if capabilities?.canResume == true {
+                let session = try await peer.request("session/resume", reopen, as: ACPWire.NewSessionResult.self)
+                return Opened(sessionID: id, configOptions: session.configOptions)
+            }
+            guard capabilities?.loadSession == true else { throw AgentFailure(message: "The agent can't pick up a session again.") }
+            replaying.on.store(true, ordering: .sequentiallyConsistent)
+            let answer = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
+                // Ended in reading order: the replay is everything before the answer, nothing after it.
+                peer.request("session/load", reopen) { answer in
+                    replaying.on.store(false, ordering: .sequentiallyConsistent)
+                    continuation.resume(with: answer)
+                }
+            }
+            let session = try JSONDecoder().decode(ACPWire.NewSessionResult.self, from: answer)
+            return Opened(sessionID: id, configOptions: session.configOptions)
         }
         Task { [self] in
             do {
                 let session = try await setup.value
-                state.withLock { $0.sessionID = session.sessionId }
+                state.withLock { $0.sessionID = session.sessionID }
                 show(session.configOptions)
                 let chosen = [(Self.isCategory("model"), settings.model), (Self.isCategory("thought_level"), settings.thinking)]
                     + settings.options.sorted { $0.key < $1.key }.map { id, value in ({ $0.id == id }, value) }
@@ -119,6 +161,11 @@ public final class AcpSession: AgentSession {
         peer.start(handle: { [self] in receive($0) }, closed: { [self] in closeTurns() })
     }
 
+    /// The agent's id for this conversation, once it's open: its CLI picks it up from there.
+    public var resumableID: String? {
+        get async { try? await setup.value.sessionID }
+    }
+
     // MARK: Turns
 
     public func ask(_ text: String) throws -> AgentTurn {
@@ -134,7 +181,7 @@ public final class AcpSession: AgentSession {
         }
         Task { [self] in
             do {
-                let sessionID = try await setup.value.sessionId
+                let sessionID = try await setup.value.sessionID
                 let blocks = [preamble, text].compactMap { $0 }.map { ACPWire.TextBlock(text: $0) }
                 // Ended in reading order, so what the agent sends right after its answer is a turn of its own.
                 peer.request("session/prompt", ACPWire.PromptParams(sessionId: sessionID, prompt: blocks)) { [self] answer in
@@ -213,7 +260,8 @@ public final class AcpSession: AgentSession {
     private func receive(_ message: JSONRPCPeer.Incoming) {
         switch message {
         case .notification("session/update", let params):
-            guard let notification = try? JSONDecoder().decode(ACPWire.SessionNotification.self, from: params) else { return }
+            guard !replaying.on.load(ordering: .sequentiallyConsistent),
+                  let notification = try? JSONDecoder().decode(ACPWire.SessionNotification.self, from: params) else { return }
             switch notification.update {
             case .agentText(let text): deliver(.text(text))
             case .agentThought(let text): deliver(.activity(.thinking(text)))

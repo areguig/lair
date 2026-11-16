@@ -240,6 +240,75 @@ struct AcpSessionTests {
         session.stop()
     }
 
+    // MARK: Picking a session up again
+
+    private func reopening(_ agent: FakeAgent, _ id: String) -> AcpSession {
+        AcpSession(channel: agent, settings: .init(directory: "/work", preamble: "You are heard by voice.",
+                                                   ownTurnQuiet: .milliseconds(50), reopening: id))
+    }
+
+    private func initialized(_ agent: FakeAgent, capabilities: String) async {
+        let initialize = await agent.next()
+        agent.answer(initialize, #"{"protocolVersion":1,"agentCapabilities":\#(capabilities)}"#)
+    }
+
+    @Test func aNewSessionTellsItsIDForItsCLI() async {
+        let agent = FakeAgent()
+        let session = session(agent)
+        await agent.handshake()
+        #expect(await session.resumableID == "s1")
+        session.stop()
+    }
+
+    @Test func reopensASessionThroughResumeWhenTheAgentOffersIt() async throws {
+        let agent = FakeAgent()
+        let session = reopening(agent, "kept")
+        await initialized(agent, capabilities: #"{"loadSession":true,"sessionCapabilities":{"resume":{}}}"#)
+        let resume = await agent.next()
+        #expect(resume.method == "session/resume")
+        #expect(resume.params["sessionId"] as? String == "kept")
+        #expect(resume.params["cwd"] as? String == "/work")
+        agent.answer(resume, #"{"configOptions":\#(FakeAgent.options)}"#)
+        #expect(await session.resumableID == "kept")
+
+        let reply = try session.ask("Back")
+        let prompt = await agent.next()
+        #expect(prompt.params["sessionId"] as? String == "kept")
+        // Back from the keyboard, the voice rules are said again.
+        #expect((prompt.params["prompt"] as? [[String: Any]])?.compactMap { $0["text"] as? String } == ["You are heard by voice.", "Back"])
+        agent.answer(prompt, #"{"stopReason":"end_turn"}"#)
+        _ = try await collect(reply)
+        session.stop()
+    }
+
+    @Test func reopensThroughLoadWithoutHearingTheReplayedHistory() async throws {
+        let agent = FakeAgent()
+        let session = reopening(agent, "kept")
+        var ownTurns = session.ownTurns.makeAsyncIterator()
+        await initialized(agent, capabilities: #"{"loadSession":true}"#)
+        let load = await agent.next()
+        #expect(load.method == "session/load")
+        #expect(load.params["sessionId"] as? String == "kept")
+        agent.update(#"{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"Earlier"}}"#)
+        agent.update(#"{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Said before"}}"#)
+        agent.answer(load, "{}")
+        #expect(await session.resumableID == "kept")
+
+        agent.update(#"{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"News"}}"#)
+        let own = try #require(await ownTurns.next())
+        #expect(try await collect(own) == [.text("News")])
+        session.stop()
+    }
+
+    @Test func anAgentThatCannotReopenIsAProblem() async {
+        let agent = FakeAgent()
+        let session = reopening(agent, "kept")
+        var problems = session.problems.makeAsyncIterator()
+        await initialized(agent, capabilities: "{}")
+        #expect(await problems.next() == "Couldn't start the call: The agent can't pick up a session again.")
+        session.stop()
+    }
+
     @Test func answersRequestsItDoesNotSupportWithAnError() async {
         let agent = FakeAgent()
         let session = session(agent)

@@ -12,6 +12,8 @@ public protocol AgentSession: Sendable {
     /// Stops the reply in progress; the current `ask` stream ends.
     func interrupt()
     func stop()
+    /// The agent's own id for the conversation, which its CLI can pick up; nil for agents without one.
+    var resumableID: String? { get async }
     /// What runs the agent, e.g. "gpt-6-luna · low thinking", as soon as the agent tells.
     var details: AsyncStream<String> { get }
     /// Turns the agent takes without being asked, such as telling what its background work found.
@@ -70,6 +72,7 @@ public struct ChangeLater: Error {
 
 extension AgentSession {
     public func answer(_ request: ApprovalRequest, decision: ApprovalDecision) throws {}
+    public var resumableID: String? { get async { nil } }
     public var details: AsyncStream<String> { AsyncStream { $0.finish() } }
     public var ownTurns: AsyncStream<AgentTurn> { AsyncStream { $0.finish() } }
     public var problems: AsyncStream<String> { AsyncStream { $0.finish() } }

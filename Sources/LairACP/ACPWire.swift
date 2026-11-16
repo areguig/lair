@@ -31,6 +31,19 @@ enum ACPWire {
     struct InitializeResult: Decodable {
         let protocolVersion: Int
         let agentInfo: Implementation?
+        let agentCapabilities: AgentCapabilities?
+    }
+
+    /// Only what Lair needs to reopen a session; `resume` is an unstable part of ACP v1.
+    struct AgentCapabilities: Decodable {
+        let loadSession: Bool?
+        let sessionCapabilities: SessionCapabilities?
+
+        struct SessionCapabilities: Decodable {
+            let resume: AnyJSON?
+        }
+
+        var canResume: Bool { sessionCapabilities?.resume != nil }
     }
 
     struct NewSessionParams: Encodable {
@@ -51,15 +64,23 @@ enum ACPWire {
         }
     }
 
-    struct NewSessionResult: Decodable, Sendable {
+    /// `session/resume` and `session/load` take the id of the session to reopen.
+    struct ReopenSessionParams: Encodable {
         let sessionId: String
+        let cwd: String
+        let mcpServers: [MCPServer]
+    }
+
+    /// What `session/new`, `session/resume` and `session/load` answer; only a new session tells its id.
+    struct NewSessionResult: Decodable, Sendable {
+        var sessionId: String?
         let configOptions: [ConfigOption]
 
         private enum CodingKeys: String, CodingKey { case sessionId, configOptions }
 
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            sessionId = try container.decode(String.self, forKey: .sessionId)
+            sessionId = try container.decodeIfPresent(String.self, forKey: .sessionId)
             configOptions = try container.decodeIfPresent([LossyOption].self, forKey: .configOptions)?.compactMap(\.option) ?? []
         }
     }
