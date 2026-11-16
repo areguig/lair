@@ -4,8 +4,6 @@ import SwiftUI
 /// What was said in this call: the newest line stays in view unless you scrolled up to read.
 struct Transcript: View {
     let lines: [Call.Line]
-    /// The agent's color, for the bar beside its words.
-    let tint: Color
     /// Shown in turn while there are no words yet.
     let tips: [String]
     let perform: (Call.Line.Action) -> Void
@@ -64,22 +62,20 @@ struct Transcript: View {
         case .you:
             Text(line.text)
                 .textSelection(.enabled)
-                .padding(.horizontal, 12).padding(.vertical, 8)
-                .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .outlined(RoundedRectangle(cornerRadius: 16, style: .continuous), opacity: 0)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .frame(maxWidth: .infinity, alignment: .trailing)
-                .padding(.leading, 56)
+                .padding(.leading, 40)
         case .agent:
-            HStack(alignment: .top, spacing: 10) {
-                Capsule().fill(tint.opacity(0.85)).frame(width: 3)
-                Text(line.text.isEmpty && line.shown.isEmpty ? AttributedString("…") : ShownText.attributed(line))
-                    .lineSpacing(3)
-                    .textSelection(.enabled)
-                    .foregroundStyle(.primary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.trailing, 16)
+            Text(line.text.isEmpty && line.shown.isEmpty ? AttributedString("…") : ShownText.attributed(line))
+                .lineSpacing(2)
+                .textSelection(.enabled)
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.trailing, 24)
         case .info:
             Text(line.text)
                 .font(.system(.caption, design: .rounded))
