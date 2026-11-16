@@ -83,9 +83,13 @@ extension AgentSession {
     public func setThinking(_ level: String) throws { throw ChangeLater() }
 }
 
-/// "gpt-6-luna" and "low" → "gpt-6-luna · low thinking".
+/// "gpt-6-luna" and "low" → "gpt-6-luna · low thinking"; a level that already says thinking is kept as it is.
 public func agentDetails(model: String?, thinking: String?) -> String? {
-    let parts = [model, thinking.flatMap { $0 == "off" || $0.isEmpty ? nil : "\($0) thinking" }].compactMap { $0 }
+    let level = thinking.flatMap { level -> String? in
+        guard level != "off", !level.isEmpty else { return nil }
+        return level.localizedCaseInsensitiveContains("thinking") ? level : "\(level) thinking"
+    }
+    let parts = [model, level].compactMap { $0 }
     return parts.isEmpty ? nil : parts.joined(separator: " · ")
 }
 
