@@ -30,7 +30,8 @@ public enum KeyboardHandoff {
     public static func command(preset: String?, sessionID: String) -> [String]? {
         switch preset {
         case "claude": ["claude", "--resume", sessionID]
-        case "codex": ["codex", "resume", sessionID]
+        // The shared daemon keeps the session after the CLI quits, so Lair couldn't pick it up again.
+        case "codex": ["codex", "resume", "--no-daemon", sessionID]
         default: nil
         }
     }
